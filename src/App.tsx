@@ -9,7 +9,7 @@ import { AdminPage } from './pages/Admin'
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/consultplus-crm">
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
