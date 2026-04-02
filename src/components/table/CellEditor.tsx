@@ -31,20 +31,25 @@ export function CellEditor({ column, clientId, cell, onSave, onCancel }: Props) 
   }, [column])
 
   const save = async () => {
-    const patch: Partial<CellValue> = {}
-    if (column.type === 'number') {
-      patch.value_number = value ? Number(value) : undefined
-    } else if (column.type === 'dropdown') {
-      patch.value_dropdown = value || undefined
-    } else if (column.type === 'checkbox') {
-      patch.value_bool = value === 'true'
-    } else if (column.type === 'date') {
-      patch.value_date = value || undefined
-    } else {
-      patch.value_text = value || undefined
+    try {
+      const patch: Partial<CellValue> = {}
+      if (column.type === 'number') {
+        patch.value_number = value ? Number(value) : null as any
+      } else if (column.type === 'dropdown') {
+        patch.value_dropdown = value || null as any
+      } else if (column.type === 'checkbox') {
+        patch.value_bool = value === 'true'
+      } else if (column.type === 'date') {
+        patch.value_date = value || null as any
+      } else {
+        patch.value_text = value || null as any
+      }
+      await setCellValue(clientId, column.id, patch)
+      onSave()
+    } catch (err) {
+      console.error('Save error:', err)
+      onCancel()
     }
-    await setCellValue(clientId, column.id, patch)
-    onSave()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -73,8 +78,17 @@ export function CellEditor({ column, clientId, cell, onSave, onCancel }: Props) 
       <select
         ref={inputRef as any}
         value={value}
-        onChange={e => setValue(e.target.value)}
-        onBlur={save}
+        onChange={async e => {
+          const newVal = e.target.value
+          setValue(newVal)
+          try {
+            await setCellValue(clientId, column.id, { value_dropdown: newVal || null as any })
+            onSave()
+          } catch (err) {
+            console.error('Dropdown save error:', err)
+            onCancel()
+          }
+        }}
         onKeyDown={handleKeyDown}
         className="w-full px-1 py-0.5 text-sm border border-navy rounded focus:outline-none"
       >

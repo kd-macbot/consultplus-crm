@@ -6,6 +6,7 @@ import { Layout } from './components/layout/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { ClientsPage } from './pages/Clients'
 import { AdminPage } from './pages/Admin'
+import { StaffPage } from './pages/Staff'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
           >
             <Route path="/" element={<Dashboard />} />
             <Route path="/clients" element={<ClientsPage />} />
+            <Route path="/staff" element={<StaffPage />} />
             <Route
               path="/admin"
               element={

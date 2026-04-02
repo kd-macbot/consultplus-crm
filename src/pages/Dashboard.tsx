@@ -71,7 +71,7 @@ export function Dashboard() {
         </div>
         <div className="bg-white rounded-lg shadow p-6 border-l-4 border-gold">
           <p className="text-sm text-dark/50">Общ хонорар</p>
-          <p className="text-3xl font-bold text-gold">{stats.totalHonorar.toLocaleString('bg-BG')} лв.</p>
+          <p className="text-3xl font-bold text-gold">{stats.totalHonorar.toLocaleString('bg-BG')} €</p>
         </div>
         <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
           <p className="text-sm text-dark/50">Активни</p>

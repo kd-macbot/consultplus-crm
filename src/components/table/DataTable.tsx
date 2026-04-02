@@ -28,7 +28,11 @@ interface Props {
 
 function getCellDisplay(col: Column, cell: CellValue | undefined, dropdowns: DropdownOption[]): string {
   if (!cell) return ''
-  if (col.type === 'number') return cell.value_number?.toString() ?? ''
+  if (col.type === 'number') {
+    if (cell.value_number == null) return ''
+    if (col.name === 'Хонорар') return `${cell.value_number.toLocaleString('bg-BG')} €`
+    return cell.value_number.toString()
+  }
   if (col.type === 'dropdown') {
     const opt = dropdowns.find(d => d.id === cell.value_dropdown)
     return opt?.value ?? ''
