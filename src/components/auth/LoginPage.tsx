@@ -6,16 +6,20 @@ export function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (login(email, password)) {
-      navigate('/')
+    setSubmitting(true)
+    const result = await login(email, password)
+    setSubmitting(false)
+    if (result.error) {
+      setError(result.error)
     } else {
-      setError('Грешен имейл или парола')
+      navigate('/')
     }
   }
 
@@ -35,7 +39,7 @@ export function LoginPage() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy"
-              placeholder="admin@consultplus.bg"
+              placeholder="email@consultplus.bg"
               required
             />
           </div>
@@ -58,18 +62,12 @@ export function LoginPage() {
 
           <button
             type="submit"
-            className="w-full py-2 px-4 bg-navy text-white rounded-md hover:bg-navy-light transition font-medium"
+            disabled={submitting}
+            className="w-full py-2 px-4 bg-navy text-white rounded-md hover:bg-navy-light transition font-medium disabled:opacity-50"
           >
-            Вход
+            {submitting ? 'Влизане...' : 'Вход'}
           </button>
         </form>
-
-        <div className="mt-6 p-3 bg-light/50 rounded text-xs text-dark/50">
-          <p className="font-medium mb-1">Демо акаунти:</p>
-          <p>admin@consultplus.bg / admin123</p>
-          <p>manager@consultplus.bg / manager123</p>
-          <p>employee@consultplus.bg / employee123</p>
-        </div>
       </div>
     </div>
   )

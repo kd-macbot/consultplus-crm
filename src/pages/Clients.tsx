@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { DataTable } from '../components/table/DataTable'
-import { addClient, getColumns } from '../lib/storage'
+import { addClient } from '../lib/storage'
 import { useAuth } from '../lib/auth'
 
 export function ClientsPage() {
@@ -10,8 +10,8 @@ export function ClientsPage() {
 
   const canAdd = user?.role === 'admin' || user?.role === 'manager'
 
-  const handleAdd = () => {
-    addClient(user?.id ?? '1')
+  const handleAdd = async () => {
+    await addClient(user?.id)
     onRefresh()
   }
 

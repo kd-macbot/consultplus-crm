@@ -1,45 +1,61 @@
-import { useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../lib/auth'
 import { getClients, getCellValues, getColumns, getDropdownOptions } from '../lib/storage'
+import type { Client, Column, CellValue, DropdownOption } from '../lib/types'
 
 export function Dashboard() {
   const { user } = useAuth()
+  const [stats, setStats] = useState({ total: 0, statusCounts: {} as Record<string, number>, totalHonorar: 0 })
+  const [loading, setLoading] = useState(true)
 
-  const stats = useMemo(() => {
-    const clients = getClients()
-    const columns = getColumns()
-    const cells = getCellValues()
-    const dropdowns = getDropdownOptions()
-
-    const statusCol = columns.find(c => c.name === 'Статус')
-    const statusCounts: Record<string, number> = {}
-    
-    if (statusCol) {
-      for (const client of clients) {
-        const cell = cells.find(cv => cv.client_id === client.id && cv.column_id === statusCol.id)
-        if (cell?.value_dropdown) {
-          const opt = dropdowns.find(d => d.id === cell.value_dropdown)
-          const label = opt?.value || 'Неизвестен'
-          statusCounts[label] = (statusCounts[label] || 0) + 1
-        } else {
-          statusCounts['Без статус'] = (statusCounts['Без статус'] || 0) + 1
-        }
-      }
-    }
-
-    const honorarCol = columns.find(c => c.name === 'Хонорар')
-    let totalHonorar = 0
-    if (honorarCol) {
-      for (const client of clients) {
-        const cell = cells.find(cv => cv.client_id === client.id && cv.column_id === honorarCol.id)
-        if (cell?.value_number) totalHonorar += cell.value_number
-      }
-    }
-
-    return { total: clients.length, statusCounts, totalHonorar }
+  useEffect(() => {
+    loadStats()
   }, [])
 
+  async function loadStats() {
+    try {
+      const [clients, columns, cells, dropdowns] = await Promise.all([
+        getClients(), getColumns(), getCellValues(), getDropdownOptions()
+      ])
+
+      const statusCol = columns.find((c: Column) => c.name === 'Статус')
+      const statusCounts: Record<string, number> = {}
+      
+      if (statusCol) {
+        for (const client of clients) {
+          const cell = cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === statusCol.id)
+          if (cell?.value_dropdown) {
+            const opt = dropdowns.find((d: DropdownOption) => d.id === cell.value_dropdown)
+            const label = opt?.value || 'Неизвестен'
+            statusCounts[label] = (statusCounts[label] || 0) + 1
+          } else {
+            statusCounts['Без статус'] = (statusCounts['Без статус'] || 0) + 1
+          }
+        }
+      }
+
+      const honorarCol = columns.find((c: Column) => c.name === 'Хонорар')
+      let totalHonorar = 0
+      if (honorarCol) {
+        for (const client of clients) {
+          const cell = cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === honorarCol.id)
+          if (cell?.value_number) totalHonorar += cell.value_number
+        }
+      }
+
+      setStats({ total: clients.length, statusCounts, totalHonorar })
+    } catch (err) {
+      console.error('Failed to load stats:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const roleLabel = { admin: 'Администратор', manager: 'Мениджър', employee: 'Служител' }
+
+  if (loading) {
+    return <div className="p-6 text-dark/50">Зареждане...</div>
+  }
 
   return (
     <div className="p-6">

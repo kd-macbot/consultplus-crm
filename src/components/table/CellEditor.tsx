@@ -25,12 +25,12 @@ export function CellEditor({ column, clientId, cell, onSave, onCancel }: Props) 
 
   useEffect(() => {
     if (column.type === 'dropdown') {
-      setDropdownOpts(getDropdownOptions(column.id))
+      getDropdownOptions(column.id).then(setDropdownOpts)
     }
     setTimeout(() => inputRef.current?.focus(), 10)
   }, [column])
 
-  const save = () => {
+  const save = async () => {
     const patch: Partial<CellValue> = {}
     if (column.type === 'number') {
       patch.value_number = value ? Number(value) : undefined
@@ -43,7 +43,7 @@ export function CellEditor({ column, clientId, cell, onSave, onCancel }: Props) 
     } else {
       patch.value_text = value || undefined
     }
-    setCellValue(clientId, column.id, patch)
+    await setCellValue(clientId, column.id, patch)
     onSave()
   }
 
@@ -57,11 +57,10 @@ export function CellEditor({ column, clientId, cell, onSave, onCancel }: Props) 
       <input
         type="checkbox"
         checked={value === 'true'}
-        onChange={e => {
+        onChange={async e => {
           const v = e.target.checked ? 'true' : 'false'
           setValue(v)
-          const patch: Partial<CellValue> = { value_bool: e.target.checked }
-          setCellValue(clientId, column.id, patch)
+          await setCellValue(clientId, column.id, { value_bool: e.target.checked })
           onSave()
         }}
         className="w-4 h-4"
@@ -74,7 +73,7 @@ export function CellEditor({ column, clientId, cell, onSave, onCancel }: Props) 
       <select
         ref={inputRef as any}
         value={value}
-        onChange={e => { setValue(e.target.value); }}
+        onChange={e => setValue(e.target.value)}
         onBlur={save}
         onKeyDown={handleKeyDown}
         className="w-full px-1 py-0.5 text-sm border border-navy rounded focus:outline-none"

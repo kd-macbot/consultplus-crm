@@ -1,6 +1,5 @@
-import type { Column, ColumnType } from './types'
-import { v4 as uuid } from 'uuid'
-import * as storage from './storage'
+import type { ColumnType } from './types'
+import { supabase } from './supabase'
 import crmData from '../../crm_data.json'
 
 interface RawRow { [key: string]: string | number | null }
@@ -20,29 +19,33 @@ const COLUMN_MAP: { header: string; name: string; type: ColumnType; required: bo
   { header: 'col_11', name: 'Бележки', type: 'text', required: false },
 ]
 
-export function seedData() {
-  if (storage.isSeeded()) return
+export async function seedData() {
+  // Check if already seeded
+  const { count } = await supabase.from('crm_columns').select('*', { count: 'exact', head: true })
+  if ((count ?? 0) > 0) return
 
+  console.log('Seeding CRM data...')
   const rows: RawRow[] = (crmData as any).Master.data
 
   // 1. Create columns
-  const columns: Column[] = COLUMN_MAP.map((cm, i) => ({
-    id: uuid(),
+  const colInserts = COLUMN_MAP.map((cm, i) => ({
     name: cm.name,
     type: cm.type,
     position: i,
     is_required: cm.required,
-    created_by: '1',
-    created_at: new Date().toISOString(),
   }))
-  storage.saveColumns(columns)
+  const { data: columns, error: colErr } = await supabase
+    .from('crm_columns')
+    .insert(colInserts)
+    .select()
+  if (colErr) { console.error('Column seed error:', colErr); return }
 
   // 2. Extract & create dropdown options
   const dropdownCols = COLUMN_MAP.filter(cm => cm.type === 'dropdown')
-  const allDropdowns: import('./types').DropdownOption[] = []
+  const allDropdowns: { column_id: string; value: string; position: number }[] = []
 
   for (const dc of dropdownCols) {
-    const col = columns.find(c => c.name === dc.name)!
+    const col = columns!.find(c => c.name === dc.name)!
     const uniqueValues = new Set<string>()
     for (const row of rows) {
       const val = row[dc.header]
@@ -52,52 +55,67 @@ export function seedData() {
     }
     const sorted = [...uniqueValues].sort()
     sorted.forEach((val, i) => {
-      allDropdowns.push({ id: uuid(), column_id: col.id, value: val, position: i })
+      allDropdowns.push({ column_id: col.id, value: val, position: i })
     })
   }
-  storage.saveDropdownOptions(allDropdowns)
 
-  // 3. Create clients and cell values
-  const clients: import('./types').Client[] = []
-  const cellValues: import('./types').CellValue[] = []
+  let insertedDropdowns: any[] = []
+  if (allDropdowns.length > 0) {
+    const { data: dd, error: ddErr } = await supabase
+      .from('crm_dropdown_options')
+      .insert(allDropdowns)
+      .select()
+    if (ddErr) { console.error('Dropdown seed error:', ddErr); return }
+    insertedDropdowns = dd ?? []
+  }
 
-  for (const row of rows) {
-    const clientId = uuid()
-    const client: import('./types').Client = {
-      id: clientId,
-      created_at: new Date().toISOString(),
-      created_by: '1',
-      updated_at: new Date().toISOString(),
-      assigned_to: undefined,
-      deleted: false,
-    }
-    clients.push(client)
+  // 3. Create clients in batches
+  const clientInserts = rows.map(() => ({}))
+  // Supabase batch limit: insert in chunks of 50
+  const BATCH = 50
+  let allInsertedClients: any[] = []
+  for (let i = 0; i < clientInserts.length; i += BATCH) {
+    const batch = clientInserts.slice(i, i + BATCH)
+    const { data: clients, error: clientErr } = await supabase
+      .from('crm_clients')
+      .insert(batch)
+      .select()
+    if (clientErr) { console.error('Client seed error:', clientErr); return }
+    allInsertedClients = allInsertedClients.concat(clients ?? [])
+  }
+
+  // 4. Create cell values
+  const cellInserts: any[] = []
+  for (let ri = 0; ri < rows.length; ri++) {
+    const row = rows[ri]
+    const clientId = allInsertedClients[ri].id
 
     for (const cm of COLUMN_MAP) {
-      const col = columns.find(c => c.name === cm.name)!
+      const col = columns!.find(c => c.name === cm.name)!
       const rawVal = row[cm.header]
       if (rawVal == null || String(rawVal).trim() === '') continue
 
-      const cell: import('./types').CellValue = {
-        id: uuid(),
-        client_id: clientId,
-        column_id: col.id,
-      }
+      const cell: any = { client_id: clientId, column_id: col.id }
 
       if (cm.type === 'number') {
         cell.value_number = Number(rawVal) || 0
       } else if (cm.type === 'dropdown') {
-        const opt = allDropdowns.find(d => d.column_id === col.id && d.value === String(rawVal).trim())
+        const opt = insertedDropdowns.find((d: any) => d.column_id === col.id && d.value === String(rawVal).trim())
         if (opt) cell.value_dropdown = opt.id
       } else {
         cell.value_text = String(rawVal).trim()
       }
 
-      cellValues.push(cell)
+      cellInserts.push(cell)
     }
   }
 
-  storage.saveClients(clients)
-  storage.saveCellValues(cellValues)
-  storage.markSeeded()
+  // Insert cells in batches
+  for (let i = 0; i < cellInserts.length; i += BATCH) {
+    const batch = cellInserts.slice(i, i + BATCH)
+    const { error: cellErr } = await supabase.from('crm_cell_values').insert(batch)
+    if (cellErr) { console.error('Cell seed error at batch', i, cellErr); return }
+  }
+
+  console.log(`Seeded: ${columns!.length} columns, ${insertedDropdowns.length} dropdown options, ${allInsertedClients.length} clients, ${cellInserts.length} cell values`)
 }

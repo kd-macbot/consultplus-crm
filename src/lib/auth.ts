@@ -1,30 +1,53 @@
 import { createContext, useContext } from 'react'
+import { supabase } from './supabase'
 import type { Profile, Role } from './types'
 
 export interface AuthState {
   user: Profile | null
-  login: (email: string, password: string) => boolean
-  logout: () => void
+  loading: boolean
+  login: (email: string, password: string) => Promise<{ error?: string }>
+  logout: () => Promise<void>
   isRole: (role: Role) => boolean
 }
 
-const MOCK_USERS: Array<Profile & { password: string }> = [
-  { id: '1', email: 'admin@consultplus.bg', password: 'admin123', full_name: 'Администратор', role: 'admin', created_at: new Date().toISOString() },
-  { id: '2', email: 'manager@consultplus.bg', password: 'manager123', full_name: 'Мениджър', role: 'manager', created_at: new Date().toISOString() },
-  { id: '3', email: 'employee@consultplus.bg', password: 'employee123', full_name: 'Служител', role: 'employee', created_at: new Date().toISOString() },
-]
+export async function signIn(email: string, password: string) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) return { error: error.message }
+  
+  // Fetch profile
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', data.user.id)
+    .single()
+  
+  if (profileError) return { error: 'Профилът не е намерен' }
+  return { profile: profile as Profile }
+}
 
-export function authenticate(email: string, password: string): Profile | null {
-  const found = MOCK_USERS.find(u => u.email === email && u.password === password)
-  if (!found) return null
-  const { password: _, ...profile } = found
-  return profile
+export async function signOut() {
+  await supabase.auth.signOut()
+}
+
+export async function getCurrentProfile(): Promise<Profile | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single()
+  
+  if (error || !data) return null
+  return data as Profile
 }
 
 export const AuthContext = createContext<AuthState>({
   user: null,
-  login: () => false,
-  logout: () => {},
+  loading: true,
+  login: async () => ({}),
+  logout: async () => {},
   isRole: () => false,
 })
 

@@ -1,47 +1,74 @@
-import { useState, useMemo } from 'react'
-import { getColumns, addColumn, updateColumn, deleteColumn, getDropdownOptions, addDropdownOption, deleteDropdownOption, clearAll } from '../lib/storage'
-import type { ColumnType } from '../lib/types'
+import { useState, useEffect } from 'react'
+import { getColumns, addColumn, deleteColumn, getDropdownOptions, addDropdownOption, deleteDropdownOption, clearAll } from '../lib/storage'
+import type { Column, ColumnType, DropdownOption } from '../lib/types'
 
 export function AdminPage() {
-  const [refreshKey, setRefreshKey] = useState(0)
-  const refresh = () => setRefreshKey(k => k + 1)
-
-  const columns = useMemo(() => getColumns(), [refreshKey])
+  const [columns, setColumns] = useState<Column[]>([])
+  const [loading, setLoading] = useState(true)
   const [newColName, setNewColName] = useState('')
   const [newColType, setNewColType] = useState<ColumnType>('text')
   const [editingDropdown, setEditingDropdown] = useState<string | null>(null)
   const [newOptValue, setNewOptValue] = useState('')
+  const [dropdownOpts, setDropdownOpts] = useState<DropdownOption[]>([])
 
-  const dropdownOpts = useMemo(() => {
-    return editingDropdown ? getDropdownOptions(editingDropdown) : []
-  }, [editingDropdown, refreshKey])
+  useEffect(() => { loadColumns() }, [])
 
-  const handleAddColumn = () => {
-    if (!newColName.trim()) return
-    addColumn(newColName.trim(), newColType)
-    setNewColName('')
-    refresh()
-  }
+  useEffect(() => {
+    if (editingDropdown) {
+      getDropdownOptions(editingDropdown).then(setDropdownOpts)
+    } else {
+      setDropdownOpts([])
+    }
+  }, [editingDropdown])
 
-  const handleDeleteColumn = (id: string, name: string) => {
-    if (confirm(`Изтриване на колона "${name}"? Всички данни в нея ще бъдат загубени.`)) {
-      deleteColumn(id)
-      if (editingDropdown === id) setEditingDropdown(null)
-      refresh()
+  async function loadColumns() {
+    setLoading(true)
+    const cols = await getColumns()
+    setColumns(cols)
+    setLoading(false)
+    if (editingDropdown) {
+      const opts = await getDropdownOptions(editingDropdown)
+      setDropdownOpts(opts)
     }
   }
 
-  const handleAddOption = () => {
+  const handleAddColumn = async () => {
+    if (!newColName.trim()) return
+    await addColumn(newColName.trim(), newColType)
+    setNewColName('')
+    await loadColumns()
+  }
+
+  const handleDeleteColumn = async (id: string, name: string) => {
+    if (confirm(`Изтриване на колона "${name}"? Всички данни в нея ще бъдат загубени.`)) {
+      await deleteColumn(id)
+      if (editingDropdown === id) setEditingDropdown(null)
+      await loadColumns()
+    }
+  }
+
+  const handleAddOption = async () => {
     if (!newOptValue.trim() || !editingDropdown) return
-    addDropdownOption(editingDropdown, newOptValue.trim())
+    await addDropdownOption(editingDropdown, newOptValue.trim())
     setNewOptValue('')
-    refresh()
+    const opts = await getDropdownOptions(editingDropdown)
+    setDropdownOpts(opts)
+  }
+
+  const handleDeleteOption = async (id: string) => {
+    await deleteDropdownOption(id)
+    if (editingDropdown) {
+      const opts = await getDropdownOptions(editingDropdown)
+      setDropdownOpts(opts)
+    }
   }
 
   const typeLabels: Record<ColumnType, string> = {
     text: 'Текст', number: 'Число', date: 'Дата',
     dropdown: 'Падащо меню', checkbox: 'Отметка', email: 'Имейл', phone: 'Телефон',
   }
+
+  if (loading) return <div className="p-6 text-dark/50">Зареждане...</div>
 
   return (
     <div className="p-6 max-w-4xl">
@@ -122,7 +149,7 @@ export function AdminPage() {
               <div key={opt.id} className="flex items-center gap-3 p-2 hover:bg-light/50 rounded">
                 <span className="flex-1 text-sm">{opt.value}</span>
                 <button
-                  onClick={() => { deleteDropdownOption(opt.id); refresh() }}
+                  onClick={() => handleDeleteOption(opt.id)}
                   className="text-red-400 hover:text-red-600 text-xs"
                 >
                   ✕
@@ -140,9 +167,9 @@ export function AdminPage() {
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-medium text-navy mb-4">Данни</h2>
         <button
-          onClick={() => {
-            if (confirm('Изчистване на ВСИЧКИ данни и повторно зареждане от Excel?')) {
-              clearAll()
+          onClick={async () => {
+            if (confirm('Изчистване на ВСИЧКИ данни? Тази операция е необратима.')) {
+              await clearAll()
               window.location.reload()
             }
           }}
@@ -150,7 +177,7 @@ export function AdminPage() {
         >
           🔄 Нулиране на данните
         </button>
-        <p className="text-xs text-dark/40 mt-2">Изтрива всичко и зарежда оригиналните данни от Excel</p>
+        <p className="text-xs text-dark/40 mt-2">Изтрива всички клиенти, колони и стойности</p>
       </div>
     </div>
   )

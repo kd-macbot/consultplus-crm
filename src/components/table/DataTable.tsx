@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -44,11 +44,34 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [editCell, setEditCell] = useState<{ clientId: string; columnId: string } | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const columns = useMemo(() => getColumns(), [refreshKey])
-  const allCells = useMemo(() => getCellValues(), [refreshKey])
-  const allDropdowns = useMemo(() => getDropdownOptions(), [refreshKey])
-  const allClients = useMemo(() => getClients(), [refreshKey])
+  // Async data state
+  const [columns, setColumnsState] = useState<Column[]>([])
+  const [allCells, setAllCells] = useState<CellValue[]>([])
+  const [allDropdowns, setAllDropdowns] = useState<DropdownOption[]>([])
+  const [allClients, setAllClients] = useState<any[]>([])
+
+  useEffect(() => {
+    loadData()
+  }, [refreshKey])
+
+  async function loadData() {
+    setLoading(true)
+    try {
+      const [cols, clients, cells, dropdowns] = await Promise.all([
+        getColumns(), getClients(), getCellValues(), getDropdownOptions()
+      ])
+      setColumnsState(cols)
+      setAllClients(clients)
+      setAllCells(cells)
+      setAllDropdowns(dropdowns)
+    } catch (err) {
+      console.error('Failed to load data:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Filter by assignment for employees
   const clients = useMemo(() => {
@@ -128,9 +151,9 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         size: 60,
         cell: info => (
           <button
-            onClick={() => {
+            onClick={async () => {
               if (confirm('Изтриване на клиент?')) {
-                softDeleteClient(info.row.original.clientId)
+                await softDeleteClient(info.row.original.clientId)
                 onRefresh()
               }
             }}
@@ -159,6 +182,10 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     getPaginationRowModel: getPaginationRowModel(),
     initialState: { pagination: { pageSize: 50 } },
   })
+
+  if (loading) {
+    return <div className="p-6 text-dark/50">Зареждане на данни...</div>
+  }
 
   return (
     <div className="flex flex-col h-full">
