@@ -128,20 +128,34 @@ export async function getCellValues(clientId?: string): Promise<CellValue[]> {
 }
 
 export async function setCellValue(clientId: string, columnId: string, value: Partial<CellValue>) {
-  // Upsert: use unique(client_id, column_id)
-  const row = {
-    client_id: clientId,
-    column_id: columnId,
+  const updates = {
     value_text: value.value_text ?? null,
     value_number: value.value_number ?? null,
     value_date: value.value_date ?? null,
     value_bool: value.value_bool ?? null,
     value_dropdown: value.value_dropdown ?? null,
   }
-  const { error } = await supabase
+
+  // Check if cell exists
+  const { data: existing } = await supabase
     .from('crm_cell_values')
-    .upsert(row, { onConflict: 'client_id,column_id' })
-  if (error) throw error
+    .select('id')
+    .eq('client_id', clientId)
+    .eq('column_id', columnId)
+    .maybeSingle()
+
+  if (existing) {
+    const { error } = await supabase
+      .from('crm_cell_values')
+      .update(updates)
+      .eq('id', existing.id)
+    if (error) throw error
+  } else {
+    const { error } = await supabase
+      .from('crm_cell_values')
+      .insert([{ client_id: clientId, column_id: columnId, ...updates }])
+    if (error) throw error
+  }
 }
 
 // --- Seed check ---

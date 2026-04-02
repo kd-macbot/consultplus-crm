@@ -11,16 +11,23 @@ export interface AuthState {
 }
 
 export async function signIn(email: string, password: string) {
+  console.log('[Auth] signIn attempt:', email)
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) return { error: error.message }
+  if (error) {
+    console.error('[Auth] signIn error:', error.message)
+    return { error: error.message }
+  }
+  console.log('[Auth] signIn OK, user:', data.user.id)
   
   // Fetch profile
+  console.log('[Auth] Fetching profile...')
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', data.user.id)
     .single()
   
+  console.log('[Auth] Profile result:', profile, profileError)
   if (profileError) return { error: 'Профилът не е намерен' }
   return { profile: profile as Profile }
 }
@@ -30,18 +37,22 @@ export async function signOut() {
 }
 
 export async function getCurrentProfile(): Promise<Profile | null> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session?.user) return null
-  const user = session.user
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) return null
+    const user = session.user
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-  
-  if (error || !data) return null
-  return data as Profile
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single()
+    if (error || !data) return null
+    return data as Profile
+  } catch (err) {
+    console.warn('[Auth] getCurrentProfile failed:', err)
+    return null
+  }
 }
 
 export const AuthContext = createContext<AuthState>({

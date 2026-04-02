@@ -39,9 +39,10 @@ export function Dashboard() {
       if (honorarCol) {
         for (const client of clients) {
           const cell = cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === honorarCol.id)
-          if (cell?.value_number) totalHonorar += cell.value_number
+          if (cell?.value_number && cell.value_number > 0) totalHonorar += cell.value_number
         }
       }
+      console.log('[Dashboard] Honorar total:', totalHonorar)
 
       setStats({ total: clients.length, statusCounts, totalHonorar })
     } catch (err) {

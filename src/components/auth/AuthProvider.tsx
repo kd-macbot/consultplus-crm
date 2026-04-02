@@ -8,17 +8,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    console.log('[Auth] Initializing...')
     // Check initial session
     getCurrentProfile().then(profile => {
+      console.log('[Auth] Profile loaded:', profile?.email || 'none')
       setUser(profile)
       setLoading(false)
-    }).catch(() => {
+      initialized = true
+    }).catch(err => {
+      console.error('[Auth] Init error:', err)
       setUser(null)
       setLoading(false)
+      initialized = true
     })
 
-    // Listen for auth changes
+    // Listen for auth changes (skip during initial load)
+    let initialized = false
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
+      console.log('[Auth] State change:', event, 'initialized:', initialized)
+      if (!initialized) return // skip — initial load handles it
       if (event === 'SIGNED_IN') {
         const profile = await getCurrentProfile()
         setUser(profile)
@@ -27,14 +35,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    return () => subscription.unsubscribe()
+    // Safety timeout — never stay loading forever
+    const timeout = setTimeout(() => {
+      console.warn('[Auth] Timeout — forcing load complete')
+      setLoading(false)
+    }, 5000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
+    }
   }, [])
 
   const login = async (email: string, password: string) => {
-    const result = await signIn(email, password)
-    if (result.error) return { error: result.error }
-    if (result.profile) setUser(result.profile)
-    return {}
+    console.log('[Auth] login called')
+    try {
+      const result = await signIn(email, password)
+      console.log('[Auth] login result:', result)
+      if (result.error) return { error: result.error }
+      if (result.profile) setUser(result.profile)
+      return {}
+    } catch (err) {
+      console.error('[Auth] login exception:', err)
+      return { error: 'Unexpected error' }
+    }
   }
 
   const logout = async () => {

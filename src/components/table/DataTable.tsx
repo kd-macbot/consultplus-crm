@@ -230,19 +230,40 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
             ))}
             {/* Column filters */}
             <tr className="bg-navy-light">
-              {table.getHeaderGroups()[0]?.headers.map(header => (
-                <th key={header.id + '_filter'} className="px-2 py-1">
-                  {header.column.getCanFilter() ? (
-                    <input
-                      type="text"
-                      value={(header.column.getFilterValue() as string) ?? ''}
-                      onChange={e => header.column.setFilterValue(e.target.value)}
-                      placeholder="Филтър..."
-                      className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark placeholder-dark/30 focus:outline-none"
-                    />
-                  ) : null}
-                </th>
-              ))}
+              {table.getHeaderGroups()[0]?.headers.map(header => {
+                const col = columns.find(c => c.id === header.id)
+                const isDropdown = col?.type === 'dropdown'
+                const dropdownVals = isDropdown
+                  ? [...new Set(
+                      data.map(row => row[header.id] as string).filter(Boolean)
+                    )].sort()
+                  : []
+
+                return (
+                  <th key={header.id + '_filter'} className="px-2 py-1">
+                    {header.column.getCanFilter() ? (
+                      isDropdown ? (
+                        <select
+                          value={(header.column.getFilterValue() as string) ?? ''}
+                          onChange={e => header.column.setFilterValue(e.target.value || undefined)}
+                          className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark focus:outline-none"
+                        >
+                          <option value="">Всички</option>
+                          {dropdownVals.map(v => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={(header.column.getFilterValue() as string) ?? ''}
+                          onChange={e => header.column.setFilterValue(e.target.value)}
+                          placeholder="Филтър..."
+                          className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark placeholder-dark/30 focus:outline-none"
+                        />
+                      )
+                    ) : null}
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody>
