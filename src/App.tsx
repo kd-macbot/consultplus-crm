@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './components/auth/AuthProvider'
 import { ProtectedRoute } from './components/auth/ProtectedRoute'
 import { LoginPage } from './components/auth/LoginPage'
@@ -10,7 +10,7 @@ import { StaffPage } from './pages/Staff'
 
 export default function App() {
   return (
-    <BrowserRouter basename="/consultplus-crm">
+    <HashRouter>
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -36,6 +36,6 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
-    </BrowserRouter>
+    </HashRouter>
   )
 }
