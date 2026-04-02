@@ -120,11 +120,27 @@ export async function softDeleteClient(id: string) {
 
 // --- Cell Values ---
 export async function getCellValues(clientId?: string): Promise<CellValue[]> {
-  let query = supabase.from('crm_cell_values').select('*')
-  if (clientId) query = query.eq('client_id', clientId)
-  const { data, error } = await query
-  if (error) throw error
-  return data ?? []
+  if (clientId) {
+    const { data, error } = await supabase.from('crm_cell_values').select('*').eq('client_id', clientId)
+    if (error) throw error
+    return data ?? []
+  }
+  // Fetch all — paginate past Supabase 1000 row limit
+  let all: CellValue[] = []
+  let from = 0
+  const PAGE = 1000
+  while (true) {
+    const { data, error } = await supabase
+      .from('crm_cell_values')
+      .select('*')
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    if (!data || data.length === 0) break
+    all = all.concat(data)
+    if (data.length < PAGE) break
+    from += PAGE
+  }
+  return all
 }
 
 export async function setCellValue(clientId: string, columnId: string, value: Partial<CellValue>) {
