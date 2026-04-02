@@ -12,6 +12,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     getCurrentProfile().then(profile => {
       setUser(profile)
       setLoading(false)
+    }).catch(() => {
+      setUser(null)
+      setLoading(false)
     })
 
     // Listen for auth changes
