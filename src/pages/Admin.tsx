@@ -107,7 +107,10 @@ export function AdminPage() {
               <span className="w-6 text-xs text-dark/30">{i + 1}</span>
               <span className="flex-1 font-medium text-sm">{col.name}</span>
               <span className="text-xs text-dark/40 bg-light px-2 py-0.5 rounded">{typeLabels[col.type]}</span>
-              {col.type === 'dropdown' && (
+              {col.staff_department && (
+                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">👤 {col.staff_department}</span>
+              )}
+              {col.type === 'dropdown' && !col.staff_department && (
                 <button
                   onClick={() => setEditingDropdown(editingDropdown === col.id ? null : col.id)}
                   className="text-xs text-navy hover:underline"

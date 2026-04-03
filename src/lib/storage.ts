@@ -16,7 +16,24 @@ export async function getColumns(): Promise<Column[]> {
     is_required: c.is_required,
     created_by: c.created_by,
     created_at: c.created_at,
+    staff_department: c.staff_department,
   }))
+}
+
+// --- Staff ---
+export interface StaffMember {
+  id: string
+  full_name: string
+  department: string | null
+  is_active: boolean
+}
+
+export async function getStaff(department?: string): Promise<StaffMember[]> {
+  let query = supabase.from('crm_staff').select('id,full_name,department,is_active').eq('is_active', true).order('full_name')
+  if (department) query = query.eq('department', department)
+  const { data, error } = await query
+  if (error) throw error
+  return data ?? []
 }
 
 export async function addColumn(name: string, type: ColumnType, isRequired = false, createdBy?: string): Promise<Column> {

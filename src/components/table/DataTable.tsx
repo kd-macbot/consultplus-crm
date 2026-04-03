@@ -34,6 +34,8 @@ function getCellDisplay(col: Column, cell: CellValue | undefined, dropdowns: Dro
     return cell.value_number.toString()
   }
   if (col.type === 'dropdown') {
+    // Staff-linked columns store name in value_text
+    if (col.staff_department) return cell.value_text ?? ''
     const opt = dropdowns.find(d => d.id === cell.value_dropdown)
     return opt?.value ?? ''
   }

@@ -8,15 +8,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    console.log('[Auth] Initializing...')
-    // Check initial session
     getCurrentProfile().then(profile => {
-      console.log('[Auth] Profile loaded:', profile?.email || 'none')
       setUser(profile)
       setLoading(false)
       initialized = true
-    }).catch(err => {
-      console.error('[Auth] Init error:', err)
+    }).catch(() => {
       setUser(null)
       setLoading(false)
       initialized = true
@@ -25,8 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for auth changes (skip during initial load)
     let initialized = false
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
-      console.log('[Auth] State change:', event, 'initialized:', initialized)
-      if (!initialized) return // skip — initial load handles it
+      if (!initialized) return
       if (event === 'SIGNED_IN') {
         const profile = await getCurrentProfile()
         setUser(profile)
@@ -35,11 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    // Safety timeout — never stay loading forever
-    const timeout = setTimeout(() => {
-      console.warn('[Auth] Timeout — forcing load complete')
-      setLoading(false)
-    }, 5000)
+    const timeout = setTimeout(() => setLoading(false), 5000)
 
     return () => {
       subscription.unsubscribe()
@@ -48,16 +39,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = async (email: string, password: string) => {
-    console.log('[Auth] login called')
     try {
       const result = await signIn(email, password)
-      console.log('[Auth] login result:', result)
       if (result.error) return { error: result.error }
       if (result.profile) setUser(result.profile)
       return {}
-    } catch (err) {
-      console.error('[Auth] login exception:', err)
-      return { error: 'Unexpected error' }
+    } catch {
+      return { error: 'Неочаквана грешка' }
     }
   }
 

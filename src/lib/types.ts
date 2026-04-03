@@ -18,6 +18,7 @@ export interface Column {
   is_required: boolean
   created_by: string
   created_at: string
+  staff_department?: string // if set, dropdown pulls from crm_staff filtered by department
 }
 
 export interface DropdownOption {

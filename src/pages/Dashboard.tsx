@@ -5,7 +5,13 @@ import type { Client, Column, CellValue, DropdownOption } from '../lib/types'
 
 export function Dashboard() {
   const { user } = useAuth()
-  const [stats, setStats] = useState({ total: 0, statusCounts: {} as Record<string, number>, totalHonorar: 0 })
+  const [stats, setStats] = useState({
+    total: 0,
+    statusCounts: {} as Record<string, number>,
+    totalHonorar: 0,
+    honorarByAccountant: {} as Record<string, { sum: number; count: number }>,
+    honorarByStatus: {} as Record<string, number>,
+  })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -35,16 +41,38 @@ export function Dashboard() {
       }
 
       const honorarCol = columns.find((c: Column) => c.name === 'Хонорар')
+      const accountantCol = columns.find((c: Column) => c.name === 'Счетоводител')
       let totalHonorar = 0
-      if (honorarCol) {
-        for (const client of clients) {
-          const cell = cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === honorarCol.id)
-          if (cell?.value_number && cell.value_number > 0) totalHonorar += cell.value_number
+      const honorarByAccountant: Record<string, { sum: number; count: number }> = {}
+      const honorarByStatus: Record<string, number> = {}
+
+      for (const client of clients) {
+        const hCell = honorarCol ? cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === honorarCol.id) : null
+        const amount = hCell?.value_number && hCell.value_number > 0 ? hCell.value_number : 0
+        totalHonorar += amount
+
+        // By accountant
+        if (accountantCol) {
+          const aCell = cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === accountantCol.id)
+          const name = aCell?.value_text || 'Без счетоводител'
+          if (!honorarByAccountant[name]) honorarByAccountant[name] = { sum: 0, count: 0 }
+          honorarByAccountant[name].sum += amount
+          honorarByAccountant[name].count++
+        }
+
+        // By status
+        if (statusCol) {
+          const sCell = cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === statusCol.id)
+          let statusLabel = 'Без статус'
+          if (sCell?.value_dropdown) {
+            const opt = dropdowns.find((d: DropdownOption) => d.id === sCell.value_dropdown)
+            if (opt) statusLabel = opt.value
+          }
+          honorarByStatus[statusLabel] = (honorarByStatus[statusLabel] || 0) + amount
         }
       }
-      console.log('[Dashboard] Honorar total:', totalHonorar)
 
-      setStats({ total: clients.length, statusCounts, totalHonorar })
+      setStats({ total: clients.length, statusCounts, totalHonorar, honorarByAccountant, honorarByStatus })
     } catch (err) {
       console.error('Failed to load stats:', err)
     } finally {
@@ -80,21 +108,60 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-medium text-navy mb-4">По статус</h2>
-        <div className="space-y-2">
-          {Object.entries(stats.statusCounts).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
-            <div key={status} className="flex items-center gap-3">
-              <div className="w-32 text-sm text-dark/70 truncate">{status}</div>
-              <div className="flex-1 bg-light rounded-full h-4 overflow-hidden">
-                <div
-                  className="h-full bg-navy rounded-full transition-all"
-                  style={{ width: `${(count / stats.total) * 100}%` }}
-                />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* По статус */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-medium text-navy mb-4">Клиенти по статус</h2>
+          <div className="space-y-2">
+            {Object.entries(stats.statusCounts).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
+              <div key={status} className="flex items-center gap-3">
+                <div className="w-32 text-sm text-dark/70 truncate">{status}</div>
+                <div className="flex-1 bg-light rounded-full h-4 overflow-hidden">
+                  <div className="h-full bg-navy rounded-full transition-all" style={{ width: `${(count / stats.total) * 100}%` }} />
+                </div>
+                <div className="w-10 text-sm text-right font-medium">{count}</div>
               </div>
-              <div className="w-10 text-sm text-right font-medium">{count}</div>
-            </div>
-          ))}
+            ))}
+          </div>
+        </div>
+
+        {/* Хонорар по статус */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-medium text-navy mb-4">Хонорар по статус</h2>
+          <div className="space-y-2">
+            {Object.entries(stats.honorarByStatus).sort((a, b) => b[1] - a[1]).map(([status, sum]) => (
+              <div key={status} className="flex items-center gap-3">
+                <div className="w-32 text-sm text-dark/70 truncate">{status}</div>
+                <div className="flex-1 bg-light rounded-full h-4 overflow-hidden">
+                  <div className="h-full bg-gold rounded-full transition-all" style={{ width: `${stats.totalHonorar > 0 ? (sum / stats.totalHonorar) * 100 : 0}%` }} />
+                </div>
+                <div className="w-20 text-sm text-right font-medium">{sum.toLocaleString('bg-BG')} €</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Хонорар по счетоводител */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-medium text-navy mb-4">💼 Хонорар по счетоводител</h2>
+        <div className="space-y-3">
+          {Object.entries(stats.honorarByAccountant)
+            .sort((a, b) => b[1].sum - a[1].sum)
+            .map(([name, { sum, count }]) => (
+              <div key={name} className="flex items-center gap-3">
+                <div className="w-48 text-sm text-dark/70 truncate" title={name}>{name}</div>
+                <div className="flex-1 bg-light rounded-full h-5 overflow-hidden">
+                  <div
+                    className="h-full bg-navy rounded-full transition-all flex items-center justify-end pr-2"
+                    style={{ width: `${stats.totalHonorar > 0 ? Math.max((sum / stats.totalHonorar) * 100, 8) : 0}%` }}
+                  >
+                    <span className="text-[10px] text-white font-medium">{sum.toLocaleString('bg-BG')} €</span>
+                  </div>
+                </div>
+                <div className="w-16 text-xs text-dark/40 text-right">{count} кл.</div>
+              </div>
+            ))}
         </div>
       </div>
     </div>
