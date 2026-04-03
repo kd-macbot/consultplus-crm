@@ -32,13 +32,10 @@ export function Dashboard() {
           const cell = cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === statusCol.id)
           if (cell?.value_dropdown) {
             const opt = dropdowns.find((d: DropdownOption) => d.id === cell.value_dropdown)
-            const label = opt?.value || 'Неизвестен'
+            const label = opt?.value || 'N/A'
             statusCounts[label] = (statusCounts[label] || 0) + 1
-          } else if (cell?.value_text) {
-            // Fallback: some cells stored status as text
-            statusCounts[cell.value_text] = (statusCounts[cell.value_text] || 0) + 1
           } else {
-            statusCounts['Без статус'] = (statusCounts['Без статус'] || 0) + 1
+            statusCounts['N/A'] = (statusCounts['N/A'] || 0) + 1
           }
         }
       }
@@ -70,9 +67,9 @@ export function Dashboard() {
           if (sCell?.value_dropdown) {
             const opt = dropdowns.find((d: DropdownOption) => d.id === sCell.value_dropdown)
             if (opt) statusLabel = opt.value
-          } else if (sCell?.value_text) {
-            // Fallback: some cells stored status as text
-            statusLabel = sCell.value_text
+            else statusLabel = 'N/A'
+          } else {
+            statusLabel = 'N/A'
           }
           honorarByStatus[statusLabel] = (honorarByStatus[statusLabel] || 0) + amount
         }
