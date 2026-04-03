@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -74,9 +74,26 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [allClientTags, setAllClientTags] = useState<ClientTag[]>([])
 
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const savedScrollPos = useRef<{ top: number; left: number } | null>(null)
+
   useEffect(() => { loadData() }, [refreshKey])
 
+  useEffect(() => {
+    if (!loading && savedScrollPos.current && scrollRef.current) {
+      scrollRef.current.scrollTop = savedScrollPos.current.top
+      scrollRef.current.scrollLeft = savedScrollPos.current.left
+      savedScrollPos.current = null
+    }
+  }, [loading])
+
   async function loadData() {
+    if (scrollRef.current) {
+      savedScrollPos.current = {
+        top: scrollRef.current.scrollTop,
+        left: scrollRef.current.scrollLeft,
+      }
+    }
     setLoading(true)
     try {
       const [cols, clients, cells, dropdowns, tags, clientTags] = await Promise.all([
@@ -175,7 +192,13 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
             </div>
           )
         },
-        filterFn: 'includesString',
+        filterFn: col.type === 'dropdown'
+          ? (row, columnId, filterValue) => {
+              const cellVal = row.getValue(columnId) as string
+              if (filterValue === '__empty__') return !cellVal
+              return cellVal === filterValue
+            }
+          : 'includesString',
       })),
       // Tags column
       {
@@ -297,7 +320,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
+      <div ref={scrollRef} className="flex-1 overflow-auto">
         <table className="w-full border-collapse min-w-[1200px]">
           <thead className="bg-navy text-white sticky top-0 z-10">
             {table.getHeaderGroups().map(hg => (
@@ -338,6 +361,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                           className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark focus:outline-none"
                         >
                           <option value="">Всички</option>
+                          <option value="__empty__">(Празно)</option>
                           {dropdownVals.map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                       ) : (
