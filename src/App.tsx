@@ -7,6 +7,7 @@ import { Dashboard } from './pages/Dashboard'
 import { ClientsPage } from './pages/Clients'
 import { AdminPage } from './pages/Admin'
 import { StaffPage } from './pages/Staff'
+import { AuditLogPage } from './pages/AuditLog'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/staff" element={<StaffPage />} />
+            <Route path="/audit" element={<AuditLogPage />} />
             <Route
               path="/admin"
               element={

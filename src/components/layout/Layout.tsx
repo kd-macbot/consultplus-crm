@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { to: '/', label: '📊 Табло', roles: ['admin', 'manager', 'employee'] },
   { to: '/clients', label: '👥 Клиенти', roles: ['admin', 'manager', 'employee'] },
   { to: '/staff', label: '👤 Персонал', roles: ['admin', 'manager'] },
+  { to: '/audit', label: '📝 Промени', roles: ['admin', 'manager'] },
   { to: '/admin', label: '⚙️ Админ', roles: ['admin'] },
 ]
 

@@ -53,3 +53,30 @@ export interface ColumnFilter {
   columnId: string
   value: string
 }
+
+export interface AuditEntry {
+  id: string
+  user_id: string
+  user_name: string
+  action: string
+  entity_type: string
+  entity_id?: string
+  client_name?: string
+  column_name?: string
+  old_value?: string
+  new_value?: string
+  metadata?: Record<string, any>
+  created_at: string
+}
+
+export interface Tag {
+  id: string
+  name: string
+  color: string
+  created_at: string
+}
+
+export interface ClientTag {
+  client_id: string
+  tag_id: string
+}

@@ -14,7 +14,7 @@ export function ClientsPage() {
   const canAdd = user?.role === 'admin' || user?.role === 'manager'
 
   const handleAdd = async () => {
-    await addClient(user?.id)
+    await addClient(user?.id, undefined, { userId: user?.id, userName: user?.full_name ?? '' })
     onRefresh()
   }
 

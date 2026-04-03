@@ -1,16 +1,20 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Column, DropdownOption, CellValue } from '../../lib/types'
 import { getDropdownOptions, setCellValue, getStaff, type StaffMember } from '../../lib/storage'
+import { useAuth } from '../../lib/auth'
 
 interface Props {
   column: Column
   clientId: string
+  clientName: string
   cell?: CellValue
+  oldDisplay: string
   onSave: () => void
   onCancel: () => void
 }
 
-export function CellEditor({ column, clientId, cell, onSave, onCancel }: Props) {
+export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onSave, onCancel }: Props) {
+  const { user } = useAuth()
   const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null)
   const [value, setValue] = useState(() => {
     if (!cell) return ''
@@ -36,27 +40,43 @@ export function CellEditor({ column, clientId, cell, onSave, onCancel }: Props) 
     setTimeout(() => inputRef.current?.focus(), 10)
   }, [column])
 
+  const auditInfo = (newDisplay: string) => ({
+    userId: user?.id,
+    userName: user?.full_name ?? '',
+    clientName,
+    columnName: column.name,
+    oldDisplay,
+    newDisplay,
+  })
+
   const save = async () => {
     try {
       const patch: Partial<CellValue> = {}
+      let newDisplay = value
       if (column.type === 'number') {
         patch.value_number = value ? Number(value) : null as any
+        newDisplay = value ? Number(value).toString() : ''
       } else if (column.type === 'dropdown') {
         if (isStaffLinked) {
-          // Staff-linked: save name as text
           patch.value_text = value || null as any
           patch.value_dropdown = null as any
+          newDisplay = value
         } else {
           patch.value_dropdown = value || null as any
+          const opt = dropdownOpts.find(d => d.id === value)
+          newDisplay = opt?.value ?? ''
         }
       } else if (column.type === 'checkbox') {
         patch.value_bool = value === 'true'
+        newDisplay = value === 'true' ? '✓' : ''
       } else if (column.type === 'date') {
         patch.value_date = value || null as any
+        newDisplay = value
       } else {
         patch.value_text = value || null as any
+        newDisplay = value
       }
-      await setCellValue(clientId, column.id, patch)
+      await setCellValue(clientId, column.id, patch, auditInfo(newDisplay))
       onSave()
     } catch (err) {
       console.error('Save error:', err)
@@ -78,7 +98,8 @@ export function CellEditor({ column, clientId, cell, onSave, onCancel }: Props) 
           const v = e.target.checked ? 'true' : 'false'
           setValue(v)
           try {
-            await setCellValue(clientId, column.id, { value_bool: e.target.checked })
+            const newDisplay = e.target.checked ? '✓' : ''
+            await setCellValue(clientId, column.id, { value_bool: e.target.checked }, auditInfo(newDisplay))
             onSave()
           } catch (err) {
             console.error('Checkbox save error:', err)
@@ -103,7 +124,7 @@ export function CellEditor({ column, clientId, cell, onSave, onCancel }: Props) 
               await setCellValue(clientId, column.id, {
                 value_text: newVal || null as any,
                 value_dropdown: null as any,
-              })
+              }, auditInfo(newVal))
               onSave()
             } catch (err) {
               console.error('Staff dropdown save error:', err)
@@ -129,7 +150,8 @@ export function CellEditor({ column, clientId, cell, onSave, onCancel }: Props) 
           const newVal = e.target.value
           setValue(newVal)
           try {
-            await setCellValue(clientId, column.id, { value_dropdown: newVal || null as any })
+            const opt = dropdownOpts.find(d => d.id === newVal)
+            await setCellValue(clientId, column.id, { value_dropdown: newVal || null as any }, auditInfo(opt?.value ?? ''))
             onSave()
           } catch (err) {
             console.error('Dropdown save error:', err)

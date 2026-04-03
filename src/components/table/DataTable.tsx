@@ -10,15 +10,18 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from '@tanstack/react-table'
-import type { Column, CellValue, DropdownOption } from '../../lib/types'
-import { getColumns, getClients, getCellValues, getDropdownOptions, softDeleteClient } from '../../lib/storage'
+import type { Column, CellValue, DropdownOption, Tag, ClientTag } from '../../lib/types'
+import { getColumns, getClients, getCellValues, getDropdownOptions, softDeleteClient, getTags, getClientTags } from '../../lib/storage'
 import { useAuth } from '../../lib/auth'
 import { CellEditor } from './CellEditor'
+import { TagEditor } from '../tags/TagEditor'
 
 interface ClientRow {
   clientId: string
+  clientName: string
   assignedTo?: string
-  [columnId: string]: string | number | boolean | undefined
+  tagIds: string[]
+  [columnId: string]: string | number | boolean | string[] | undefined
 }
 
 interface Props {
@@ -34,7 +37,6 @@ function getCellDisplay(col: Column, cell: CellValue | undefined, dropdowns: Dro
     return cell.value_number.toString()
   }
   if (col.type === 'dropdown') {
-    // Staff-linked columns store name in value_text
     if (col.staff_department) return cell.value_text ?? ''
     const opt = dropdowns.find(d => d.id === cell.value_dropdown)
     return opt?.value ?? ''
@@ -44,6 +46,18 @@ function getCellDisplay(col: Column, cell: CellValue | undefined, dropdowns: Dro
   return cell.value_text ?? ''
 }
 
+// Resolve a display-friendly client name from the first text column
+function resolveClientName(clientId: string, columns: Column[], allCells: CellValue[]): string {
+  const clientCells = allCells.filter(cv => cv.client_id === clientId)
+  for (const col of columns) {
+    if (col.type === 'text') {
+      const cell = clientCells.find(cv => cv.column_id === col.id)
+      if (cell?.value_text) return cell.value_text
+    }
+  }
+  return ''
+}
+
 export function DataTable({ refreshKey, onRefresh }: Props) {
   const { user } = useAuth()
   const [sorting, setSorting] = useState<SortingState>([])
@@ -51,27 +65,29 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [globalFilter, setGlobalFilter] = useState('')
   const [editCell, setEditCell] = useState<{ clientId: string; columnId: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [tagFilter, setTagFilter] = useState<string[]>([])
 
-  // Async data state
   const [columns, setColumnsState] = useState<Column[]>([])
   const [allCells, setAllCells] = useState<CellValue[]>([])
   const [allDropdowns, setAllDropdowns] = useState<DropdownOption[]>([])
   const [allClients, setAllClients] = useState<any[]>([])
+  const [allTags, setAllTags] = useState<Tag[]>([])
+  const [allClientTags, setAllClientTags] = useState<ClientTag[]>([])
 
-  useEffect(() => {
-    loadData()
-  }, [refreshKey])
+  useEffect(() => { loadData() }, [refreshKey])
 
   async function loadData() {
     setLoading(true)
     try {
-      const [cols, clients, cells, dropdowns] = await Promise.all([
-        getColumns(), getClients(), getCellValues(), getDropdownOptions()
+      const [cols, clients, cells, dropdowns, tags, clientTags] = await Promise.all([
+        getColumns(), getClients(), getCellValues(), getDropdownOptions(), getTags(), getClientTags()
       ])
       setColumnsState(cols)
       setAllClients(clients)
       setAllCells(cells)
       setAllDropdowns(dropdowns)
+      setAllTags(tags)
+      setAllClientTags(clientTags)
     } catch (err) {
       console.error('Failed to load data:', err)
     } finally {
@@ -79,7 +95,6 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
   }
 
-  // Filter by assignment for employees
   const clients = useMemo(() => {
     if (user?.role === 'employee') {
       return allClients.filter((c: any) => c.assigned_to === user.id)
@@ -87,10 +102,14 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     return allClients
   }, [allClients, user])
 
-  // Build row data
   const data: ClientRow[] = useMemo(() => {
     return clients.map((client: any) => {
-      const row: ClientRow = { clientId: client.id, assignedTo: client.assigned_to }
+      const row: ClientRow = {
+        clientId: client.id,
+        clientName: resolveClientName(client.id, columns, allCells),
+        assignedTo: client.assigned_to,
+        tagIds: allClientTags.filter(ct => ct.client_id === client.id).map(ct => ct.tag_id),
+      }
       const clientCells = allCells.filter(cv => cv.client_id === client.id)
       for (const col of columns) {
         const cell = clientCells.find(cv => cv.column_id === col.id)
@@ -98,7 +117,13 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       }
       return row
     })
-  }, [clients, columns, allCells, allDropdowns])
+  }, [clients, columns, allCells, allDropdowns, allClientTags])
+
+  // Apply tag filter
+  const filteredByTags = useMemo(() => {
+    if (tagFilter.length === 0) return data
+    return data.filter(row => tagFilter.some(tid => row.tagIds.includes(tid)))
+  }, [data, tagFilter])
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager'
   const canDelete = user?.role === 'admin'
@@ -120,21 +145,25 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         size: col.type === 'number' ? 100 : 180,
         cell: info => {
           const clientId = info.row.original.clientId
+          const clientName = info.row.original.clientName
           const isEditing = editCell?.clientId === clientId && editCell?.columnId === col.id
-          
+
           if (isEditing && canEdit) {
             const cellData = allCells.find(cv => cv.client_id === clientId && cv.column_id === col.id)
+            const oldDisplay = getCellDisplay(col, cellData, allDropdowns)
             return (
               <CellEditor
                 column={col}
                 clientId={clientId}
+                clientName={clientName}
                 cell={cellData}
+                oldDisplay={oldDisplay}
                 onSave={() => { setEditCell(null); onRefresh() }}
                 onCancel={() => setEditCell(null)}
               />
             )
           }
-          
+
           const val = info.getValue() as string
           return (
             <div
@@ -148,6 +177,27 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         },
         filterFn: 'includesString',
       })),
+      // Tags column
+      {
+        id: '_tags',
+        header: 'Тагове',
+        size: 180,
+        enableSorting: false,
+        enableColumnFilter: false,
+        cell: info => {
+          const row = info.row.original
+          const assigned = allTags.filter(t => row.tagIds.includes(t.id))
+          return (
+            <TagEditor
+              clientId={row.clientId}
+              clientName={row.clientName}
+              assignedTags={assigned}
+              allTags={allTags}
+              onUpdate={onRefresh}
+            />
+          )
+        },
+      },
     ]
 
     if (canDelete) {
@@ -159,7 +209,12 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           <button
             onClick={async () => {
               if (confirm('Изтриване на клиент?')) {
-                await softDeleteClient(info.row.original.clientId)
+                const row = info.row.original
+                await softDeleteClient(row.clientId, {
+                  userId: user?.id,
+                  userName: user?.full_name ?? '',
+                  clientName: row.clientName,
+                })
                 onRefresh()
               }
             }}
@@ -173,10 +228,10 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
 
     return cols
-  }, [columns, editCell, canEdit, canDelete, allCells, allDropdowns, onRefresh])
+  }, [columns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user])
 
   const table = useReactTable({
-    data,
+    data: filteredByTags,
     columns: tableColumns,
     state: { sorting, columnFilters, globalFilter },
     onSortingChange: setSorting,
@@ -195,8 +250,8 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Search */}
-      <div className="p-4 border-b border-light flex items-center gap-4">
+      {/* Search + Tag Filter */}
+      <div className="p-4 border-b border-light flex items-center gap-4 flex-wrap">
         <input
           type="text"
           value={globalFilter}
@@ -204,8 +259,40 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           placeholder="🔍 Търсене..."
           className="px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy w-64"
         />
-        <span className="text-sm text-dark/50">
-          {table.getFilteredRowModel().rows.length} от {data.length} клиента
+        {/* Tag filter multi-select */}
+        {allTags.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs text-dark/40">Тагове:</span>
+            {allTags.map(tag => {
+              const active = tagFilter.includes(tag.id)
+              return (
+                <button
+                  key={tag.id}
+                  onClick={() => {
+                    setTagFilter(prev =>
+                      active ? prev.filter(id => id !== tag.id) : [...prev, tag.id]
+                    )
+                  }}
+                  className={`px-2 py-0.5 rounded-full text-xs font-medium transition ${
+                    active ? 'text-white ring-2 ring-navy' : 'opacity-50 hover:opacity-80'
+                  }`}
+                  style={{
+                    backgroundColor: active ? tag.color : 'transparent',
+                    color: active ? 'white' : tag.color,
+                    border: active ? 'none' : `1.5px solid ${tag.color}`,
+                  }}
+                >
+                  {tag.name}
+                </button>
+              )
+            })}
+            {tagFilter.length > 0 && (
+              <button onClick={() => setTagFilter([])} className="text-xs text-red-400 hover:text-red-600 ml-1">✕</button>
+            )}
+          </div>
+        )}
+        <span className="text-sm text-dark/50 ml-auto">
+          {table.getFilteredRowModel().rows.length} от {filteredByTags.length} клиента
         </span>
       </div>
 
@@ -237,7 +324,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                 const isDropdown = col?.type === 'dropdown'
                 const dropdownVals = isDropdown
                   ? [...new Set(
-                      data.map(row => row[header.id] as string).filter(Boolean)
+                      filteredByTags.map(row => row[header.id] as string).filter(Boolean)
                     )].sort()
                   : []
 
