@@ -34,6 +34,9 @@ export function Dashboard() {
             const opt = dropdowns.find((d: DropdownOption) => d.id === cell.value_dropdown)
             const label = opt?.value || 'Неизвестен'
             statusCounts[label] = (statusCounts[label] || 0) + 1
+          } else if (cell?.value_text) {
+            // Fallback: some cells stored status as text
+            statusCounts[cell.value_text] = (statusCounts[cell.value_text] || 0) + 1
           } else {
             statusCounts['Без статус'] = (statusCounts['Без статус'] || 0) + 1
           }
@@ -67,6 +70,9 @@ export function Dashboard() {
           if (sCell?.value_dropdown) {
             const opt = dropdowns.find((d: DropdownOption) => d.id === sCell.value_dropdown)
             if (opt) statusLabel = opt.value
+          } else if (sCell?.value_text) {
+            // Fallback: some cells stored status as text
+            statusLabel = sCell.value_text
           }
           honorarByStatus[statusLabel] = (honorarByStatus[statusLabel] || 0) + amount
         }
