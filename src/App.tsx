@@ -8,6 +8,7 @@ import { ClientsPage } from './pages/Clients'
 import { AdminPage } from './pages/Admin'
 import { StaffPage } from './pages/Staff'
 import { AuditLogPage } from './pages/AuditLog'
+import { ExpensesPage } from './pages/Expenses'
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/staff" element={<StaffPage />} />
             <Route path="/audit" element={<AuditLogPage />} />
+            <Route path="/expenses" element={<ExpensesPage />} />
             <Route
               path="/admin"
               element={

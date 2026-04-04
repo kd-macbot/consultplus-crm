@@ -80,3 +80,34 @@ export interface ClientTag {
   client_id: string
   tag_id: string
 }
+
+export type ExpenseCategory =
+  | 'Заплати'
+  | 'Наем'
+  | 'Софтуер'
+  | 'Реклама'
+  | 'Консумативи'
+  | 'Комунални'
+  | 'Транспорт'
+  | 'Обучения'
+  | 'Други'
+
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  'Заплати', 'Наем', 'Софтуер', 'Реклама', 'Консумативи', 'Комунални', 'Транспорт', 'Обучения', 'Други'
+]
+
+export interface Expense {
+  id: string
+  category: ExpenseCategory
+  description: string | null
+  amount: number
+  currency: string
+  date: string
+  staff_id: string | null
+  recurring: boolean
+  recurring_period: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+

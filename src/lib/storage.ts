@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense } from './types'
 
 // ==================== AUDIT LOG ====================
 
@@ -402,6 +402,73 @@ export async function getClientTags(): Promise<ClientTag[]> {
   const { data, error } = await supabase.from('crm_client_tags').select('*')
   if (error) throw error
   return (data ?? []) as ClientTag[]
+}
+
+// ==================== EXPENSES ====================
+
+export async function getExpenses(): Promise<Expense[]> {
+  const { data, error } = await supabase
+    .from('crm_expenses')
+    .select('*')
+    .order('date', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as Expense[]
+}
+
+export async function addExpense(
+  expense: Omit<Expense, 'id' | 'created_at' | 'updated_at'>,
+  audit?: { userId?: string; userName?: string }
+): Promise<Expense> {
+  const { data, error } = await supabase
+    .from('crm_expenses')
+    .insert([expense])
+    .select()
+    .single()
+  if (error) throw error
+
+  if (audit) {
+    await logAudit(audit.userId, audit.userName ?? '', 'create_expense', 'expense', data.id, {
+      new_value: `${expense.category}: ${expense.amount} ${expense.currency}`,
+    })
+  }
+
+  return data as Expense
+}
+
+export async function updateExpense(
+  id: string,
+  updates: Partial<Expense>,
+  audit?: { userId?: string; userName?: string; oldDescription?: string }
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_expenses')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+
+  if (audit) {
+    await logAudit(audit.userId, audit.userName ?? '', 'update_expense', 'expense', id, {
+      old_value: audit.oldDescription,
+      new_value: updates.category ? `${updates.category}: ${updates.amount} ${updates.currency ?? 'EUR'}` : undefined,
+    })
+  }
+}
+
+export async function deleteExpense(
+  id: string,
+  audit?: { userId?: string; userName?: string; description?: string }
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_expenses')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+
+  if (audit) {
+    await logAudit(audit.userId, audit.userName ?? '', 'delete_expense', 'expense', id, {
+      old_value: audit.description,
+    })
+  }
 }
 
 // ==================== PROFILES (for audit filter) ====================
