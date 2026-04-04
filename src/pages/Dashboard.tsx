@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../lib/auth'
-import { getClients, getCellValues, getColumns, getDropdownOptions } from '../lib/storage'
-import type { Client, Column, CellValue, DropdownOption } from '../lib/types'
+import { getClients, getCellValues, getColumns, getDropdownOptions, getSubscriptions, getExpenses } from '../lib/storage'
+import type { Client, Column, CellValue, DropdownOption, Subscription, Expense } from '../lib/types'
 
 export function Dashboard() {
   const { user } = useAuth()
@@ -11,6 +11,8 @@ export function Dashboard() {
     totalHonorar: 0,
     honorarByAccountant: {} as Record<string, { sum: number; count: number }>,
     honorarByStatus: {} as Record<string, number>,
+    monthlyRevenue: 0,
+    monthlyExpenses: 0,
   })
   const [loading, setLoading] = useState(true)
 
@@ -20,8 +22,9 @@ export function Dashboard() {
 
   async function loadStats() {
     try {
-      const [clients, columns, cells, dropdowns] = await Promise.all([
-        getClients(), getColumns(), getCellValues(), getDropdownOptions()
+      const [clients, columns, cells, dropdowns, subs, exps] = await Promise.all([
+        getClients(), getColumns(), getCellValues(), getDropdownOptions(),
+        getSubscriptions(), getExpenses()
       ])
 
       const statusCol = columns.find((c: Column) => c.name === 'Статус')
@@ -75,7 +78,16 @@ export function Dashboard() {
         }
       }
 
-      setStats({ total: clients.length, statusCounts, totalHonorar, honorarByAccountant, honorarByStatus })
+      // Profit overview
+      const monthlyRevenue = subs.filter((s: Subscription) => s.is_active).reduce((sum: number, s: Subscription) => {
+        if (s.payment_period === 'monthly') return sum + s.amount
+        if (s.payment_period === 'quarterly') return sum + s.amount / 3
+        if (s.payment_period === 'yearly') return sum + s.amount / 12
+        return sum + s.amount
+      }, 0)
+      const monthlyExpenses = exps.reduce((sum: number, e: Expense) => sum + e.amount, 0)
+
+      setStats({ total: clients.length, statusCounts, totalHonorar, honorarByAccountant, honorarByStatus, monthlyRevenue, monthlyExpenses })
     } catch (err) {
       console.error('Failed to load stats:', err)
     } finally {
@@ -110,6 +122,26 @@ export function Dashboard() {
           <p className="text-3xl font-bold text-green-600">{stats.statusCounts['АКТИВНА'] ?? 0}</p>
         </div>
       </div>
+
+      {/* Profit Overview */}
+      {(user?.role === 'admin' || user?.role === 'manager') && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+            <p className="text-sm text-dark/50">Месечен приход (абонаменти)</p>
+            <p className="text-3xl font-bold text-green-600">{stats.monthlyRevenue.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-red-400">
+            <p className="text-sm text-dark/50">Месечни разходи</p>
+            <p className="text-3xl font-bold text-red-500">{stats.monthlyExpenses.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €</p>
+          </div>
+          <div className={`bg-white rounded-lg shadow p-6 border-l-4 ${stats.monthlyRevenue - stats.monthlyExpenses >= 0 ? 'border-green-500' : 'border-red-500'}`}>
+            <p className="text-sm text-dark/50">Месечна печалба</p>
+            <p className={`text-3xl font-bold ${stats.monthlyRevenue - stats.monthlyExpenses >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+              {(stats.monthlyRevenue - stats.monthlyExpenses).toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* По статус */}

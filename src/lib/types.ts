@@ -102,10 +102,23 @@ export interface Expense {
   description: string | null
   amount: number
   currency: string
-  date: string
+  date: string | null
   staff_id: string | null
   recurring: boolean
   recurring_period: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Subscription {
+  id: string
+  client_id: string
+  amount: number
+  currency: string
+  payment_period: string
+  notes: string | null
+  is_active: boolean
   created_by: string | null
   created_at: string
   updated_at: string

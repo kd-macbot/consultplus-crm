@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Subscription } from './types'
 
 // ==================== AUDIT LOG ====================
 
@@ -410,7 +410,7 @@ export async function getExpenses(): Promise<Expense[]> {
   const { data, error } = await supabase
     .from('crm_expenses')
     .select('*')
-    .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []) as Expense[]
 }
@@ -466,6 +466,73 @@ export async function deleteExpense(
 
   if (audit) {
     await logAudit(audit.userId, audit.userName ?? '', 'delete_expense', 'expense', id, {
+      old_value: audit.description,
+    })
+  }
+}
+
+// ==================== SUBSCRIPTIONS ====================
+
+export async function getSubscriptions(): Promise<Subscription[]> {
+  const { data, error } = await supabase
+    .from('crm_subscriptions')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as Subscription[]
+}
+
+export async function addSubscription(
+  sub: Omit<Subscription, 'id' | 'created_at' | 'updated_at'>,
+  audit?: { userId?: string; userName?: string }
+): Promise<Subscription> {
+  const { data, error } = await supabase
+    .from('crm_subscriptions')
+    .insert([sub])
+    .select()
+    .single()
+  if (error) throw error
+
+  if (audit) {
+    await logAudit(audit.userId, audit.userName ?? '', 'create_subscription', 'subscription', data.id, {
+      new_value: `${sub.amount} ${sub.currency} (${sub.payment_period})`,
+    })
+  }
+
+  return data as Subscription
+}
+
+export async function updateSubscription(
+  id: string,
+  updates: Partial<Subscription>,
+  audit?: { userId?: string; userName?: string; oldDescription?: string }
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_subscriptions')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+
+  if (audit) {
+    await logAudit(audit.userId, audit.userName ?? '', 'update_subscription', 'subscription', id, {
+      old_value: audit.oldDescription,
+      new_value: updates.amount != null ? `${updates.amount} ${updates.currency ?? 'EUR'}` : undefined,
+    })
+  }
+}
+
+export async function deleteSubscription(
+  id: string,
+  audit?: { userId?: string; userName?: string; description?: string }
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_subscriptions')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+
+  if (audit) {
+    await logAudit(audit.userId, audit.userName ?? '', 'delete_subscription', 'subscription', id, {
       old_value: audit.description,
     })
   }

@@ -6,15 +6,8 @@ import { EXPENSE_CATEGORIES } from '../lib/types'
 import type { StaffMember } from '../lib/storage'
 import type { ExpenseCategory } from '../lib/types'
 
-// ==================== HELPERS ====================
-
 function formatCurrency(amount: number, currency = 'EUR') {
   return new Intl.NumberFormat('bg-BG', { style: 'currency', currency }).format(amount)
-}
-
-function getCurrentMonth() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -29,8 +22,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Други': '#9ca3af',
 }
 
-// ==================== MAIN PAGE ====================
-
 export function ExpensesPage() {
   const { user } = useAuth()
   const [expenses, setExpenses] = useState<Expense[]>([])
@@ -40,12 +31,11 @@ export function ExpensesPage() {
   const [editing, setEditing] = useState<Expense | null>(null)
 
   // Filters
-  const [filterMonth, setFilterMonth] = useState(getCurrentMonth())
   const [filterStaff, setFilterStaff] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
 
   // Sort
-  const [sortField, setSortField] = useState<'date' | 'amount' | 'category'>('date')
+  const [sortField, setSortField] = useState<'amount' | 'category'>('amount')
   const [sortAsc, setSortAsc] = useState(false)
 
   const isAdmin = user?.role === 'admin'
@@ -61,29 +51,22 @@ export function ExpensesPage() {
     setLoading(false)
   }
 
-  // Filtered + sorted expenses
   const filtered = useMemo(() => {
     let result = expenses.filter(e => {
-      if (filterMonth && !e.date.startsWith(filterMonth)) return false
       if (filterStaff !== 'all' && e.staff_id !== filterStaff) return false
       if (filterCategory !== 'all' && e.category !== filterCategory) return false
       return true
     })
     result.sort((a, b) => {
       let cmp = 0
-      if (sortField === 'date') cmp = a.date.localeCompare(b.date)
-      else if (sortField === 'amount') cmp = a.amount - b.amount
+      if (sortField === 'amount') cmp = a.amount - b.amount
       else cmp = a.category.localeCompare(b.category)
       return sortAsc ? cmp : -cmp
     })
     return result
-  }, [expenses, filterMonth, filterStaff, filterCategory, sortField, sortAsc])
+  }, [expenses, filterStaff, filterCategory, sortField, sortAsc])
 
-  // Summary calculations
-  const totalThisMonth = useMemo(() => {
-    const month = getCurrentMonth()
-    return expenses.filter(e => e.date.startsWith(month)).reduce((s, e) => s + e.amount, 0)
-  }, [expenses])
+  const totalMonthly = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses])
 
   const byCategory = useMemo(() => {
     const map: Record<string, number> = {}
@@ -104,7 +87,6 @@ export function ExpensesPage() {
 
   const filteredTotal = useMemo(() => filtered.reduce((s, e) => s + e.amount, 0), [filtered])
 
-  // CRUD handlers
   async function handleSave(data: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) {
     const audit = { userId: user?.id, userName: user?.full_name ?? '' }
     if (editing) {
@@ -130,7 +112,7 @@ export function ExpensesPage() {
     await loadData()
   }
 
-  function handleSort(field: 'date' | 'amount' | 'category') {
+  function handleSort(field: 'amount' | 'category') {
     if (sortField === field) setSortAsc(!sortAsc)
     else { setSortField(field); setSortAsc(false) }
   }
@@ -145,7 +127,7 @@ export function ExpensesPage() {
     <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-navy">💰 Разходи</h1>
+        <h1 className="text-2xl font-bold text-navy">💰 Фиксирани месечни разходи</h1>
         {canEdit && (
           <button
             onClick={() => { setEditing(null); setShowForm(true) }}
@@ -159,8 +141,8 @@ export function ExpensesPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-navy">
-          <p className="text-sm text-dark/50">Общо този месец</p>
-          <p className="text-2xl font-bold text-navy">{formatCurrency(totalThisMonth)}</p>
+          <p className="text-sm text-dark/50">Общо месечни разходи</p>
+          <p className="text-2xl font-bold text-navy">{formatCurrency(totalMonthly)}</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-gold">
           <p className="text-sm text-dark/50">Филтрирани разходи</p>
@@ -223,12 +205,6 @@ export function ExpensesPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <input
-          type="month"
-          value={filterMonth}
-          onChange={e => setFilterMonth(e.target.value)}
-          className="px-3 py-2 border border-light rounded-md text-sm"
-        />
         <select
           value={filterStaff}
           onChange={e => setFilterStaff(e.target.value)}
@@ -245,9 +221,9 @@ export function ExpensesPage() {
           <option value="all">Всички категории</option>
           {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        {(filterMonth || filterStaff !== 'all' || filterCategory !== 'all') && (
+        {(filterStaff !== 'all' || filterCategory !== 'all') && (
           <button
-            onClick={() => { setFilterMonth(''); setFilterStaff('all'); setFilterCategory('all') }}
+            onClick={() => { setFilterStaff('all'); setFilterCategory('all') }}
             className="text-xs text-dark/40 hover:text-dark underline"
           >
             Изчисти филтри
@@ -260,28 +236,24 @@ export function ExpensesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-light bg-light/50">
-              <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => handleSort('date')}>
-                Дата{sortIcon('date')}
-              </th>
               <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => handleSort('category')}>
                 Категория{sortIcon('category')}
               </th>
               <th className="px-4 py-3 text-left">Описание</th>
               <th className="px-4 py-3 text-left">Служител</th>
               <th className="px-4 py-3 text-right cursor-pointer select-none" onClick={() => handleSort('amount')}>
-                Сума{sortIcon('amount')}
+                Месечна сума{sortIcon('amount')}
               </th>
-              <th className="px-4 py-3 text-center">Повтарящ</th>
+              <th className="px-4 py-3 text-center">Валута</th>
               {canEdit && <th className="px-4 py-3 text-right">Действия</th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={canEdit ? 7 : 6} className="px-4 py-8 text-center text-dark/40">Няма разходи за избрания период</td></tr>
+              <tr><td colSpan={canEdit ? 6 : 5} className="px-4 py-8 text-center text-dark/40">Няма разходи</td></tr>
             )}
             {filtered.map(expense => (
               <tr key={expense.id} className="border-b border-light/50 hover:bg-light/30 transition">
-                <td className="px-4 py-3 whitespace-nowrap">{expense.date}</td>
                 <td className="px-4 py-3">
                   <span
                     className="inline-block px-2 py-0.5 rounded-full text-xs font-medium text-white"
@@ -293,13 +265,7 @@ export function ExpensesPage() {
                 <td className="px-4 py-3 text-dark/70">{expense.description || '—'}</td>
                 <td className="px-4 py-3 text-dark/70">{staffName(expense.staff_id)}</td>
                 <td className="px-4 py-3 text-right font-medium">{formatCurrency(expense.amount, expense.currency)}</td>
-                <td className="px-4 py-3 text-center">
-                  {expense.recurring ? (
-                    <span className="text-xs text-green-600" title={expense.recurring_period ?? ''}>
-                      ✓ {expense.recurring_period === 'monthly' ? 'месечно' : expense.recurring_period === 'quarterly' ? 'тримесечно' : expense.recurring_period === 'yearly' ? 'годишно' : expense.recurring_period ?? ''}
-                    </span>
-                  ) : '—'}
-                </td>
+                <td className="px-4 py-3 text-center text-dark/50">{expense.currency}</td>
                 {canEdit && (
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     <button onClick={() => { setEditing(expense); setShowForm(true) }} className="text-xs text-navy hover:underline mr-2">✏️</button>
@@ -341,23 +307,20 @@ function ExpenseForm({ expense, staffList, userId, onSave, onClose }: {
   const [description, setDescription] = useState(expense?.description ?? '')
   const [amount, setAmount] = useState(expense?.amount?.toString() ?? '')
   const [currency, setCurrency] = useState(expense?.currency ?? 'EUR')
-  const [date, setDate] = useState(expense?.date ?? new Date().toISOString().slice(0, 10))
   const [staffId, setStaffId] = useState(expense?.staff_id ?? '')
-  const [recurring, setRecurring] = useState(expense?.recurring ?? false)
-  const [recurringPeriod, setRecurringPeriod] = useState(expense?.recurring_period ?? 'monthly')
 
   function handleSubmit() {
     const amt = parseFloat(amount)
-    if (!category || isNaN(amt) || amt <= 0 || !date) return
+    if (!category || isNaN(amt) || amt <= 0) return
     onSave({
       category,
       description: description.trim() || null,
       amount: amt,
       currency,
-      date,
+      date: null,
       staff_id: staffId || null,
-      recurring,
-      recurring_period: recurring ? recurringPeriod : null,
+      recurring: true,
+      recurring_period: 'monthly',
       created_by: expense?.created_by ?? userId ?? null,
     })
   }
@@ -366,7 +329,7 @@ function ExpenseForm({ expense, staffList, userId, onSave, onClose }: {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h2 className="text-xl font-bold text-navy mb-4">
-          {expense ? 'Редактирай разход' : 'Нов разход'}
+          {expense ? 'Редактирай разход' : 'Нов месечен разход'}
         </h2>
         <div className="space-y-3">
           <div>
@@ -384,7 +347,7 @@ function ExpenseForm({ expense, staffList, userId, onSave, onClose }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-dark mb-1">Сума *</label>
+              <label className="block text-sm font-medium text-dark mb-1">Месечна сума *</label>
               <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)}
                 className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy" />
             </div>
@@ -399,32 +362,12 @@ function ExpenseForm({ expense, staffList, userId, onSave, onClose }: {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-dark mb-1">Дата *</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy" />
-          </div>
-          <div>
             <label className="block text-sm font-medium text-dark mb-1">Служител</label>
             <select value={staffId} onChange={e => setStaffId(e.target.value)}
               className="w-full px-3 py-2 border border-light rounded-md">
               <option value="">— Без служител —</option>
               {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
             </select>
-          </div>
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={recurring} onChange={e => setRecurring(e.target.checked)}
-                className="rounded border-light" />
-              Повтарящ се разход
-            </label>
-            {recurring && (
-              <select value={recurringPeriod} onChange={e => setRecurringPeriod(e.target.value)}
-                className="px-3 py-1 border border-light rounded-md text-sm">
-                <option value="monthly">Месечно</option>
-                <option value="quarterly">Тримесечно</option>
-                <option value="yearly">Годишно</option>
-              </select>
-            )}
           </div>
         </div>
         <div className="flex justify-end gap-3 mt-6">
