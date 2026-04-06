@@ -40,7 +40,10 @@ export function SubscriptionsPage() {
   async function loadData() {
     setLoading(true)
     const [subs, cls, cells, cols] = await Promise.all([
-      getSubscriptions(), getClients(), getCellValues(), getColumns()
+      getSubscriptions().catch(() => []),
+      getClients().catch(() => []),
+      getCellValues().catch(() => []),
+      getColumns().catch(() => []),
     ])
     setSubscriptions(subs)
     setClients(cls)

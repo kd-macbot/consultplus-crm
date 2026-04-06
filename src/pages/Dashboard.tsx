@@ -22,12 +22,14 @@ export function Dashboard() {
 
   async function loadStats() {
     try {
-      const [clients, columns, cells, dropdowns] = await Promise.all([
-        getClients(), getColumns(), getCellValues(), getDropdownOptions()
+      const [clients, columns, cells, dropdowns, subs, exps] = await Promise.all([
+        getClients().catch(() => []),
+        getColumns().catch(() => []),
+        getCellValues().catch(() => []),
+        getDropdownOptions().catch(() => []),
+        getSubscriptions().catch(() => []),
+        getExpenses().catch(() => []),
       ])
-      // Subscriptions/expenses may not exist yet (migrations pending)
-      const subs = await getSubscriptions().catch(() => [])
-      const exps = await getExpenses().catch(() => [])
 
       const statusCol = columns.find((c: Column) => c.name === 'Статус')
       const statusCounts: Record<string, number> = {}

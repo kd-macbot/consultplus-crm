@@ -45,7 +45,7 @@ export function ExpensesPage() {
 
   async function loadData() {
     setLoading(true)
-    const [exp, staff] = await Promise.all([getExpenses(), getStaff()])
+    const [exp, staff] = await Promise.all([getExpenses().catch(() => []), getStaff().catch(() => [])])
     setExpenses(exp)
     setStaffList(staff)
     setLoading(false)
