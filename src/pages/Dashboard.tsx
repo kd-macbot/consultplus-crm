@@ -22,14 +22,19 @@ export function Dashboard() {
 
   async function loadStats() {
     try {
-      const [clients, columns, cells, dropdowns, subs, exps] = await Promise.all([
-        getClients().catch(() => []),
-        getColumns().catch(() => []),
-        getCellValues().catch(() => []),
-        getDropdownOptions().catch(() => []),
-        getSubscriptions().catch(() => []),
-        getExpenses().catch(() => []),
-      ])
+      let clients: Client[] = []
+      let columns: Column[] = []
+      let cells: CellValue[] = []
+      let dropdowns: DropdownOption[] = []
+      let subs: Subscription[] = []
+      let exps: Expense[] = []
+
+      try { clients = await getClients() } catch (err) { console.error('Failed to load clients:', err) }
+      try { columns = await getColumns() } catch (err) { console.error('Failed to load columns:', err) }
+      try { cells = await getCellValues() } catch (err) { console.error('Failed to load cell values:', err) }
+      try { dropdowns = await getDropdownOptions() } catch (err) { console.error('Failed to load dropdown options:', err) }
+      try { subs = await getSubscriptions() } catch (err) { console.error('Failed to load subscriptions:', err) }
+      try { exps = await getExpenses() } catch (err) { console.error('Failed to load expenses:', err) }
 
       const statusCol = columns.find((c: Column) => c.name === 'Статус')
       const statusCounts: Record<string, number> = {}

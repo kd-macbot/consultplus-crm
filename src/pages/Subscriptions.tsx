@@ -39,12 +39,16 @@ export function SubscriptionsPage() {
 
   async function loadData() {
     setLoading(true)
-    const [subs, cls, cells, cols] = await Promise.all([
-      getSubscriptions().catch(() => []),
-      getClients().catch(() => []),
-      getCellValues().catch(() => []),
-      getColumns().catch(() => []),
-    ])
+    let subs: Subscription[] = []
+    let cls: Client[] = []
+    let cells: CellValue[] = []
+    let cols: Column[] = []
+
+    try { subs = await getSubscriptions() } catch (err) { console.error('Failed to load subscriptions:', err) }
+    try { cls = await getClients() } catch (err) { console.error('Failed to load clients:', err) }
+    try { cells = await getCellValues() } catch (err) { console.error('Failed to load cell values:', err) }
+    try { cols = await getColumns() } catch (err) { console.error('Failed to load columns:', err) }
+
     setSubscriptions(subs)
     setClients(cls)
     setCellValues(cells)

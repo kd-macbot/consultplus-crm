@@ -424,7 +424,14 @@ export async function addExpense(
     .insert([expense])
     .select()
     .single()
-  if (error) throw error
+  if (error) {
+    const code = (error as any)?.code
+    const message = (error as any)?.message ?? ''
+    if (code === '42P01' || (message.includes('crm_expenses') && message.includes('does not exist'))) {
+      throw new Error('Таблицата за разходи не е създадена. Моля пуснете migration-004.')
+    }
+    throw error
+  }
 
   if (audit) {
     await logAudit(audit.userId, audit.userName ?? '', 'create_expense', 'expense', data.id, {

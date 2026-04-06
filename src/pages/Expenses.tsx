@@ -45,7 +45,10 @@ export function ExpensesPage() {
 
   async function loadData() {
     setLoading(true)
-    const [exp, staff] = await Promise.all([getExpenses().catch(() => []), getStaff().catch(() => [])])
+    let exp: Expense[] = []
+    let staff: StaffMember[] = []
+    try { exp = await getExpenses() } catch (err) { console.error('Failed to load expenses:', err) }
+    try { staff = await getStaff() } catch (err) { console.error('Failed to load staff:', err) }
     setExpenses(exp)
     setStaffList(staff)
     setLoading(false)
@@ -89,17 +92,23 @@ export function ExpensesPage() {
 
   async function handleSave(data: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) {
     const audit = { userId: user?.id, userName: user?.full_name ?? '' }
-    if (editing) {
-      await updateExpense(editing.id, data, {
-        ...audit,
-        oldDescription: `${editing.category}: ${editing.amount} ${editing.currency}`,
-      })
-    } else {
-      await addExpense(data, audit)
+    try {
+      if (editing) {
+        await updateExpense(editing.id, data, {
+          ...audit,
+          oldDescription: `${editing.category}: ${editing.amount} ${editing.currency}`,
+        })
+      } else {
+        await addExpense(data, audit)
+      }
+      setShowForm(false)
+      setEditing(null)
+      await loadData()
+    } catch (err) {
+      console.error('Failed to save expense:', err)
+      const message = err instanceof Error ? err.message : 'Възникна грешка при запис на разхода.'
+      window.alert(message)
     }
-    setShowForm(false)
-    setEditing(null)
-    await loadData()
   }
 
   async function handleDelete(expense: Expense) {
