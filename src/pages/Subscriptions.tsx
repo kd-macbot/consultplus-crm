@@ -299,6 +299,61 @@ export function SubscriptionsPage() {
         </table>
       </div>
 
+      {/* Clients with Honorar */}
+      <div className="mt-8">
+        <h2 className="text-lg font-bold text-navy mb-3">👥 Клиенти с хонорар</h2>
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-navy/5 text-dark/70">
+              <tr>
+                <th className="text-left px-4 py-2 font-medium">Клиент</th>
+                <th className="text-right px-4 py-2 font-medium">Хонорар</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-light">
+              {(() => {
+                const honorarCol = columns.find(c => c.name === 'Хонорар')
+                if (!honorarCol) return (
+                  <tr><td colSpan={2} className="px-4 py-3 text-center text-dark/40">Няма колона Хонорар</td></tr>
+                )
+                const rows = clients.map(client => {
+                  const nameCell = cellValues.find(cv => cv.client_id === client.id && columns.find(c => c.id === cv.column_id && c.type === 'text'))
+                  const name = nameCell?.value_text || clientName(client.id)
+                  const hCell = cellValues.find(cv => cv.client_id === client.id && cv.column_id === honorarCol.id)
+                  const amount = hCell?.value_number ?? 0
+                  return { id: client.id, name, amount }
+                }).filter(r => r.amount > 0).sort((a, b) => b.amount - a.amount)
+                if (rows.length === 0) return (
+                  <tr><td colSpan={2} className="px-4 py-3 text-center text-dark/40">Няма клиенти с хонорар</td></tr>
+                )
+                return rows.map(r => (
+                  <tr key={r.id} className="hover:bg-navy/5">
+                    <td className="px-4 py-2">{r.name}</td>
+                    <td className="px-4 py-2 text-right font-medium">{r.amount.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €</td>
+                  </tr>
+                ))
+              })()}
+            </tbody>
+            <tfoot className="bg-navy/5 border-t border-light">
+              <tr>
+                <td className="px-4 py-2 font-bold">Общо</td>
+                <td className="px-4 py-2 text-right font-bold">
+                  {(() => {
+                    const honorarCol = columns.find(c => c.name === 'Хонорар')
+                    if (!honorarCol) return '0.00 €'
+                    const total = clients.reduce((sum, client) => {
+                      const hCell = cellValues.find(cv => cv.client_id === client.id && cv.column_id === honorarCol.id)
+                      return sum + (hCell?.value_number ?? 0)
+                    }, 0)
+                    return `${total.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €`
+                  })()}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
       {/* Form Modal */}
       {showForm && (
         <SubscriptionForm

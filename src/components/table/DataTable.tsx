@@ -99,7 +99,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       const [cols, clients, cells, dropdowns, tags, clientTags] = await Promise.all([
         getColumns(), getClients(), getCellValues(), getDropdownOptions(), getTags(), getClientTags()
       ])
-      setColumnsState(cols)
+      setColumnsState(cols.filter((c: Column) => c.name !== 'Хонорар'))
       setAllClients(clients)
       setAllCells(cells)
       setAllDropdowns(dropdowns)
