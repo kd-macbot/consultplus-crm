@@ -36,7 +36,6 @@ export interface Client {
   updated_at: string
   assigned_to?: string
   deleted: boolean
-  subscriptions_total_amount?: number
 }
 
 export interface CellValue {

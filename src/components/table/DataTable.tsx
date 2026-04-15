@@ -21,7 +21,6 @@ interface ClientRow {
   clientName: string
   assignedTo?: string
   tagIds: string[]
-  isBillable: 'да' | 'не' | 'свързана' // New field for billable status
   [columnId: string]: string | number | boolean | string[] | undefined
 }
 
@@ -127,7 +126,6 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         clientName: resolveClientName(client.id, columns, allCells),
         assignedTo: client.assigned_to,
         tagIds: allClientTags.filter(ct => ct.client_id === client.id).map(ct => ct.tag_id),
-        isBillable: client.subscriptions_total_amount > 0 ? 'да' : 'не',
       }
       const clientCells = allCells.filter(cv => cv.client_id === client.id)
       for (const col of columns) {
@@ -221,19 +219,6 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
               onUpdate={onRefresh}
             />
           )
-        },
-      },
-      // Billable column
-      {
-        id: '_billable',
-        header: 'Платим',
-        size: 80,
-        enableSorting: true,
-        enableColumnFilter: true,
-        accessorKey: 'isBillable',
-        cell: info => <span className="font-medium">{info.getValue() as string}</span>,
-        filterFn: (row, columnId, filterValue) => {
-          return (row.getValue(columnId) as string) === filterValue
         },
       },
     ]
