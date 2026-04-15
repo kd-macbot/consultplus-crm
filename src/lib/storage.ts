@@ -202,13 +202,29 @@ export async function deleteDropdownOption(
 // ==================== CLIENTS ====================
 
 export async function getClients(): Promise<Client[]> {
-  const { data, error } = await supabase
+  const { data: clientsData, error: clientsError } = await supabase
     .from('crm_clients')
     .select('*')
     .eq('deleted', false)
     .order('created_at')
-  if (error) throw error
-  return data ?? []
+  if (clientsError) throw clientsError
+
+  const { data: subscriptionsData, error: subscriptionsError } = await supabase
+    .from('crm_subscriptions')
+    .select('client_id, is_active')
+  if (subscriptionsError) throw subscriptionsError
+
+  const clientHasActiveSubscription = new Set<string>()
+  subscriptionsData.forEach(sub => {
+    if (sub.is_active) {
+      clientHasActiveSubscription.add(sub.client_id)
+    }
+  })
+
+  return (clientsData ?? []).map(client => ({
+    ...client,
+    isSubscribed: clientHasActiveSubscription.has(client.id) ? 'да' : 'не',
+  })) as Client[]
 }
 
 export async function addClient(

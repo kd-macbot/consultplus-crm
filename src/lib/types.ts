@@ -36,6 +36,7 @@ export interface Client {
   updated_at: string
   assigned_to?: string
   deleted: boolean
+  isSubscribed?: 'да' | 'не' | 'прикрепен' // New field for subscription status
 }
 
 export interface CellValue {
