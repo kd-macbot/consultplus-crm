@@ -3,6 +3,7 @@ import { AuthProvider } from './components/auth/AuthProvider'
 import { ProtectedRoute } from './components/auth/ProtectedRoute'
 import { LoginPage } from './components/auth/LoginPage'
 import { Layout } from './components/layout/Layout'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Dashboard } from './pages/Dashboard'
 import { ClientsPage } from './pages/Clients'
 import { AdminPage } from './pages/Admin'
@@ -13,35 +14,37 @@ import { SubscriptionsPage } from './pages/Subscriptions'
 
 export default function App() {
   return (
-    <HashRouter>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            element={
-              <ProtectedRoute>
-                <Layout />
-              </ProtectedRoute>
-            }
-          >
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/clients" element={<ClientsPage />} />
-            <Route path="/staff" element={<StaffPage />} />
-            <Route path="/audit" element={<AuditLogPage />} />
-            <Route path="/expenses" element={<ExpensesPage />} />
-            <Route path="/subscriptions" element={<SubscriptionsPage />} />
+    <ErrorBoundary>
+      <HashRouter>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
             <Route
-              path="/admin"
               element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminPage />
+                <ProtectedRoute>
+                  <Layout />
                 </ProtectedRoute>
               }
-            />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
-    </HashRouter>
+            >
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/clients" element={<ClientsPage />} />
+              <Route path="/staff" element={<StaffPage />} />
+              <Route path="/audit" element={<AuditLogPage />} />
+              <Route path="/expenses" element={<ExpensesPage />} />
+              <Route path="/subscriptions" element={<SubscriptionsPage />} />
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminPage />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </HashRouter>
+    </ErrorBoundary>
   )
 }

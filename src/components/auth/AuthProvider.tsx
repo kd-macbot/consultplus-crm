@@ -8,6 +8,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Listen for auth changes (skip during initial load)
+    let initialized = false
+
     getCurrentProfile().then(profile => {
       setUser(profile)
       setLoading(false)
@@ -18,8 +21,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       initialized = true
     })
 
-    // Listen for auth changes (skip during initial load)
-    let initialized = false
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
       if (!initialized) return
       if (event === 'SIGNED_IN') {

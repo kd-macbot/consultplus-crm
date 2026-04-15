@@ -15,7 +15,8 @@ interface Props {
 
 export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onSave, onCancel }: Props) {
   const { user } = useAuth()
-  const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const selectRef = useRef<HTMLSelectElement>(null)
   const [value, setValue] = useState(() => {
     if (!cell) return ''
     if (column.type === 'number') return cell.value_number?.toString() ?? ''
@@ -37,7 +38,10 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
         getDropdownOptions(column.id).then(setDropdownOpts)
       }
     }
-    setTimeout(() => inputRef.current?.focus(), 10)
+    setTimeout(() => {
+      inputRef.current?.focus()
+      selectRef.current?.focus()
+    }, 10)
   }, [column])
 
   const auditInfo = (newDisplay: string) => ({
@@ -54,15 +58,15 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
       const patch: Partial<CellValue> = {}
       let newDisplay = value
       if (column.type === 'number') {
-        patch.value_number = value ? Number(value) : null as any
+        patch.value_number = value ? Number(value) : null
         newDisplay = value ? Number(value).toString() : ''
       } else if (column.type === 'dropdown') {
         if (isStaffLinked) {
-          patch.value_text = value || null as any
-          patch.value_dropdown = null as any
+          patch.value_text = value || null
+          patch.value_dropdown = null
           newDisplay = value
         } else {
-          patch.value_dropdown = value || null as any
+          patch.value_dropdown = value || null
           const opt = dropdownOpts.find(d => d.id === value)
           newDisplay = opt?.value ?? ''
         }
@@ -70,10 +74,10 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
         patch.value_bool = value === 'true'
         newDisplay = value === 'true' ? '✓' : ''
       } else if (column.type === 'date') {
-        patch.value_date = value || null as any
+        patch.value_date = value || null
         newDisplay = value
       } else {
-        patch.value_text = value || null as any
+        patch.value_text = value || null
         newDisplay = value
       }
       await setCellValue(clientId, column.id, patch, auditInfo(newDisplay))
@@ -115,15 +119,15 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
     if (isStaffLinked) {
       return (
         <select
-          ref={inputRef as any}
+          ref={selectRef}
           value={value}
           onChange={async e => {
             const newVal = e.target.value
             setValue(newVal)
             try {
               await setCellValue(clientId, column.id, {
-                value_text: newVal || null as any,
-                value_dropdown: null as any,
+                value_text: newVal || null,
+                value_dropdown: null,
               }, auditInfo(newVal))
               onSave()
             } catch (err) {
@@ -144,14 +148,14 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
 
     return (
       <select
-        ref={inputRef as any}
+        ref={selectRef}
         value={value}
         onChange={async e => {
           const newVal = e.target.value
           setValue(newVal)
           try {
             const opt = dropdownOpts.find(d => d.id === newVal)
-            await setCellValue(clientId, column.id, { value_dropdown: newVal || null as any }, auditInfo(opt?.value ?? ''))
+            await setCellValue(clientId, column.id, { value_dropdown: newVal || null }, auditInfo(opt?.value ?? ''))
             onSave()
           } catch (err) {
             console.error('Dropdown save error:', err)
@@ -171,7 +175,7 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
 
   return (
     <input
-      ref={inputRef as any}
+      ref={inputRef}
       type={column.type === 'number' ? 'number' : column.type === 'date' ? 'date' : 'text'}
       value={value}
       onChange={e => setValue(e.target.value)}

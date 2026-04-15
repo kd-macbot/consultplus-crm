@@ -10,7 +10,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from '@tanstack/react-table'
-import type { Column, CellValue, DropdownOption, Tag, ClientTag } from '../../lib/types'
+import type { Column, CellValue, DropdownOption, Tag, ClientTag, Client } from '../../lib/types'
 import { getColumns, getClients, getCellValues, getDropdownOptions, softDeleteClient, getTags, getClientTags } from '../../lib/storage'
 import { useAuth } from '../../lib/auth'
 import { CellEditor } from './CellEditor'
@@ -70,7 +70,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [columns, setColumnsState] = useState<Column[]>([])
   const [allCells, setAllCells] = useState<CellValue[]>([])
   const [allDropdowns, setAllDropdowns] = useState<DropdownOption[]>([])
-  const [allClients, setAllClients] = useState<any[]>([])
+  const [allClients, setAllClients] = useState<Client[]>([])
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [allClientTags, setAllClientTags] = useState<ClientTag[]>([])
 
@@ -114,13 +114,13 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
 
   const clients = useMemo(() => {
     if (user?.role === 'employee') {
-      return allClients.filter((c: any) => c.assigned_to === user.id)
+      return allClients.filter(c => c.assigned_to === user.id)
     }
     return allClients
   }, [allClients, user])
 
   const data: ClientRow[] = useMemo(() => {
-    return clients.map((client: any) => {
+    return clients.map(client => {
       const row: ClientRow = {
         clientId: client.id,
         clientName: resolveClientName(client.id, columns, allCells),

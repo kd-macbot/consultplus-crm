@@ -42,11 +42,11 @@ export interface CellValue {
   id: string
   client_id: string
   column_id: string
-  value_text?: string
-  value_number?: number
-  value_date?: string
-  value_bool?: boolean
-  value_dropdown?: string // dropdown option id
+  value_text?: string | null
+  value_number?: number | null
+  value_date?: string | null
+  value_bool?: boolean | null
+  value_dropdown?: string | null // dropdown option id
 }
 
 export interface ColumnFilter {

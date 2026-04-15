@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { createStaffMember, updateStaffMember, setStaffActive } from '../lib/storage'
 import { useAuth } from '../lib/auth'
 
 interface StaffMember {
@@ -38,10 +39,11 @@ export function StaffPage() {
   }
 
   async function saveStaff(member: Partial<StaffMember>) {
+    const audit = { userId: user?.id, userName: user?.full_name ?? '' }
     if (editing) {
-      await supabase.from('crm_staff').update(member).eq('id', editing.id)
+      await updateStaffMember(editing.id, member, { ...audit, staffName: editing.full_name })
     } else {
-      await supabase.from('crm_staff').insert([member])
+      await createStaffMember(member, audit)
     }
     setShowForm(false)
     setEditing(null)
@@ -49,7 +51,12 @@ export function StaffPage() {
   }
 
   async function toggleActive(id: string, current: boolean) {
-    await supabase.from('crm_staff').update({ is_active: !current }).eq('id', id)
+    const member = staff.find(s => s.id === id)
+    await setStaffActive(id, !current, {
+      userId: user?.id,
+      userName: user?.full_name ?? '',
+      staffName: member?.full_name,
+    })
     await loadStaff()
   }
 

@@ -92,6 +92,61 @@ export async function getStaff(department?: string): Promise<StaffMember[]> {
   return data ?? []
 }
 
+export async function createStaffMember(
+  member: Record<string, unknown>,
+  audit?: { userId?: string; userName?: string }
+): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from('crm_staff')
+    .insert([member])
+    .select()
+    .single()
+  if (error) throw error
+
+  if (audit) {
+    await logAudit(audit.userId, audit.userName ?? '', 'create_staff', 'staff', data.id, {
+      new_value: String(member.full_name ?? ''),
+    })
+  }
+  return data as { id: string }
+}
+
+export async function updateStaffMember(
+  id: string,
+  updates: Record<string, unknown>,
+  audit?: { userId?: string; userName?: string; staffName?: string }
+): Promise<void> {
+  const { error } = await supabase.from('crm_staff').update(updates).eq('id', id)
+  if (error) throw error
+
+  if (audit) {
+    await logAudit(audit.userId, audit.userName ?? '', 'update_staff', 'staff', id, {
+      old_value: audit.staffName,
+      new_value: updates.full_name ? String(updates.full_name) : audit.staffName,
+    })
+  }
+}
+
+export async function setStaffActive(
+  id: string,
+  isActive: boolean,
+  audit?: { userId?: string; userName?: string; staffName?: string }
+): Promise<void> {
+  const { error } = await supabase.from('crm_staff').update({ is_active: isActive }).eq('id', id)
+  if (error) throw error
+
+  if (audit) {
+    await logAudit(
+      audit.userId,
+      audit.userName ?? '',
+      isActive ? 'activate_staff' : 'deactivate_staff',
+      'staff',
+      id,
+      { old_value: audit.staffName, new_value: audit.staffName }
+    )
+  }
+}
+
 export async function addColumn(
   name: string, type: ColumnType, isRequired = false, createdBy?: string,
   audit?: { userId?: string; userName?: string }
