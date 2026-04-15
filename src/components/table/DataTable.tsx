@@ -21,7 +21,6 @@ interface ClientRow {
   clientName: string
   assignedTo?: string
   tagIds: string[]
-  isSubscribed: 'да' | 'не' | 'прикрепен' // New field for subscription status
   [columnId: string]: string | number | boolean | string[] | undefined
 }
 
@@ -127,7 +126,6 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         clientName: resolveClientName(client.id, columns, allCells),
         assignedTo: client.assigned_to,
         tagIds: allClientTags.filter(ct => ct.client_id === client.id).map(ct => ct.tag_id),
-        isSubscribed: client.isSubscribed,
       }
       const clientCells = allCells.filter(cv => cv.client_id === client.id)
       for (const col of columns) {
@@ -202,19 +200,6 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
             }
           : 'includesString',
       })),
-      // Subscription column
-      {
-        id: '_subscribed',
-        header: 'Абонамент',
-        size: 100,
-        enableSorting: true,
-        enableColumnFilter: true,
-        accessorKey: 'isSubscribed',
-        cell: info => <span className="font-medium">{info.getValue() as string}</span>,
-        filterFn: (row, columnId, filterValue) => {
-          return (row.getValue(columnId) as string) === filterValue
-        },
-      },
       // Tags column
       {
         id: '_tags',
