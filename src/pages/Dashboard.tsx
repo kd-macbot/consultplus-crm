@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../lib/auth'
-import { getClients, getCellValues, getColumns, getDropdownOptions, getSubscriptions, getExpenses } from '../lib/storage'
-import type { Client, Column, CellValue, DropdownOption, Subscription, Expense } from '../lib/types'
+import { getClients, getCellValues, getColumns, getDropdownOptions, getExpenses } from '../lib/storage'
+import type { Client, Column, CellValue, DropdownOption, Expense } from '../lib/types'
 
 export function Dashboard() {
   const { user } = useAuth()
@@ -26,14 +26,12 @@ export function Dashboard() {
       let columns: Column[] = []
       let cells: CellValue[] = []
       let dropdowns: DropdownOption[] = []
-      let subs: Subscription[] = []
       let exps: Expense[] = []
 
       try { clients = await getClients() } catch (err) { console.error('Failed to load clients:', err) }
       try { columns = await getColumns() } catch (err) { console.error('Failed to load columns:', err) }
       try { cells = await getCellValues() } catch (err) { console.error('Failed to load cell values:', err) }
       try { dropdowns = await getDropdownOptions() } catch (err) { console.error('Failed to load dropdown options:', err) }
-      try { subs = await getSubscriptions() } catch (err) { console.error('Failed to load subscriptions:', err) }
       try { exps = await getExpenses() } catch (err) { console.error('Failed to load expenses:', err) }
 
       const statusCol = columns.find((c: Column) => c.name === 'Статус')
@@ -87,16 +85,9 @@ export function Dashboard() {
         }
       }
 
-      // Profit overview
-      const monthlyRevenue = subs.filter((s: Subscription) => s.is_active).reduce((sum: number, s: Subscription) => {
-        if (s.payment_period === 'monthly') return sum + s.amount
-        if (s.payment_period === 'quarterly') return sum + s.amount / 3
-        if (s.payment_period === 'yearly') return sum + s.amount / 12
-        return sum + s.amount
-      }, 0)
       const monthlyExpenses = exps.reduce((sum: number, e: Expense) => sum + e.amount, 0)
 
-      setStats({ total: clients.length, statusCounts, totalHonorar, honorarByAccountant, honorarByStatus, monthlyRevenue, monthlyExpenses })
+      setStats({ total: clients.length, statusCounts, totalHonorar, honorarByAccountant, honorarByStatus, monthlyRevenue: totalHonorar, monthlyExpenses })
     } catch (err) {
       console.error('Failed to load stats:', err)
     } finally {
@@ -136,7 +127,7 @@ export function Dashboard() {
       {(user?.role === 'admin' || user?.role === 'manager') && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
-            <p className="text-sm text-dark/50">Месечен приход (абонаменти)</p>
+            <p className="text-sm text-dark/50">Приход (хонорари)</p>
             <p className="text-3xl font-bold text-green-600">{stats.monthlyRevenue.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €</p>
           </div>
           <div className="bg-white rounded-lg shadow p-6 border-l-4 border-red-400">
