@@ -149,14 +149,15 @@ export async function setStaffActive(
 
 export async function addColumn(
   name: string, type: ColumnType, isRequired = false, createdBy?: string,
-  audit?: { userId?: string; userName?: string }
+  audit?: { userId?: string; userName?: string },
+  staffDepartment?: string
 ): Promise<Column> {
   const { data: cols } = await supabase.from('crm_columns').select('position').order('position', { ascending: false }).limit(1)
   const pos = (cols?.[0]?.position ?? -1) + 1
 
   const { data, error } = await supabase
     .from('crm_columns')
-    .insert([{ name, type, position: pos, is_required: isRequired, created_by: createdBy }])
+    .insert([{ name, type, position: pos, is_required: isRequired, created_by: createdBy, staff_department: staffDepartment ?? null }])
     .select()
     .single()
   if (error) throw error
