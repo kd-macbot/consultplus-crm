@@ -16,6 +16,13 @@ import { useAuth } from '../../lib/auth'
 import { CellEditor } from './CellEditor'
 import { TagEditor } from '../tags/TagEditor'
 
+const DROPDOWN_STATUS_COLORS: Record<string, string> = {
+  'Активна': '#16a34a',
+  'Нулево': '#2563eb',
+  'БЕЗ ДДС': '#ca8a04',
+  'без дейност': '#6b7280',
+}
+
 interface ClientRow {
   clientId: string
   clientName: string
@@ -182,6 +189,34 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           }
 
           const val = info.getValue() as string
+
+          if (col.type === 'dropdown' && !col.staff_department) {
+            const cellData = allCells.find(cv => cv.client_id === clientId && cv.column_id === col.id)
+            const opt = allDropdowns.find(d => d.id === cellData?.value_dropdown)
+            const color = opt?.color || DROPDOWN_STATUS_COLORS[val]
+            return (
+              <div
+                className={canEdit ? 'cursor-pointer' : ''}
+                onClick={() => canEdit && setEditCell({ clientId, columnId: col.id })}
+              >
+                {val ? (
+                  color ? (
+                    <span
+                      className="inline-block px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+                      style={{ backgroundColor: color + '22', color }}
+                    >
+                      {val}
+                    </span>
+                  ) : (
+                    <span className="text-dark/70 text-sm">{val}</span>
+                  )
+                ) : (
+                  <span className="text-dark/20">—</span>
+                )}
+              </div>
+            )
+          }
+
           return (
             <div
               className={`truncate ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
