@@ -1,4 +1,5 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { AuthProvider } from './components/auth/AuthProvider'
 import { ProtectedRoute } from './components/auth/ProtectedRoute'
 import { LoginPage } from './components/auth/LoginPage'
@@ -15,6 +16,7 @@ import { SubscriptionsPage } from './pages/Subscriptions'
 export default function App() {
   return (
     <ErrorBoundary>
+      <Toaster position="top-right" richColors />
       <HashRouter>
         <AuthProvider>
           <Routes>

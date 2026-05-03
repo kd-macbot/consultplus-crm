@@ -13,8 +13,10 @@ import {
 import type { Column, CellValue, DropdownOption, Tag, ClientTag, Client } from '../../lib/types'
 import { getColumns, getClients, getCellValues, getDropdownOptions, softDeleteClient, getTags, getClientTags } from '../../lib/storage'
 import { useAuth } from '../../lib/auth'
+import { toast } from 'sonner'
 import { CellEditor } from './CellEditor'
 import { TagEditor } from '../tags/TagEditor'
+import { ConfirmDialog } from '@/components/ui/alert-dialog'
 
 interface ClientRow {
   clientId: string
@@ -73,6 +75,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [allClients, setAllClients] = useState<Client[]>([])
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [allClientTags, setAllClientTags] = useState<ClientTag[]>([])
+  const [confirmDeleteRow, setConfirmDeleteRow] = useState<ClientRow | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScrollPos = useRef<{ top: number; left: number } | null>(null)
@@ -230,17 +233,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         size: 60,
         cell: info => (
           <button
-            onClick={async () => {
-              if (confirm('Изтриване на клиент?')) {
-                const row = info.row.original
-                await softDeleteClient(row.clientId, {
-                  userId: user?.id,
-                  userName: user?.full_name ?? '',
-                  clientName: row.clientName,
-                })
-                onRefresh()
-              }
-            }}
+            onClick={() => setConfirmDeleteRow(info.row.original)}
             className="text-red-500 hover:text-red-700 text-xs"
           >
             🗑️
@@ -392,6 +385,26 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           </tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        open={!!confirmDeleteRow}
+        title={`Изтриване на клиент "${confirmDeleteRow?.clientName}"?`}
+        description="Клиентът ще бъде скрит от системата. Операцията е обратима само от администратор."
+        confirmLabel="Изтрий"
+        destructive
+        onConfirm={async () => {
+          if (!confirmDeleteRow) return
+          await softDeleteClient(confirmDeleteRow.clientId, {
+            userId: user?.id,
+            userName: user?.full_name ?? '',
+            clientName: confirmDeleteRow.clientName,
+          })
+          setConfirmDeleteRow(null)
+          toast.success(`Клиент "${confirmDeleteRow.clientName}" е изтрит`)
+          onRefresh()
+        }}
+        onCancel={() => setConfirmDeleteRow(null)}
+      />
 
       {/* Pagination */}
       <div className="p-2 md:p-3 border-t border-light flex flex-wrap items-center justify-between gap-2 bg-white text-sm">

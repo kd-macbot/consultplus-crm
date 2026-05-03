@@ -4,10 +4,12 @@ import { CellEditor } from '../components/table/CellEditor'
 import { useAuth } from '../lib/auth'
 import type { Column, CellValue, Client, ColumnType } from '../lib/types'
 import { Plus } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/ui/alert-dialog'
 
 const SUB_MARKER = '__sub__'
 
@@ -19,6 +21,7 @@ export function SubscriptionsPage() {
   const [loading, setLoading] = useState(true)
   const [editCell, setEditCell] = useState<{ clientId: string; columnId: string } | null>(null)
   const [showAddCol, setShowAddCol] = useState(false)
+  const [confirmDeleteCol, setConfirmDeleteCol] = useState<Column | null>(null)
 
   const isAdmin = user?.role === 'admin'
   const canEdit = user?.role === 'admin' || user?.role === 'manager'
@@ -87,12 +90,14 @@ export function SubscriptionsPage() {
   async function handleAddColumn(name: string, type: ColumnType) {
     await addColumn(name, type, false, user?.id, { userId: user?.id, userName: user?.full_name ?? '' }, SUB_MARKER)
     setShowAddCol(false)
+    toast.success(`Колона "${name}" е добавена`)
     await loadData()
   }
 
   async function handleDeleteColumn(col: Column) {
-    if (!confirm(`Изтриване на колона "${col.name}"?`)) return
     await deleteColumn(col.id, { userId: user?.id, userName: user?.full_name ?? '', columnName: col.name })
+    setConfirmDeleteCol(null)
+    toast.success(`Колона "${col.name}" е изтрита`)
     await loadData()
   }
 
@@ -136,7 +141,7 @@ export function SubscriptionsPage() {
                     <span>{col.name}</span>
                     {isAdmin && col.staff_department === SUB_MARKER && (
                       <button
-                        onClick={() => handleDeleteColumn(col)}
+                        onClick={() => setConfirmDeleteCol(col)}
                         className="text-white/50 hover:text-white ml-1 text-base leading-none"
                         title="Изтрий колона"
                       >×</button>
@@ -216,6 +221,16 @@ export function SubscriptionsPage() {
       </div>
 
       <AddColumnModal open={showAddCol} onAdd={handleAddColumn} onClose={() => setShowAddCol(false)} />
+
+      <ConfirmDialog
+        open={!!confirmDeleteCol}
+        title={`Изтриване на колона "${confirmDeleteCol?.name}"?`}
+        description="Всички данни в тази колона ще бъдат загубени."
+        confirmLabel="Изтрий"
+        destructive
+        onConfirm={() => confirmDeleteCol && handleDeleteColumn(confirmDeleteCol)}
+        onCancel={() => setConfirmDeleteCol(null)}
+      />
     </div>
   )
 }
