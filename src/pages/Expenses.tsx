@@ -333,12 +333,13 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
   function handleSubmit() {
     const amt = parseFloat(amount)
     if (!category || isNaN(amt) || amt <= 0) return
+    const today = new Date().toISOString().split('T')[0]
     onSave({
       category,
       description: description.trim() || null,
       amount: amt,
       currency,
-      date: null,
+      date: expense?.date ?? today,
       staff_id: staffId || null,
       recurring: true,
       recurring_period: 'monthly',
