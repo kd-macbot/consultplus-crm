@@ -4,6 +4,8 @@ import { addClient } from '../lib/storage'
 import { exportToExcel } from '../lib/export'
 import { useAuth } from '../lib/auth'
 import { ImportDialog } from '../components/import/ImportDialog'
+import { Download, Upload, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 export function ClientsPage() {
   const { user } = useAuth()
@@ -20,33 +22,24 @@ export function ClientsPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
-      <div className="px-3 py-2 md:p-4 flex items-center justify-between border-b border-light bg-white">
-        <h1 className="text-base md:text-xl font-bold text-navy">👥 Клиенти</h1>
-        <div className="flex items-center gap-1.5 md:gap-2">
-          <button
-            onClick={() => setShowImport(true)}
-            className="px-2 md:px-4 py-1.5 md:py-2 border border-navy text-navy rounded-md hover:bg-navy hover:text-white transition text-xs md:text-sm font-medium"
-          >
-            <span className="hidden sm:inline">📥 Импорт</span>
-            <span className="sm:hidden">📥</span>
-          </button>
-          <button
-            onClick={async () => {
-              try { await exportToExcel() } catch (err) { console.error('Export failed:', err) }
-            }}
-            className="px-2 md:px-4 py-1.5 md:py-2 border border-navy text-navy rounded-md hover:bg-navy hover:text-white transition text-xs md:text-sm font-medium"
-          >
-            <span className="hidden sm:inline">📤 Експорт</span>
-            <span className="sm:hidden">📤</span>
-          </button>
+      <div className="px-3 py-2 md:px-5 md:py-3 flex items-center justify-between border-b border-border bg-card">
+        <h1 className="text-base md:text-lg font-semibold text-foreground">Клиенти</h1>
+        <div className="flex items-center gap-1.5">
+          <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
+            <Upload className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Импорт</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={async () => {
+            try { await exportToExcel() } catch (err) { console.error('Export failed:', err) }
+          }}>
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Експорт</span>
+          </Button>
           {canAdd && (
-            <button
-              onClick={handleAdd}
-              className="px-2 md:px-4 py-1.5 md:py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-xs md:text-sm font-medium"
-            >
-              <span className="hidden sm:inline">+ Нов клиент</span>
-              <span className="sm:hidden">+</span>
-            </button>
+            <Button size="sm" onClick={handleAdd}>
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Нов клиент</span>
+            </Button>
           )}
         </div>
       </div>

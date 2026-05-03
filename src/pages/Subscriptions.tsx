@@ -3,6 +3,11 @@ import { getColumns, getCellValues, getClients, addColumn, deleteColumn } from '
 import { CellEditor } from '../components/table/CellEditor'
 import { useAuth } from '../lib/auth'
 import type { Column, CellValue, Client, ColumnType } from '../lib/types'
+import { Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 
 const SUB_MARKER = '__sub__'
 
@@ -98,12 +103,10 @@ export function SubscriptionsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-xl md:text-2xl font-bold text-navy">💶 Абонаменти</h1>
         {isAdmin && (
-          <button
-            onClick={() => setShowAddCol(true)}
-            className="px-3 md:px-4 py-1.5 md:py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-xs md:text-sm font-medium"
-          >
-            + Добави колона
-          </button>
+          <Button size="sm" onClick={() => setShowAddCol(true)}>
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Добави колона</span>
+          </Button>
         )}
       </div>
 
@@ -212,17 +215,17 @@ export function SubscriptionsPage() {
         </table>
       </div>
 
-      {showAddCol && (
-        <AddColumnModal onAdd={handleAddColumn} onClose={() => setShowAddCol(false)} />
-      )}
+      <AddColumnModal open={showAddCol} onAdd={handleAddColumn} onClose={() => setShowAddCol(false)} />
     </div>
   )
 }
 
 function AddColumnModal({
+  open,
   onAdd,
   onClose,
 }: {
+  open: boolean
   onAdd: (name: string, type: ColumnType) => Promise<void>
   onClose: () => void
 }) {
@@ -230,39 +233,37 @@ function AddColumnModal({
   const [type, setType] = useState<ColumnType>('text')
   const [saving, setSaving] = useState(false)
 
+  useEffect(() => { if (open) { setName(''); setType('text') } }, [open])
+
   async function handleSubmit() {
     if (!name.trim()) return
     setSaving(true)
-    try {
-      await onAdd(name.trim(), type)
-    } finally {
-      setSaving(false)
-    }
+    try { await onAdd(name.trim(), type) } finally { setSaving(false) }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-navy mb-4">Нова колона</h2>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-dark mb-1">Име *</label>
-            <input
-              type="text"
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose() }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Нова колона</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Наименование *</Label>
+            <Input
               value={name}
               onChange={e => setName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSubmit()}
               autoFocus
-              placeholder="напр. Статус, ДДС регистрация..."
-              className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy"
+              placeholder="напр. ДДС регистрация..."
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-dark mb-1">Тип</label>
+          <div className="space-y-1.5">
+            <Label>Тип</Label>
             <select
               value={type}
               onChange={e => setType(e.target.value as ColumnType)}
-              className="w-full px-3 py-2 border border-light rounded-md"
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="text">Текст</option>
               <option value="number">Число</option>
@@ -271,19 +272,13 @@ function AddColumnModal({
             </select>
           </div>
         </div>
-        <div className="flex justify-end gap-3 mt-5">
-          <button onClick={onClose} className="px-4 py-2 border border-light rounded-md text-sm hover:bg-light transition">
-            Отказ
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving || !name.trim()}
-            className="px-4 py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-sm font-medium disabled:opacity-50"
-          >
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Отказ</Button>
+          <Button onClick={handleSubmit} disabled={saving || !name.trim()}>
             {saving ? 'Добавяне...' : 'Добави'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

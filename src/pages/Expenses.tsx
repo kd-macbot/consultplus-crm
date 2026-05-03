@@ -5,6 +5,13 @@ import type { Expense } from '../lib/types'
 import { EXPENSE_CATEGORIES } from '../lib/types'
 import type { StaffMember } from '../lib/storage'
 import type { ExpenseCategory } from '../lib/types'
+import { Plus, Pencil, Trash2, TrendingDown, Filter } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
 
 function formatCurrency(amount: number, currency = 'EUR') {
   return new Intl.NumberFormat('bg-BG', { style: 'currency', currency }).format(amount)
@@ -29,12 +36,8 @@ export function ExpensesPage() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Expense | null>(null)
-
-  // Filters
   const [filterStaff, setFilterStaff] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
-
-  // Sort
   const [sortField, setSortField] = useState<'amount' | 'category'>('amount')
   const [sortAsc, setSortAsc] = useState(false)
 
@@ -47,8 +50,8 @@ export function ExpensesPage() {
     setLoading(true)
     let exp: Expense[] = []
     let staff: StaffMember[] = []
-    try { exp = await getExpenses() } catch (err) { console.error('Failed to load expenses:', err) }
-    try { staff = await getStaff() } catch (err) { console.error('Failed to load staff:', err) }
+    try { exp = await getExpenses() } catch { /* */ }
+    try { staff = await getStaff() } catch { /* */ }
     setExpenses(exp)
     setStaffList(staff)
     setLoading(false)
@@ -61,15 +64,14 @@ export function ExpensesPage() {
       return true
     })
     result.sort((a, b) => {
-      let cmp = 0
-      if (sortField === 'amount') cmp = a.amount - b.amount
-      else cmp = a.category.localeCompare(b.category)
+      const cmp = sortField === 'amount' ? a.amount - b.amount : a.category.localeCompare(b.category)
       return sortAsc ? cmp : -cmp
     })
     return result
   }, [expenses, filterStaff, filterCategory, sortField, sortAsc])
 
   const totalMonthly = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses])
+  const filteredTotal = useMemo(() => filtered.reduce((s, e) => s + e.amount, 0), [filtered])
 
   const byCategory = useMemo(() => {
     const map: Record<string, number> = {}
@@ -80,24 +82,17 @@ export function ExpensesPage() {
   const byStaff = useMemo(() => {
     const map: Record<string, number> = {}
     filtered.forEach(e => {
-      const name = e.staff_id
-        ? staffList.find(s => s.id === e.staff_id)?.full_name ?? 'Неизвестен'
-        : 'Без служител'
+      const name = e.staff_id ? staffList.find(s => s.id === e.staff_id)?.full_name ?? 'Неизвестен' : 'Без служител'
       map[name] = (map[name] ?? 0) + e.amount
     })
     return Object.entries(map).sort((a, b) => b[1] - a[1])
   }, [filtered, staffList])
 
-  const filteredTotal = useMemo(() => filtered.reduce((s, e) => s + e.amount, 0), [filtered])
-
   async function handleSave(data: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) {
     const audit = { userId: user?.id, userName: user?.full_name ?? '' }
     try {
       if (editing) {
-        await updateExpense(editing.id, data, {
-          ...audit,
-          oldDescription: `${editing.category}: ${editing.amount} ${editing.currency}`,
-        })
+        await updateExpense(editing.id, data, { ...audit, oldDescription: `${editing.category}: ${editing.amount} ${editing.currency}` })
       } else {
         await addExpense(data, audit)
       }
@@ -105,17 +100,14 @@ export function ExpensesPage() {
       setEditing(null)
       await loadData()
     } catch (err) {
-      console.error('Failed to save expense:', err)
-      const message = err instanceof Error ? err.message : 'Възникна грешка при запис на разхода.'
-      window.alert(message)
+      window.alert(err instanceof Error ? err.message : 'Грешка при запис.')
     }
   }
 
   async function handleDelete(expense: Expense) {
-    if (!window.confirm(`Изтриване на разход "${expense.description || expense.category}"?`)) return
+    if (!window.confirm(`Изтриване на "${expense.description || expense.category}"?`)) return
     await deleteExpense(expense.id, {
-      userId: user?.id,
-      userName: user?.full_name ?? '',
+      userId: user?.id, userName: user?.full_name ?? '',
       description: `${expense.category}: ${expense.amount} ${expense.currency}`,
     })
     await loadData()
@@ -126,186 +118,196 @@ export function ExpensesPage() {
     else { setSortField(field); setSortAsc(false) }
   }
 
-  const sortIcon = (field: string) => sortField === field ? (sortAsc ? ' ▲' : ' ▼') : ''
-
+  const sortIcon = (field: string) => sortField === field ? (sortAsc ? ' ↑' : ' ↓') : ''
   const staffName = (id: string | null) => id ? staffList.find(s => s.id === id)?.full_name ?? '—' : '—'
+  const hasFilters = filterStaff !== 'all' || filterCategory !== 'all'
 
-  if (loading) return <div className="p-6 text-dark/50">Зареждане...</div>
+  if (loading) return (
+    <div className="p-6 flex items-center gap-2 text-muted-foreground">
+      <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      Зареждане...
+    </div>
+  )
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-4 md:p-6 space-y-5">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-xl md:text-2xl font-bold text-navy">💰 Месечни разходи</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">Месечни разходи</h1>
         {canEdit && (
-          <button
-            onClick={() => { setEditing(null); setShowForm(true) }}
-            className="px-3 md:px-4 py-1.5 md:py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-xs md:text-sm font-medium"
-          >
-            + Нов разход
-          </button>
+          <Button size="sm" onClick={() => { setEditing(null); setShowForm(true) }}>
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Нов разход</span>
+          </Button>
         )}
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-navy">
-          <p className="text-sm text-dark/50">Общо месечни разходи</p>
-          <p className="text-2xl font-bold text-navy">{formatCurrency(totalMonthly)}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-gold">
-          <p className="text-sm text-dark/50">Филтрирани разходи</p>
-          <p className="text-2xl font-bold text-gold">{formatCurrency(filteredTotal)}</p>
-          <p className="text-xs text-dark/40">{filtered.length} записа</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
-          <p className="text-sm text-dark/50">Категории (филтрирани)</p>
-          <p className="text-2xl font-bold text-green-600">{byCategory.length}</p>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-5">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Общо разходи</CardTitle>
+            <TrendingDown className="h-4 w-4 text-red-400" />
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            <p className="text-2xl font-bold text-red-500">{formatCurrency(totalMonthly)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-5">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Филтрирано</CardTitle>
+            <Filter className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            <p className="text-2xl font-bold text-gold">{formatCurrency(filteredTotal)}</p>
+            <p className="text-xs text-muted-foreground">{filtered.length} записа</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-5">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Категории</CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            <p className="text-2xl font-bold text-green-600">{byCategory.length}</p>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Bar Chart by Category */}
+      {/* Bar charts */}
       {byCategory.length > 0 && (
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <h2 className="text-sm font-semibold text-navy mb-3">Разходи по категория</h2>
-          <div className="space-y-2">
+        <Card>
+          <CardHeader className="px-5 pt-4 pb-2">
+            <CardTitle className="text-sm font-semibold">Разходи по категория</CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-4 space-y-2">
             {byCategory.map(([cat, amount]) => {
               const pct = filteredTotal > 0 ? (amount / filteredTotal) * 100 : 0
               return (
                 <div key={cat} className="flex items-center gap-3">
-                  <span className="text-xs w-24 text-right text-dark/60 shrink-0">{cat}</span>
-                  <div className="flex-1 bg-light rounded-full h-5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{ width: `${pct}%`, backgroundColor: CATEGORY_COLORS[cat] ?? '#9ca3af' }}
-                    />
+                  <span className="text-xs w-24 text-right text-muted-foreground shrink-0">{cat}</span>
+                  <div className="flex-1 bg-muted rounded-full h-4 overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-300"
+                      style={{ width: `${pct}%`, backgroundColor: CATEGORY_COLORS[cat] ?? '#9ca3af' }} />
                   </div>
-                  <span className="text-xs w-28 text-dark/70 shrink-0">{formatCurrency(amount)} ({pct.toFixed(0)}%)</span>
+                  <span className="text-xs w-28 text-muted-foreground shrink-0 text-right">{formatCurrency(amount)}</span>
                 </div>
               )
             })}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Top staff spenders */}
       {byStaff.length > 1 && (
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <h2 className="text-sm font-semibold text-navy mb-3">Разходи по служител</h2>
-          <div className="space-y-2">
+        <Card>
+          <CardHeader className="px-5 pt-4 pb-2">
+            <CardTitle className="text-sm font-semibold">Разходи по служител</CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-4 space-y-2">
             {byStaff.map(([name, amount]) => {
               const pct = filteredTotal > 0 ? (amount / filteredTotal) * 100 : 0
               return (
                 <div key={name} className="flex items-center gap-3">
-                  <span className="text-xs w-32 text-right text-dark/60 shrink-0 truncate">{name}</span>
-                  <div className="flex-1 bg-light rounded-full h-5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-navy/70 transition-all duration-300"
-                      style={{ width: `${pct}%` }}
-                    />
+                  <span className="text-xs w-32 text-right text-muted-foreground shrink-0 truncate">{name}</span>
+                  <div className="flex-1 bg-muted rounded-full h-4 overflow-hidden">
+                    <div className="h-full rounded-full bg-primary/70 transition-all duration-300" style={{ width: `${pct}%` }} />
                   </div>
-                  <span className="text-xs w-28 text-dark/70 shrink-0">{formatCurrency(amount)} ({pct.toFixed(0)}%)</span>
+                  <span className="text-xs w-28 text-muted-foreground shrink-0 text-right">{formatCurrency(amount)}</span>
                 </div>
               )
             })}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <select
-          value={filterStaff}
-          onChange={e => setFilterStaff(e.target.value)}
-          className="px-3 py-2 border border-light rounded-md text-sm"
-        >
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={filterStaff} onChange={e => setFilterStaff(e.target.value)}
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <option value="all">Всички служители</option>
           {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
         </select>
-        <select
-          value={filterCategory}
-          onChange={e => setFilterCategory(e.target.value)}
-          className="px-3 py-2 border border-light rounded-md text-sm"
-        >
+        <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <option value="all">Всички категории</option>
           {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        {(filterStaff !== 'all' || filterCategory !== 'all') && (
-          <button
-            onClick={() => { setFilterStaff('all'); setFilterCategory('all') }}
-            className="text-xs text-dark/40 hover:text-dark underline"
-          >
-            Изчисти филтри
-          </button>
+        {hasFilters && (
+          <Button variant="ghost" size="sm" onClick={() => { setFilterStaff('all'); setFilterCategory('all') }}
+            className="text-muted-foreground text-xs h-9">
+            ✕ Изчисти
+          </Button>
         )}
       </div>
 
-      {/* Expenses Table */}
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-light bg-light/50">
-              <th className="px-4 py-3 text-left cursor-pointer select-none" onClick={() => handleSort('category')}>
-                Категория{sortIcon('category')}
-              </th>
-              <th className="px-4 py-3 text-left">Описание</th>
-              <th className="px-4 py-3 text-left">Служител</th>
-              <th className="px-4 py-3 text-right cursor-pointer select-none" onClick={() => handleSort('amount')}>
-                Месечна сума{sortIcon('amount')}
-              </th>
-              <th className="px-4 py-3 text-center">Валута</th>
-              {canEdit && <th className="px-4 py-3 text-right">Действия</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr><td colSpan={canEdit ? 6 : 5} className="px-4 py-8 text-center text-dark/40">Няма разходи</td></tr>
-            )}
-            {filtered.map(expense => (
-              <tr key={expense.id} className="border-b border-light/50 hover:bg-light/30 transition">
-                <td className="px-4 py-3">
-                  <span
-                    className="inline-block px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                    style={{ backgroundColor: CATEGORY_COLORS[expense.category] ?? '#9ca3af' }}
-                  >
-                    {expense.category}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-dark/70">{expense.description || '—'}</td>
-                <td className="px-4 py-3 text-dark/70">{staffName(expense.staff_id)}</td>
-                <td className="px-4 py-3 text-right font-medium">{formatCurrency(expense.amount, expense.currency)}</td>
-                <td className="px-4 py-3 text-center text-dark/50">{expense.currency}</td>
-                {canEdit && (
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button onClick={() => { setEditing(expense); setShowForm(true) }} className="text-xs text-navy hover:underline mr-2">✏️</button>
-                    {isAdmin && (
-                      <button onClick={() => handleDelete(expense)} className="text-xs text-red-500 hover:underline">🗑️</button>
-                    )}
-                  </td>
-                )}
+      {/* Table */}
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/40">
+                <th className="px-4 py-3 text-left cursor-pointer select-none font-medium text-muted-foreground text-xs uppercase tracking-wider"
+                  onClick={() => handleSort('category')}>
+                  Категория{sortIcon('category')}
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Описание</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Служител</th>
+                <th className="px-4 py-3 text-right cursor-pointer select-none font-medium text-muted-foreground text-xs uppercase tracking-wider"
+                  onClick={() => handleSort('amount')}>
+                  Сума{sortIcon('amount')}
+                </th>
+                {canEdit && <th className="px-4 py-3 text-right font-medium text-muted-foreground text-xs uppercase tracking-wider">Действия</th>}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr><td colSpan={canEdit ? 5 : 4} className="px-4 py-10 text-center text-muted-foreground">Няма разходи</td></tr>
+              )}
+              {filtered.map((expense, i) => (
+                <tr key={expense.id} className={`border-b border-border/50 transition-colors hover:bg-muted/30 ${i % 2 === 0 ? '' : 'bg-muted/10'}`}>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white"
+                      style={{ backgroundColor: CATEGORY_COLORS[expense.category] ?? '#9ca3af' }}>
+                      {expense.category}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{expense.description || <span className="text-muted-foreground/40">—</span>}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{staffName(expense.staff_id)}</td>
+                  <td className="px-4 py-3 text-right font-semibold">{formatCurrency(expense.amount, expense.currency)}</td>
+                  {canEdit && (
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                        onClick={() => { setEditing(expense); setShowForm(true) }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      {isAdmin && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDelete(expense)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
-      {/* Form Modal */}
-      {showForm && (
-        <ExpenseForm
-          expense={editing}
-          staffList={staffList}
-          userId={user?.id}
-          onSave={handleSave}
-          onClose={() => { setShowForm(false); setEditing(null) }}
-        />
-      )}
+      <ExpenseForm
+        open={showForm}
+        expense={editing}
+        staffList={staffList}
+        userId={user?.id}
+        onSave={handleSave}
+        onClose={() => { setShowForm(false); setEditing(null) }}
+      />
     </div>
   )
 }
 
-// ==================== EXPENSE FORM MODAL ====================
-
-function ExpenseForm({ expense, staffList, userId, onSave, onClose }: {
+function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
+  open: boolean
   expense: Expense | null
   staffList: StaffMember[]
   userId?: string
@@ -317,6 +319,16 @@ function ExpenseForm({ expense, staffList, userId, onSave, onClose }: {
   const [amount, setAmount] = useState(expense?.amount?.toString() ?? '')
   const [currency, setCurrency] = useState(expense?.currency ?? 'EUR')
   const [staffId, setStaffId] = useState(expense?.staff_id ?? '')
+
+  useEffect(() => {
+    if (open) {
+      setCategory(expense?.category as ExpenseCategory ?? 'Други')
+      setDescription(expense?.description ?? '')
+      setAmount(expense?.amount?.toString() ?? '')
+      setCurrency(expense?.currency ?? 'EUR')
+      setStaffId(expense?.staff_id ?? '')
+    }
+  }, [open, expense])
 
   function handleSubmit() {
     const amt = parseFloat(amount)
@@ -334,61 +346,54 @@ function ExpenseForm({ expense, staffList, userId, onSave, onClose }: {
     })
   }
 
+  const selectClass = "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <h2 className="text-xl font-bold text-navy mb-4">
-          {expense ? 'Редактирай разход' : 'Нов месечен разход'}
-        </h2>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-dark mb-1">Категория *</label>
-            <select value={category} onChange={e => setCategory(e.target.value as ExpenseCategory)}
-              className="w-full px-3 py-2 border border-light rounded-md">
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{expense ? 'Редактирай разход' : 'Нов месечен разход'}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Категория *</Label>
+            <select value={category} onChange={e => setCategory(e.target.value as ExpenseCategory)} className={selectClass}>
               {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-dark mb-1">Описание</label>
-            <input type="text" value={description} onChange={e => setDescription(e.target.value)}
-              placeholder="Кратко описание..."
-              className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy" />
+          <div className="space-y-1.5">
+            <Label>Описание</Label>
+            <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Кратко описание..." />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-dark mb-1">Месечна сума *</label>
-              <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)}
-                className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy" />
+            <div className="space-y-1.5">
+              <Label>Месечна сума *</Label>
+              <Input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-dark mb-1">Валута</label>
-              <select value={currency} onChange={e => setCurrency(e.target.value)}
-                className="w-full px-3 py-2 border border-light rounded-md">
+            <div className="space-y-1.5">
+              <Label>Валута</Label>
+              <select value={currency} onChange={e => setCurrency(e.target.value)} className={selectClass}>
                 <option value="EUR">EUR</option>
                 <option value="BGN">BGN</option>
                 <option value="USD">USD</option>
               </select>
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-dark mb-1">Служител</label>
-            <select value={staffId} onChange={e => setStaffId(e.target.value)}
-              className="w-full px-3 py-2 border border-light rounded-md">
+          <div className="space-y-1.5">
+            <Label>Служител</Label>
+            <select value={staffId} onChange={e => setStaffId(e.target.value)} className={selectClass}>
               <option value="">— Без служител —</option>
               {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
             </select>
           </div>
         </div>
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={onClose} className="px-4 py-2 border border-light rounded-md text-sm hover:bg-light transition">
-            Отказ
-          </button>
-          <button onClick={handleSubmit}
-            className="px-4 py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-sm font-medium">
-            {expense ? 'Запази' : 'Добави'}
-          </button>
-        </div>
-      </div>
-    </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Отказ</Button>
+          <Button onClick={handleSubmit} disabled={!category || !amount}>{expense ? 'Запази' : 'Добави'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
