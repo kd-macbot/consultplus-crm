@@ -67,14 +67,14 @@ export function StaffPage() {
   if (loading) return <div className="p-6 text-dark/50">Зареждане...</div>
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-navy">👥 Персонал</h1>
-        <div className="flex items-center gap-3">
+    <div className="p-4 md:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <h1 className="text-xl md:text-2xl font-bold text-navy">👥 Персонал</h1>
+        <div className="flex items-center gap-2">
           <select
             value={filterDept}
             onChange={e => setFilterDept(e.target.value)}
-            className="px-3 py-2 border border-light rounded-md text-sm"
+            className="px-2 md:px-3 py-1.5 md:py-2 border border-light rounded-md text-xs md:text-sm"
           >
             <option value="all">Всички отдели</option>
             {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
@@ -82,7 +82,7 @@ export function StaffPage() {
           {isAdmin && (
             <button
               onClick={() => { setEditing(null); setShowForm(true) }}
-              className="px-4 py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-sm font-medium"
+              className="px-3 md:px-4 py-1.5 md:py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-xs md:text-sm font-medium"
             >
               + Нов служител
             </button>

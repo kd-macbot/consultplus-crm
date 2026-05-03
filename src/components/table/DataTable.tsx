@@ -274,13 +274,13 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Search + Tag Filter */}
-      <div className="p-4 border-b border-light flex items-center gap-4 flex-wrap">
+      <div className="p-3 md:p-4 border-b border-light flex items-center gap-3 flex-wrap">
         <input
           type="text"
           value={globalFilter}
           onChange={e => setGlobalFilter(e.target.value)}
           placeholder="🔍 Търсене..."
-          className="px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy w-64"
+          className="px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy w-full sm:w-64"
         />
         {/* Tag filter multi-select */}
         {allTags.length > 0 && (
@@ -394,25 +394,25 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       </div>
 
       {/* Pagination */}
-      <div className="p-3 border-t border-light flex items-center justify-between bg-white text-sm">
+      <div className="p-2 md:p-3 border-t border-light flex flex-wrap items-center justify-between gap-2 bg-white text-sm">
         <div className="flex items-center gap-2">
-          <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-3 py-1 rounded border border-light disabled:opacity-30 hover:bg-light transition">
-            ← Назад
+          <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-2 md:px-3 py-1 rounded border border-light disabled:opacity-30 hover:bg-light transition text-xs md:text-sm">
+            ←
           </button>
-          <span className="text-dark/60">
-            Страница {table.getState().pagination.pageIndex + 1} от {table.getPageCount()}
+          <span className="text-dark/60 text-xs md:text-sm">
+            {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
           </span>
-          <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-3 py-1 rounded border border-light disabled:opacity-30 hover:bg-light transition">
-            Напред →
+          <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-2 md:px-3 py-1 rounded border border-light disabled:opacity-30 hover:bg-light transition text-xs md:text-sm">
+            →
           </button>
         </div>
         <select
           value={table.getState().pagination.pageSize}
           onChange={e => table.setPageSize(Number(e.target.value))}
-          className="px-2 py-1 border border-light rounded text-sm"
+          className="px-2 py-1 border border-light rounded text-xs md:text-sm"
         >
           {[25, 50, 100, 200].map(size => (
-            <option key={size} value={size}>Покажи {size}</option>
+            <option key={size} value={size}>{size} реда</option>
           ))}
         </select>
       </div>

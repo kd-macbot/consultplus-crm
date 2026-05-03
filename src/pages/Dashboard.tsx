@@ -111,13 +111,13 @@ export function Dashboard() {
   }
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-navy mb-6">
+    <div className="p-4 md:p-6">
+      <h1 className="text-xl md:text-2xl font-bold text-navy mb-4 md:mb-6">
         Здравей, {user?.full_name} 👋
       </h1>
-      <p className="text-dark/50 mb-8">Роля: {user ? roleLabel[user.role] : ''}</p>
+      <p className="text-dark/50 mb-6 md:mb-8">Роля: {user ? roleLabel[user.role] : ''}</p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
         <div className="bg-white rounded-lg shadow p-6 border-l-4 border-navy">
           <p className="text-sm text-dark/50">Общо клиенти</p>
           <p className="text-3xl font-bold text-navy">{stats.total}</p>

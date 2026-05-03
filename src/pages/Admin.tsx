@@ -106,26 +106,26 @@ export function AdminPage() {
   if (loading) return <div className="p-6 text-dark/50">Зареждане...</div>
 
   return (
-    <div className="p-6 max-w-4xl">
-      <h1 className="text-2xl font-bold text-navy mb-6">⚙️ Администрация</h1>
+    <div className="p-4 md:p-6 max-w-4xl">
+      <h1 className="text-xl md:text-2xl font-bold text-navy mb-6">⚙️ Администрация</h1>
 
       {/* Column Management */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h2 className="text-lg font-medium text-navy mb-4">Управление на колони</h2>
 
-        <div className="flex gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4">
           <input
             type="text"
             value={newColName}
             onChange={e => setNewColName(e.target.value)}
             placeholder="Име на колона"
-            className="flex-1 px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy"
+            className="flex-1 min-w-0 px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy"
             onKeyDown={e => e.key === 'Enter' && handleAddColumn()}
           />
           <select
             value={newColType}
             onChange={e => setNewColType(e.target.value as ColumnType)}
-            className="px-3 py-2 border border-light rounded-md"
+            className="px-3 py-2 border border-light rounded-md text-sm"
           >
             {Object.entries(typeLabels).map(([val, label]) => (
               <option key={val} value={val}>{label}</option>

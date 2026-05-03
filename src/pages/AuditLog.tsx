@@ -142,11 +142,11 @@ export function AuditLogPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold text-navy mb-6">📝 Дневник на промените</h1>
+    <div className="p-4 md:p-6 max-w-4xl mx-auto">
+      <h1 className="text-xl md:text-2xl font-bold text-navy mb-6">📝 Дневник на промените</h1>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6 flex flex-wrap gap-3 items-end">
+      <div className="bg-white rounded-lg shadow p-3 md:p-4 mb-6 flex flex-wrap gap-3 items-end">
         <div>
           <label className="block text-xs text-dark/50 mb-1">Потребител</label>
           <select

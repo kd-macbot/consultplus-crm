@@ -19,30 +19,33 @@ export function ClientsPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen">
-      <div className="p-4 flex items-center justify-between border-b border-light bg-white">
-        <h1 className="text-xl font-bold text-navy">👥 Клиенти</h1>
-        <div className="flex items-center gap-2">
+    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+      <div className="px-3 py-2 md:p-4 flex items-center justify-between border-b border-light bg-white">
+        <h1 className="text-base md:text-xl font-bold text-navy">👥 Клиенти</h1>
+        <div className="flex items-center gap-1.5 md:gap-2">
           <button
             onClick={() => setShowImport(true)}
-            className="px-4 py-2 border border-navy text-navy rounded-md hover:bg-navy hover:text-white transition text-sm font-medium"
+            className="px-2 md:px-4 py-1.5 md:py-2 border border-navy text-navy rounded-md hover:bg-navy hover:text-white transition text-xs md:text-sm font-medium"
           >
-            📥 Импорт
+            <span className="hidden sm:inline">📥 Импорт</span>
+            <span className="sm:hidden">📥</span>
           </button>
           <button
             onClick={async () => {
               try { await exportToExcel() } catch (err) { console.error('Export failed:', err) }
             }}
-            className="px-4 py-2 border border-navy text-navy rounded-md hover:bg-navy hover:text-white transition text-sm font-medium"
+            className="px-2 md:px-4 py-1.5 md:py-2 border border-navy text-navy rounded-md hover:bg-navy hover:text-white transition text-xs md:text-sm font-medium"
           >
-            📤 Експорт
+            <span className="hidden sm:inline">📤 Експорт</span>
+            <span className="sm:hidden">📤</span>
           </button>
           {canAdd && (
             <button
               onClick={handleAdd}
-              className="px-4 py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-sm font-medium"
+              className="px-2 md:px-4 py-1.5 md:py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-xs md:text-sm font-medium"
             >
-              + Нов клиент
+              <span className="hidden sm:inline">+ Нов клиент</span>
+              <span className="sm:hidden">+</span>
             </button>
           )}
         </div>
