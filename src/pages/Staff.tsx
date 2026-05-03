@@ -2,6 +2,13 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { createStaffMember, updateStaffMember, setStaffActive } from '../lib/storage'
 import { useAuth } from '../lib/auth'
+import { Users, UserCheck, UserX, Pencil, Mail, Phone, Building2, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 
 interface StaffMember {
   id: string
@@ -15,6 +22,13 @@ interface StaffMember {
 }
 
 const DEPARTMENTS = ['Счетоводство', 'ТРЗ', 'Управление', 'Друго']
+
+const DEPT_VARIANT: Record<string, 'info' | 'success' | 'warning' | 'muted'> = {
+  'Счетоводство': 'info',
+  'ТРЗ': 'success',
+  'Управление': 'warning',
+  'Друго': 'muted',
+}
 
 export function StaffPage() {
   const { user } = useAuth()
@@ -64,49 +78,74 @@ export function StaffPage() {
   const active = filtered.filter(s => s.is_active)
   const inactive = filtered.filter(s => !s.is_active)
 
-  if (loading) return <div className="p-6 text-dark/50">Зареждане...</div>
+  if (loading) return (
+    <div className="p-6 flex items-center gap-2 text-muted-foreground">
+      <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      Зареждане...
+    </div>
+  )
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-navy">👥 Персонал</h1>
-        <div className="flex items-center gap-3">
+    <div className="p-4 md:p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">Персонал</h1>
+        <div className="flex items-center gap-2">
           <select
             value={filterDept}
             onChange={e => setFilterDept(e.target.value)}
-            className="px-3 py-2 border border-light rounded-md text-sm"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="all">Всички отдели</option>
             {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
           {isAdmin && (
-            <button
-              onClick={() => { setEditing(null); setShowForm(true) }}
-              className="px-4 py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-sm font-medium"
-            >
-              + Нов служител
-            </button>
+            <Button size="sm" onClick={() => { setEditing(null); setShowForm(true) }}>
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Нов служител</span>
+            </Button>
           )}
         </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-navy">
-          <p className="text-sm text-dark/50">Общо служители</p>
-          <p className="text-2xl font-bold text-navy">{staff.length}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
-          <p className="text-sm text-dark/50">Активни</p>
-          <p className="text-2xl font-bold text-green-600">{staff.filter(s => s.is_active).length}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-gold">
-          <p className="text-sm text-dark/50">Отдели</p>
-          <p className="text-2xl font-bold text-gold">{new Set(staff.map(s => s.department).filter(Boolean)).size}</p>
-        </div>
+      <div className="grid grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Users className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Общо</p>
+              <p className="text-xl font-bold text-primary">{staff.length}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="p-2 rounded-lg bg-green-100">
+              <UserCheck className="h-4 w-4 text-green-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Активни</p>
+              <p className="text-xl font-bold text-green-600">{staff.filter(s => s.is_active).length}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="p-2 rounded-lg bg-amber-100">
+              <Building2 className="h-4 w-4 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Отдели</p>
+              <p className="text-xl font-bold text-amber-600">{new Set(staff.map(s => s.department).filter(Boolean)).size}</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Staff Grid */}
+      {/* Active staff grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {active.map(member => (
           <StaffCard key={member.id} member={member} isAdmin={isAdmin}
@@ -118,7 +157,7 @@ export function StaffPage() {
 
       {inactive.length > 0 && (
         <>
-          <h2 className="text-lg font-medium text-dark/40 mt-8 mb-4">Неактивни</h2>
+          <p className="text-sm font-medium text-muted-foreground">Неактивни ({inactive.length})</p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 opacity-60">
             {inactive.map(member => (
               <StaffCard key={member.id} member={member} isAdmin={isAdmin}
@@ -130,14 +169,12 @@ export function StaffPage() {
         </>
       )}
 
-      {/* Form Modal */}
-      {showForm && (
-        <StaffForm
-          member={editing}
-          onSave={saveStaff}
-          onClose={() => { setShowForm(false); setEditing(null) }}
-        />
-      )}
+      <StaffForm
+        open={showForm}
+        member={editing}
+        onSave={saveStaff}
+        onClose={() => { setShowForm(false); setEditing(null) }}
+      />
     </div>
   )
 }
@@ -145,42 +182,62 @@ export function StaffPage() {
 function StaffCard({ member, isAdmin, onEdit, onToggle }: {
   member: StaffMember; isAdmin: boolean; onEdit: () => void; onToggle: () => void
 }) {
-  const deptColors: Record<string, string> = {
-    'Счетоводство': 'bg-blue-100 text-blue-700',
-    'ТРЗ': 'bg-green-100 text-green-700',
-    'Управление': 'bg-purple-100 text-purple-700',
-    'Друго': 'bg-gray-100 text-gray-600',
-  }
-
   return (
-    <div className="bg-white rounded-lg shadow p-4 hover:shadow-md transition">
-      <div className="flex items-start justify-between mb-2">
-        <div>
-          <h3 className="font-semibold text-navy">{member.full_name}</h3>
-          {member.position && <p className="text-sm text-dark/60">{member.position}</p>}
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
+              {member.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+            </div>
+            <div>
+              <p className="font-semibold text-sm leading-tight">{member.full_name}</p>
+              {member.position && <p className="text-xs text-muted-foreground leading-tight mt-0.5">{member.position}</p>}
+            </div>
+          </div>
+          {member.department && (
+            <Badge variant={DEPT_VARIANT[member.department] ?? 'muted'} className="text-[10px] shrink-0">
+              {member.department}
+            </Badge>
+          )}
         </div>
-        {member.department && (
-          <span className={`text-xs px-2 py-1 rounded-full font-medium ${deptColors[member.department] || deptColors['Друго']}`}>
-            {member.department}
-          </span>
+
+        <div className="space-y-1 mb-3">
+          {member.email && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Mail className="h-3 w-3 shrink-0" />
+              <span className="truncate">{member.email}</span>
+            </div>
+          )}
+          {member.phone && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Phone className="h-3 w-3 shrink-0" />
+              <span>{member.phone}</span>
+            </div>
+          )}
+        </div>
+
+        {isAdmin && (
+          <div className="flex gap-2 pt-3 border-t border-border">
+            <Button variant="ghost" size="sm" onClick={onEdit} className="h-7 text-xs gap-1 px-2">
+              <Pencil className="h-3 w-3" /> Редактирай
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onToggle} className="h-7 text-xs gap-1 px-2 text-muted-foreground">
+              {member.is_active
+                ? <><UserX className="h-3 w-3" /> Деактивирай</>
+                : <><UserCheck className="h-3 w-3" /> Активирай</>
+              }
+            </Button>
+          </div>
         )}
-      </div>
-      {member.email && <p className="text-xs text-dark/40 mt-1">📧 {member.email}</p>}
-      {member.phone && <p className="text-xs text-dark/40">📞 {member.phone}</p>}
-      {isAdmin && (
-        <div className="flex gap-2 mt-3 pt-3 border-t border-light">
-          <button onClick={onEdit} className="text-xs text-navy hover:underline">✏️ Редактирай</button>
-          <button onClick={onToggle} className="text-xs text-dark/40 hover:text-dark">
-            {member.is_active ? '⏸ Деактивирай' : '▶️ Активирай'}
-          </button>
-        </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
-function StaffForm({ member, onSave, onClose }: {
-  member: StaffMember | null; onSave: (m: Partial<StaffMember>) => void; onClose: () => void
+function StaffForm({ open, member, onSave, onClose }: {
+  open: boolean; member: StaffMember | null
+  onSave: (m: Partial<StaffMember>) => void; onClose: () => void
 }) {
   const [name, setName] = useState(member?.full_name ?? '')
   const [position, setPosition] = useState(member?.position ?? '')
@@ -188,66 +245,78 @@ function StaffForm({ member, onSave, onClose }: {
   const [email, setEmail] = useState(member?.email ?? '')
   const [phone, setPhone] = useState(member?.phone ?? '')
 
+  useEffect(() => {
+    if (open) {
+      setName(member?.full_name ?? '')
+      setPosition(member?.position ?? '')
+      setDepartment(member?.department ?? '')
+      setEmail(member?.email ?? '')
+      setPhone(member?.phone ?? '')
+    }
+  }, [open, member])
+
+  function handleSave() {
+    if (!name.trim()) return
+    onSave({
+      full_name: name.trim(),
+      position: position.trim() || null,
+      department: department || null,
+      email: email.trim() || null,
+      phone: phone.trim() || null,
+    })
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <h2 className="text-xl font-bold text-navy mb-4">
-          {member ? 'Редактирай служител' : 'Нов служител'}
-        </h2>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-dark mb-1">Име *</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy" />
+    <Dialog open={open} onOpenChange={open => { if (!open) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{member ? 'Редактирай служител' : 'Нов служител'}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="sf-name">Пълно име *</Label>
+            <Input id="sf-name" value={name} onChange={e => setName(e.target.value)}
+              placeholder="Иван Иванов" autoFocus />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-dark mb-1">Позиция</label>
-            <input type="text" value={position} onChange={e => setPosition(e.target.value)}
-              placeholder="напр. Счетоводител, ТРЗ специалист..."
-              className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy" />
+          <div className="space-y-1.5">
+            <Label htmlFor="sf-position">Позиция</Label>
+            <Input id="sf-position" value={position} onChange={e => setPosition(e.target.value)}
+              placeholder="Счетоводител, ТРЗ специалист..." />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-dark mb-1">Отдел</label>
-            <select value={department} onChange={e => setDepartment(e.target.value)}
-              className="w-full px-3 py-2 border border-light rounded-md">
-              <option value="">— Избери —</option>
+          <div className="space-y-1.5">
+            <Label htmlFor="sf-dept">Отдел</Label>
+            <select
+              id="sf-dept"
+              value={department}
+              onChange={e => setDepartment(e.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">— Без отдел —</option>
               {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-dark mb-1">Имейл</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy" />
+            <div className="space-y-1.5">
+              <Label htmlFor="sf-email">Имейл</Label>
+              <Input id="sf-email" type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="email@example.com" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-dark mb-1">Телефон</label>
-              <input type="text" value={phone} onChange={e => setPhone(e.target.value)}
-                className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy" />
+            <div className="space-y-1.5">
+              <Label htmlFor="sf-phone">Телефон</Label>
+              <Input id="sf-phone" value={phone} onChange={e => setPhone(e.target.value)}
+                placeholder="+359..." />
             </div>
           </div>
         </div>
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={onClose} className="px-4 py-2 border border-light rounded-md text-sm hover:bg-light transition">
-            Отказ
-          </button>
-          <button
-            onClick={() => {
-              if (!name.trim()) return
-              onSave({
-                full_name: name.trim(),
-                position: position.trim() || null,
-                department: department || null,
-                email: email.trim() || null,
-                phone: phone.trim() || null,
-              })
-            }}
-            className="px-4 py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-sm font-medium"
-          >
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Отказ</Button>
+          <Button onClick={handleSave} disabled={!name.trim()}>
             {member ? 'Запази' : 'Добави'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
