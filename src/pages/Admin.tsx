@@ -3,10 +3,12 @@ import { getColumns, addColumn, deleteColumn, getDropdownOptions, addDropdownOpt
 import type { Column, ColumnType, DropdownOption, Tag } from '../lib/types'
 import { useAuth } from '../lib/auth'
 import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/alert-dialog'
 
 const PRESET_COLORS = [
   '#EF4444', '#F59E0B', '#10B981', '#3B82F6',
@@ -32,6 +34,9 @@ export function AdminPage() {
   const [tags, setTags] = useState<Tag[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState(PRESET_COLORS[0])
+  const [confirmDeleteCol, setConfirmDeleteCol] = useState<{ id: string; name: string } | null>(null)
+  const [confirmDeleteTag, setConfirmDeleteTag] = useState<{ id: string; name: string } | null>(null)
+  const [confirmClearAll, setConfirmClearAll] = useState(false)
 
   const audit = { userId: user?.id, userName: user?.full_name ?? '' }
 
@@ -65,15 +70,16 @@ export function AdminPage() {
     if (!newColName.trim()) return
     await addColumn(newColName.trim(), newColType, false, user?.id, audit)
     setNewColName('')
+    toast.success(`Колона "${newColName.trim()}" е добавена`)
     await loadColumns()
   }
 
   const handleDeleteColumn = async (id: string, name: string) => {
-    if (confirm(`Изтриване на колона "${name}"? Всички данни ще бъдат загубени.`)) {
-      await deleteColumn(id, { ...audit, columnName: name })
-      if (editingDropdown === id) setEditingDropdown(null)
-      await loadColumns()
-    }
+    await deleteColumn(id, { ...audit, columnName: name })
+    if (editingDropdown === id) setEditingDropdown(null)
+    setConfirmDeleteCol(null)
+    toast.success(`Колона "${name}" е изтрита`)
+    await loadColumns()
   }
 
   const handleAddOption = async () => {
@@ -98,14 +104,15 @@ export function AdminPage() {
     if (!newTagName.trim()) return
     await createTag(newTagName.trim(), newTagColor, audit)
     setNewTagName('')
+    toast.success(`Тагът е добавен`)
     await loadTags()
   }
 
   const handleDeleteTag = async (id: string, name: string) => {
-    if (confirm(`Изтриване на таг "${name}"?`)) {
-      await deleteTag(id, { ...audit, tagName: name })
-      await loadTags()
-    }
+    await deleteTag(id, { ...audit, tagName: name })
+    setConfirmDeleteTag(null)
+    toast.success(`Тагът "${name}" е изтрит`)
+    await loadTags()
   }
 
   if (loading) return (
@@ -161,7 +168,7 @@ export function AdminPage() {
                     </Button>
                   )}
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive/60 hover:text-destructive shrink-0"
-                    onClick={() => handleDeleteColumn(col.id, col.name)}>
+                    onClick={() => setConfirmDeleteCol({ id: col.id, name: col.name })}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -242,7 +249,7 @@ export function AdminPage() {
                   {tag.name}
                 </span>
                 <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive/60 hover:text-destructive"
-                  onClick={() => handleDeleteTag(tag.id, tag.name)}>
+                  onClick={() => setConfirmDeleteTag({ id: tag.id, name: tag.name })}>
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -262,17 +269,41 @@ export function AdminPage() {
           <Button
             variant="destructive"
             size="sm"
-            onClick={async () => {
-              if (confirm('Изчистване на ВСИЧКИ данни? Тази операция е необратима.')) {
-                await clearAll()
-                window.location.reload()
-              }
-            }}
+            onClick={() => setConfirmClearAll(true)}
           >
             Нулиране на данните
           </Button>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!confirmDeleteCol}
+        title={`Изтриване на колона "${confirmDeleteCol?.name}"?`}
+        description="Всички данни в тази колона ще бъдат загубени. Операцията е необратима."
+        confirmLabel="Изтрий"
+        destructive
+        onConfirm={() => confirmDeleteCol && handleDeleteColumn(confirmDeleteCol.id, confirmDeleteCol.name)}
+        onCancel={() => setConfirmDeleteCol(null)}
+      />
+
+      <ConfirmDialog
+        open={!!confirmDeleteTag}
+        title={`Изтриване на таг "${confirmDeleteTag?.name}"?`}
+        confirmLabel="Изтрий"
+        destructive
+        onConfirm={() => confirmDeleteTag && handleDeleteTag(confirmDeleteTag.id, confirmDeleteTag.name)}
+        onCancel={() => setConfirmDeleteTag(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmClearAll}
+        title="Нулиране на ВСИЧКИ данни?"
+        description="Изтрива всички клиенти, колони и стойности. Тази операция е необратима."
+        confirmLabel="Нулирай"
+        destructive
+        onConfirm={async () => { await clearAll(); window.location.reload() }}
+        onCancel={() => setConfirmClearAll(false)}
+      />
     </div>
   )
 }

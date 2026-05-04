@@ -6,12 +6,14 @@ import { EXPENSE_CATEGORIES } from '../lib/types'
 import type { StaffMember } from '../lib/storage'
 import type { ExpenseCategory } from '../lib/types'
 import { Plus, Pencil, Trash2, TrendingDown, Filter } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
+import { ConfirmDialog } from '@/components/ui/alert-dialog'
 
 function formatCurrency(amount: number, currency = 'EUR') {
   return new Intl.NumberFormat('bg-BG', { style: 'currency', currency }).format(amount)
@@ -36,6 +38,7 @@ export function ExpensesPage() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Expense | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null)
   const [filterStaff, setFilterStaff] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
   const [sortField, setSortField] = useState<'amount' | 'category'>('amount')
@@ -93,23 +96,26 @@ export function ExpensesPage() {
     try {
       if (editing) {
         await updateExpense(editing.id, data, { ...audit, oldDescription: `${editing.category}: ${editing.amount} ${editing.currency}` })
+        toast.success('Разходът е обновен')
       } else {
         await addExpense(data, audit)
+        toast.success('Разходът е добавен')
       }
       setShowForm(false)
       setEditing(null)
       await loadData()
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Грешка при запис.')
+      toast.error(err instanceof Error ? err.message : 'Грешка при запис.')
     }
   }
 
   async function handleDelete(expense: Expense) {
-    if (!window.confirm(`Изтриване на "${expense.description || expense.category}"?`)) return
     await deleteExpense(expense.id, {
       userId: user?.id, userName: user?.full_name ?? '',
       description: `${expense.category}: ${expense.amount} ${expense.currency}`,
     })
+    setConfirmDelete(null)
+    toast.success('Разходът е изтрит')
     await loadData()
   }
 
@@ -281,7 +287,7 @@ export function ExpensesPage() {
                       </Button>
                       {isAdmin && (
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => handleDelete(expense)}>
+                          onClick={() => setConfirmDelete(expense)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -301,6 +307,16 @@ export function ExpensesPage() {
         userId={user?.id}
         onSave={handleSave}
         onClose={() => { setShowForm(false); setEditing(null) }}
+      />
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={`Изтриване на "${confirmDelete?.description || confirmDelete?.category}"?`}
+        description="Тази операция е необратима."
+        confirmLabel="Изтрий"
+        destructive
+        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
       />
     </div>
   )
@@ -330,6 +346,10 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
     }
   }, [open, expense])
 
+  useEffect(() => {
+    if (category !== 'Заплати') setStaffId('')
+  }, [category])
+
   function handleSubmit() {
     const amt = parseFloat(amount)
     if (!category || isNaN(amt) || amt <= 0) return
@@ -339,7 +359,7 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
       description: description.trim() || null,
       amount: amt,
       currency,
-      date: expense?.date ?? today,
+      date: expense?.date ?? new Date().toISOString().split('T')[0],
       staff_id: staffId || null,
       recurring: true,
       recurring_period: 'monthly',
@@ -381,13 +401,15 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
               </select>
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>Служител</Label>
-            <select value={staffId} onChange={e => setStaffId(e.target.value)} className={selectClass}>
-              <option value="">— Без служител —</option>
-              {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
-            </select>
-          </div>
+          {category === 'Заплати' && (
+            <div className="space-y-1.5">
+              <Label>Служител</Label>
+              <select value={staffId} onChange={e => setStaffId(e.target.value)} className={selectClass}>
+                <option value="">— Без служител —</option>
+                {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
         <DialogFooter>

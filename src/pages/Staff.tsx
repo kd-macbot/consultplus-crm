@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { createStaffMember, updateStaffMember, setStaffActive } from '../lib/storage'
 import { useAuth } from '../lib/auth'
 import { Users, UserCheck, UserX, Pencil, Mail, Phone, Building2, Plus } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -56,8 +57,10 @@ export function StaffPage() {
     const audit = { userId: user?.id, userName: user?.full_name ?? '' }
     if (editing) {
       await updateStaffMember(editing.id, member, { ...audit, staffName: editing.full_name })
+      toast.success(`${editing.full_name} е обновен`)
     } else {
       await createStaffMember(member, audit)
+      toast.success('Служителят е добавен')
     }
     setShowForm(false)
     setEditing(null)

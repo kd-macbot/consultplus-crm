@@ -58,8 +58,9 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
       const patch: Partial<CellValue> = {}
       let newDisplay = value
       if (column.type === 'number') {
-        patch.value_number = value ? Number(value) : null
-        newDisplay = value ? Number(value).toString() : ''
+        const num = value !== '' ? parseFloat(value) : NaN
+        patch.value_number = !isNaN(num) ? num : null
+        newDisplay = !isNaN(num) ? num.toString() : ''
       } else if (column.type === 'dropdown') {
         if (isStaffLinked) {
           patch.value_text = value || null
