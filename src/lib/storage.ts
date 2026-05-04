@@ -180,6 +180,14 @@ export async function updateColumn(id: string, updates: Partial<Column>) {
   if (error) throw error
 }
 
+export async function updateColumnPositions(orderedIds: string[]): Promise<void> {
+  await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase.from('crm_columns').update({ position: index }).eq('id', id)
+    )
+  )
+}
+
 export async function deleteColumn(
   id: string,
   audit?: { userId?: string; userName?: string; columnName?: string }
