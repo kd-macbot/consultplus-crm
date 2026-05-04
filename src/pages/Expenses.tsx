@@ -346,6 +346,10 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
     }
   }, [open, expense])
 
+  useEffect(() => {
+    if (category !== 'Заплати') setStaffId('')
+  }, [category])
+
   function handleSubmit() {
     const amt = parseFloat(amount)
     if (!category || isNaN(amt) || amt <= 0) return
@@ -396,13 +400,15 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
               </select>
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>Служител</Label>
-            <select value={staffId} onChange={e => setStaffId(e.target.value)} className={selectClass}>
-              <option value="">— Без служител —</option>
-              {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
-            </select>
-          </div>
+          {category === 'Заплати' && (
+            <div className="space-y-1.5">
+              <Label>Служител</Label>
+              <select value={staffId} onChange={e => setStaffId(e.target.value)} className={selectClass}>
+                <option value="">— Без служител —</option>
+                {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
