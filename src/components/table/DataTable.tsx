@@ -26,21 +26,18 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical } from 'lucide-react'
+import { GripVertical, SlidersHorizontal, X } from 'lucide-react'
 import type { Column, CellValue, DropdownOption, Tag, ClientTag, Client } from '../../lib/types'
-import { getColumns, getClients, getCellValues, getDropdownOptions, softDeleteClient, getTags, getClientTags, updateColumnPositions } from '../../lib/storage'
+import {
+  getColumns, getClients, getCellValues, getDropdownOptions,
+  softDeleteClient, getTags, getClientTags, updateColumnPositions,
+  setCellValue, getStaff, type StaffMember,
+} from '../../lib/storage'
 import { useAuth } from '../../lib/auth'
 import { toast } from 'sonner'
 import { CellEditor } from './CellEditor'
 import { TagEditor } from '../tags/TagEditor'
 import { ConfirmDialog } from '@/components/ui/alert-dialog'
-
-const DROPDOWN_STATUS_COLORS: Record<string, string> = {
-  'Активна': '#16a34a',
-  'Нулево': '#2563eb',
-  'БЕЗ ДДС': '#ca8a04',
-  'без дейност': '#6b7280',
-}
 
 interface ClientRow {
   clientId: string
@@ -83,9 +80,24 @@ function resolveClientName(clientId: string, columns: Column[], allCells: CellVa
   return ''
 }
 
+function Highlight({ text, query }: { text: string; query: string }) {
+  if (!query.trim() || !text) return <>{text}</>
+  const q = query.trim()
+  const idx = text.toLowerCase().indexOf(q.toLowerCase())
+  if (idx === -1) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-yellow-200 text-yellow-900 rounded-sm px-0.5 not-italic">
+        {text.slice(idx, idx + q.length)}
+      </mark>
+      {text.slice(idx + q.length)}
+    </>
+  )
+}
+
 function DraggableHeader({ header }: { header: Header<ClientRow, unknown> }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: header.id })
-
   return (
     <th
       ref={setNodeRef}
@@ -130,6 +142,17 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [tagFilter, setTagFilter] = useState<string[]>([])
   const [columnOrder, setColumnOrder] = useState<string[]>([])
 
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('crm-hidden-cols') ?? '[]')) }
+    catch { return new Set() }
+  })
+  const [showColPanel, setShowColPanel] = useState(false)
+  const colPanelRef = useRef<HTMLDivElement>(null)
+
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [staffList, setStaffList] = useState<StaffMember[]>([])
+
   const [columns, setColumnsState] = useState<Column[]>([])
   const [allCells, setAllCells] = useState<CellValue[]>([])
   const [allDropdowns, setAllDropdowns] = useState<DropdownOption[]>([])
@@ -153,6 +176,17 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
   }, [loading])
 
+  // Close column panel on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (colPanelRef.current && !colPanelRef.current.contains(e.target as Node)) {
+        setShowColPanel(false)
+      }
+    }
+    if (showColPanel) document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showColPanel])
+
   async function loadData() {
     if (scrollRef.current) {
       savedScrollPos.current = {
@@ -162,8 +196,9 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
     setLoading(true)
     try {
-      const [cols, clients, cells, dropdowns, tags, clientTags] = await Promise.all([
-        getColumns(), getClients(), getCellValues(), getDropdownOptions(), getTags(), getClientTags()
+      const [cols, clients, cells, dropdowns, tags, clientTags, staff] = await Promise.all([
+        getColumns(), getClients(), getCellValues(), getDropdownOptions(), getTags(), getClientTags(),
+        getStaff().catch(() => [] as StaffMember[]),
       ])
       const filtered = cols.filter((c: Column) => c.name !== 'Хонорар' && c.staff_department !== '__sub__')
       setColumnsState(filtered)
@@ -173,6 +208,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       setAllDropdowns(dropdowns)
       setAllTags(tags)
       setAllClientTags(clientTags)
+      setStaffList(staff)
     } catch (err) {
       console.error('Failed to load data:', err)
     } finally {
@@ -180,15 +216,21 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
   }
 
+  function toggleColVisibility(colId: string) {
+    const next = new Set(hiddenCols)
+    if (next.has(colId)) next.delete(colId)
+    else next.add(colId)
+    setHiddenCols(next)
+    localStorage.setItem('crm-hidden-cols', JSON.stringify([...next]))
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
-
     const oldIndex = columnOrder.indexOf(active.id as string)
     const newIndex = columnOrder.indexOf(over.id as string)
     const newOrder = arrayMove(columnOrder, oldIndex, newIndex)
     setColumnOrder(newOrder)
-
     try {
       await updateColumnPositions(newOrder)
     } catch {
@@ -197,18 +239,67 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
   }
 
+  const statusCol = useMemo(() => columns.find(c => c.name === 'Статус'), [columns])
+  const accountantCol = useMemo(() => columns.find(c => c.name === 'Счетоводител'), [columns])
+  const statusOptions = useMemo(
+    () => statusCol ? allDropdowns.filter(d => d.column_id === statusCol.id) : [],
+    [statusCol, allDropdowns]
+  )
+
+  async function handleBulkStatus(optionId: string) {
+    if (!statusCol || !optionId || selected.size === 0) return
+    const count = selected.size
+    await Promise.all([...selected].map(clientId =>
+      setCellValue(clientId, statusCol.id, { value_dropdown: optionId }, {
+        userId: user?.id, userName: user?.full_name ?? '', columnName: 'Статус',
+      })
+    ))
+    setSelected(new Set())
+    toast.success(`Статусът е обновен за ${count} клиента`)
+    onRefresh()
+  }
+
+  async function handleBulkAccountant(staffName: string) {
+    if (!accountantCol || !staffName || selected.size === 0) return
+    const count = selected.size
+    await Promise.all([...selected].map(clientId =>
+      setCellValue(clientId, accountantCol.id, { value_text: staffName, value_dropdown: null }, {
+        userId: user?.id, userName: user?.full_name ?? '', columnName: 'Счетоводител',
+      })
+    ))
+    setSelected(new Set())
+    toast.success(`Счетоводителят е обновен за ${count} клиента`)
+    onRefresh()
+  }
+
+  async function handleBulkDelete() {
+    const count = selected.size
+    await Promise.all([...selected].map(clientId => {
+      const row = data.find(r => r.clientId === clientId)
+      return softDeleteClient(clientId, {
+        userId: user?.id, userName: user?.full_name ?? '', clientName: row?.clientName ?? '',
+      })
+    }))
+    setSelected(new Set())
+    setConfirmBulkDelete(false)
+    toast.success(`${count} клиента са изтрити`)
+    onRefresh()
+  }
+
   const clients = useMemo(() => {
-    if (user?.role === 'employee') {
-      return allClients.filter(c => c.assigned_to === user.id)
-    }
+    if (user?.role === 'employee') return allClients.filter(c => c.assigned_to === user.id)
     return allClients
   }, [allClients, user])
 
-  const orderedColumns = useMemo(() => {
-    return columnOrder
-      .map(id => columns.find(c => c.id === id))
-      .filter((c): c is Column => !!c)
-  }, [columnOrder, columns])
+  const orderedColumns = useMemo(
+    () => columnOrder.map(id => columns.find(c => c.id === id)).filter((c): c is Column => !!c),
+    [columnOrder, columns]
+  )
+
+  const visibleColumns = useMemo(
+    () => orderedColumns.filter(c => !hiddenCols.has(c.id)),
+    [orderedColumns, hiddenCols]
+  )
 
   const data: ClientRow[] = useMemo(() => {
     return clients.map(client => {
@@ -245,7 +336,44 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         enableSorting: false,
         enableColumnFilter: false,
       },
-      ...orderedColumns.map((col): ColumnDef<ClientRow> => ({
+      // Checkbox column for bulk actions (admin/manager only)
+      ...(canEdit ? [{
+        id: '_select',
+        header: ({ table }: { table: ReturnType<typeof useReactTable<ClientRow>> }) => {
+          const all = table.getFilteredRowModel().rows
+          const allChecked = all.length > 0 && all.every(r => selected.has(r.original.clientId))
+          const someChecked = all.some(r => selected.has(r.original.clientId))
+          return (
+            <input
+              type="checkbox"
+              checked={allChecked}
+              ref={(el) => { if (el) el.indeterminate = someChecked && !allChecked }}
+              onChange={e => {
+                if (e.target.checked) setSelected(new Set(all.map(r => r.original.clientId)))
+                else setSelected(new Set())
+              }}
+              className="w-3.5 h-3.5 cursor-pointer"
+            />
+          )
+        },
+        cell: (info: { row: { original: ClientRow } }) => (
+          <input
+            type="checkbox"
+            checked={selected.has(info.row.original.clientId)}
+            onChange={e => {
+              const next = new Set(selected)
+              if (e.target.checked) next.add(info.row.original.clientId)
+              else next.delete(info.row.original.clientId)
+              setSelected(next)
+            }}
+            className="w-3.5 h-3.5 cursor-pointer"
+          />
+        ),
+        size: 40,
+        enableSorting: false,
+        enableColumnFilter: false,
+      } as ColumnDef<ClientRow>] : []),
+      ...visibleColumns.map((col): ColumnDef<ClientRow> => ({
         id: col.id,
         accessorKey: col.id,
         header: col.name,
@@ -272,41 +400,16 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           }
 
           const val = info.getValue() as string
-
-          if (col.type === 'dropdown' && !col.staff_department) {
-            const cellData = allCells.find(cv => cv.client_id === clientId && cv.column_id === col.id)
-            const opt = allDropdowns.find(d => d.id === cellData?.value_dropdown)
-            const color = opt?.color || DROPDOWN_STATUS_COLORS[val]
-            return (
-              <div
-                className={canEdit ? 'cursor-pointer' : ''}
-                onClick={() => canEdit && setEditCell({ clientId, columnId: col.id })}
-              >
-                {val ? (
-                  color ? (
-                    <span
-                      className="inline-block px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-                      style={{ backgroundColor: color + '22', color }}
-                    >
-                      {val}
-                    </span>
-                  ) : (
-                    <span className="text-dark/70 text-sm">{val}</span>
-                  )
-                ) : (
-                  <span className="text-dark/20">—</span>
-                )}
-              </div>
-            )
-          }
-
           return (
             <div
               className={`truncate ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
               onClick={() => canEdit && setEditCell({ clientId, columnId: col.id })}
               title={val}
             >
-              {val || <span className="text-dark/20">—</span>}
+              {val
+                ? <Highlight text={val} query={globalFilter} />
+                : <span className="text-dark/20">—</span>
+              }
             </div>
           )
         },
@@ -358,11 +461,17 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
 
     return cols
-  }, [orderedColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user])
+  }, [visibleColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user, selected, globalFilter])
 
   const fullColumnOrder = useMemo(
-    () => ['_index', ...columnOrder, '_tags', ...(canDelete ? ['_actions'] : [])],
-    [columnOrder, canDelete]
+    () => [
+      '_index',
+      ...(canEdit ? ['_select'] : []),
+      ...visibleColumns.map(c => c.id),
+      '_tags',
+      ...(canDelete ? ['_actions'] : []),
+    ],
+    [visibleColumns, canEdit, canDelete]
   )
 
   const table = useReactTable({
@@ -386,15 +495,17 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Search + Tag Filter */}
-      <div className="p-3 md:p-4 border-b border-light flex items-center gap-3 flex-wrap">
+      {/* Search + Tag Filter + Column visibility */}
+      <div className="p-3 md:p-4 border-b border-light flex items-center gap-3 flex-wrap bg-card">
         <input
           type="text"
           value={globalFilter}
           onChange={e => setGlobalFilter(e.target.value)}
           placeholder="🔍 Търсене..."
-          className="px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy w-full sm:w-64"
+          className="px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy w-full sm:w-64 bg-background text-foreground"
         />
+
+        {/* Tag filter */}
         {allTags.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs text-dark/40">Тагове:</span>
@@ -403,14 +514,8 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
               return (
                 <button
                   key={tag.id}
-                  onClick={() => {
-                    setTagFilter(prev =>
-                      active ? prev.filter(id => id !== tag.id) : [...prev, tag.id]
-                    )
-                  }}
-                  className={`px-2 py-0.5 rounded-full text-xs font-medium transition ${
-                    active ? 'text-white ring-2 ring-navy' : 'opacity-50 hover:opacity-80'
-                  }`}
+                  onClick={() => setTagFilter(prev => active ? prev.filter(id => id !== tag.id) : [...prev, tag.id])}
+                  className={`px-2 py-0.5 rounded-full text-xs font-medium transition ${active ? 'text-white ring-2 ring-navy' : 'opacity-50 hover:opacity-80'}`}
                   style={{
                     backgroundColor: active ? tag.color : 'transparent',
                     color: active ? 'white' : tag.color,
@@ -426,21 +531,118 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
             )}
           </div>
         )}
-        <span className="text-sm text-dark/50 ml-auto">
+
+        {/* Column visibility toggle */}
+        <div className="relative ml-auto" ref={colPanelRef}>
+          <button
+            onClick={() => setShowColPanel(v => !v)}
+            title="Скрий/покажи колони"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition ${
+              showColPanel || hiddenCols.size > 0
+                ? 'border-navy bg-navy text-white'
+                : 'border-light text-dark/50 hover:border-navy hover:text-navy bg-card'
+            }`}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Колони</span>
+            {hiddenCols.size > 0 && (
+              <span className="bg-white/30 rounded-full px-1 text-[10px] font-bold">
+                -{hiddenCols.size}
+              </span>
+            )}
+          </button>
+
+          {showColPanel && (
+            <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl p-2 min-w-[180px]">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider px-2 pb-1 font-semibold">
+                Видими колони
+              </p>
+              {orderedColumns.map(col => (
+                <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={!hiddenCols.has(col.id)}
+                    onChange={() => toggleColVisibility(col.id)}
+                    className="w-3.5 h-3.5"
+                  />
+                  {col.name}
+                </label>
+              ))}
+              {hiddenCols.size > 0 && (
+                <button
+                  onClick={() => { setHiddenCols(new Set()); localStorage.removeItem('crm-hidden-cols') }}
+                  className="mt-1 w-full text-xs text-center text-muted-foreground hover:text-foreground py-1"
+                >
+                  Покажи всички
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <span className="text-sm text-dark/50">
           {table.getFilteredRowModel().rows.length} от {filteredByTags.length} клиента
         </span>
       </div>
+
+      {/* Bulk actions bar */}
+      {selected.size > 0 && (
+        <div className="bg-navy text-white px-4 py-2 flex items-center gap-3 flex-wrap text-sm border-b border-navy-light">
+          <span className="font-medium">{selected.size} избрани</span>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="text-white/50 hover:text-white"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          <div className="w-px h-4 bg-white/20" />
+
+          {statusCol && statusOptions.length > 0 && (
+            <select
+              defaultValue=""
+              onChange={e => { if (e.target.value) { handleBulkStatus(e.target.value); e.target.value = '' } }}
+              className="h-7 px-2 rounded text-sm text-dark bg-white/90 border-0 focus:outline-none"
+            >
+              <option value="" disabled>Промени статус...</option>
+              {statusOptions.map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.value}</option>
+              ))}
+            </select>
+          )}
+
+          {accountantCol && staffList.length > 0 && (
+            <select
+              defaultValue=""
+              onChange={e => { if (e.target.value) { handleBulkAccountant(e.target.value); e.target.value = '' } }}
+              className="h-7 px-2 rounded text-sm text-dark bg-white/90 border-0 focus:outline-none"
+            >
+              <option value="" disabled>Присвои счетоводител...</option>
+              {staffList.map(s => (
+                <option key={s.id} value={s.full_name}>{s.full_name}</option>
+              ))}
+            </select>
+          )}
+
+          {canDelete && (
+            <button
+              onClick={() => setConfirmBulkDelete(true)}
+              className="ml-auto text-red-300 hover:text-red-100 text-xs"
+            >
+              Изтрий избраните
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <div ref={scrollRef} className="flex-1 overflow-auto">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <table className="w-full border-collapse min-w-[1200px]">
             <thead className="bg-navy text-white sticky top-0 z-10">
-              {/* Main header row */}
               <tr>
-                <SortableContext items={columnOrder} strategy={horizontalListSortingStrategy}>
+                <SortableContext items={visibleColumns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
                   {table.getHeaderGroups()[0]?.headers.map(header => {
-                    if (columnOrder.includes(header.id)) {
+                    if (visibleColumns.some(c => c.id === header.id)) {
                       return <DraggableHeader key={header.id} header={header} />
                     }
                     return (
@@ -459,20 +661,16 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                   })}
                 </SortableContext>
               </tr>
-
               {/* Filter row */}
               <tr className="bg-navy-light">
                 {table.getHeaderGroups()[0]?.headers.map(header => {
                   const col = columns.find(c => c.id === header.id)
                   const isDropdown = col?.type === 'dropdown'
                   const dropdownVals = isDropdown
-                    ? [...new Set(
-                        filteredByTags.map(row => row[header.id] as string).filter(Boolean)
-                      )].sort()
+                    ? [...new Set(filteredByTags.map(row => row[header.id] as string).filter(Boolean))].sort()
                     : []
-
                   return (
-                    <th key={header.id + '_filter'} className="px-2 py-1">
+                    <th key={header.id + '_f'} className="px-2 py-1">
                       {header.column.getCanFilter() ? (
                         isDropdown ? (
                           <select
@@ -501,7 +699,14 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
             </thead>
             <tbody>
               {table.getRowModel().rows.map((row, i) => (
-                <tr key={row.id} className={`border-b border-light/50 ${i % 2 === 0 ? 'bg-white' : 'bg-light/30'} hover:bg-gold/5 transition-colors`}>
+                <tr
+                  key={row.id}
+                  className={`border-b border-light/50 transition-colors hover:bg-gold/5 ${
+                    selected.has(row.original.clientId)
+                      ? 'bg-blue-50'
+                      : i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
+                  }`}
+                >
                   {row.getVisibleCells().map(cell => (
                     <td key={cell.id} className="px-3 py-1.5 text-sm" style={{ maxWidth: cell.column.getSize() }}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -523,9 +728,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         onConfirm={async () => {
           if (!confirmDeleteRow) return
           await softDeleteClient(confirmDeleteRow.clientId, {
-            userId: user?.id,
-            userName: user?.full_name ?? '',
-            clientName: confirmDeleteRow.clientName,
+            userId: user?.id, userName: user?.full_name ?? '', clientName: confirmDeleteRow.clientName,
           })
           setConfirmDeleteRow(null)
           toast.success(`Клиент "${confirmDeleteRow.clientName}" е изтрит`)
@@ -534,23 +737,33 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         onCancel={() => setConfirmDeleteRow(null)}
       />
 
+      <ConfirmDialog
+        open={confirmBulkDelete}
+        title={`Изтриване на ${selected.size} клиента?`}
+        description="Клиентите ще бъдат скрити от системата."
+        confirmLabel="Изтрий всички"
+        destructive
+        onConfirm={handleBulkDelete}
+        onCancel={() => setConfirmBulkDelete(false)}
+      />
+
       {/* Pagination */}
-      <div className="p-2 md:p-3 border-t border-light flex flex-wrap items-center justify-between gap-2 bg-white text-sm">
+      <div className="p-2 md:p-3 border-t border-light flex flex-wrap items-center justify-between gap-2 bg-card text-sm">
         <div className="flex items-center gap-2">
-          <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-2 md:px-3 py-1 rounded border border-light disabled:opacity-30 hover:bg-light transition text-xs md:text-sm">
+          <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-2 md:px-3 py-1 rounded border border-light disabled:opacity-30 hover:bg-muted transition text-xs md:text-sm text-foreground">
             ←
           </button>
-          <span className="text-dark/60 text-xs md:text-sm">
+          <span className="text-muted-foreground text-xs md:text-sm">
             {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
           </span>
-          <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-2 md:px-3 py-1 rounded border border-light disabled:opacity-30 hover:bg-light transition text-xs md:text-sm">
+          <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-2 md:px-3 py-1 rounded border border-light disabled:opacity-30 hover:bg-muted transition text-xs md:text-sm text-foreground">
             →
           </button>
         </div>
         <select
           value={table.getState().pagination.pageSize}
           onChange={e => table.setPageSize(Number(e.target.value))}
-          className="px-2 py-1 border border-light rounded text-xs md:text-sm"
+          className="px-2 py-1 border border-light rounded text-xs md:text-sm bg-background text-foreground"
         >
           {[25, 50, 100, 200].map(size => (
             <option key={size} value={size}>{size} реда</option>

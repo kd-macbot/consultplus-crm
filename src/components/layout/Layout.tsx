@@ -8,6 +8,7 @@ import {
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { ThemeToggle } from '@/components/ui/theme-toggle'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
@@ -131,6 +132,7 @@ export function Layout() {
               <p className="text-[11px] text-white/40 leading-tight">{user ? roleLabel[user.role] : ''}</p>
             </div>
           </div>
+          <ThemeToggle />
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs text-white/40 hover:text-white hover:bg-white/8 transition-all mt-1"
