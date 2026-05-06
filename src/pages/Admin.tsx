@@ -194,6 +194,10 @@ export function AdminPage() {
     </div>
   )
 
+  const isAdmin = user?.role === 'admin'
+  // Roles a user of the current role is allowed to assign
+  const assignableRoles: Role[] = isAdmin ? ['admin', 'manager', 'employee'] : ['employee']
+
   const initials = (name: string) =>
     name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
 
@@ -222,7 +226,7 @@ export function AdminPage() {
                 <Input placeholder="Парола (временна)" value={newPassword} onChange={e => setNewPassword(e.target.value)} type="password" />
                 <Input placeholder="Пълно име" value={newName} onChange={e => setNewName(e.target.value)} />
                 <select value={newRole} onChange={e => setNewRole(e.target.value as Role)} className={selectClass}>
-                  {(Object.keys(ROLE_LABELS) as Role[]).map(r => (
+                  {assignableRoles.map(r => (
                     <option key={r} value={r}>{ROLE_LABELS[r]}</option>
                   ))}
                 </select>
@@ -249,7 +253,7 @@ export function AdminPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Пълно име" />
                       <select value={editRole} onChange={e => setEditRole(e.target.value as Role)} className={selectClass}>
-                        {(Object.keys(ROLE_LABELS) as Role[]).map(r => (
+                        {assignableRoles.map(r => (
                           <option key={r} value={r}>{ROLE_LABELS[r]}</option>
                         ))}
                       </select>
@@ -389,8 +393,8 @@ export function AdminPage() {
         </CardContent>
       </Card>
 
-      {/* Tag Management */}
-      <Card>
+      {/* Tag Management — admin only */}
+      {isAdmin && <Card>
         <CardHeader className="px-5 pt-5 pb-3">
           <CardTitle className="text-base">Тагове</CardTitle>
         </CardHeader>
@@ -435,10 +439,10 @@ export function AdminPage() {
             {tags.length === 0 && <p className="text-sm text-muted-foreground">Няма тагове</p>}
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
-      {/* Data reset */}
-      <Card className="border-destructive/20">
+      {/* Data reset — admin only */}
+      {isAdmin && <Card className="border-destructive/20">
         <CardHeader className="px-5 pt-5 pb-3">
           <CardTitle className="text-base text-destructive">Нулиране на данните</CardTitle>
         </CardHeader>
@@ -452,7 +456,7 @@ export function AdminPage() {
             Нулиране на данните
           </Button>
         </CardContent>
-      </Card>
+      </Card>}
 
       <ConfirmDialog
         open={!!confirmDeleteCol}

@@ -13,11 +13,11 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 const NAV_ITEMS = [
   { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
   { to: '/clients', label: 'Клиенти', icon: Users, roles: ['admin', 'manager', 'employee'] },
-  { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin', 'manager'] },
-  { to: '/expenses', label: 'Разходи', icon: Wallet, roles: ['admin', 'manager'] },
-  { to: '/subscriptions', label: 'Абонаменти', icon: CreditCard, roles: ['admin', 'manager'] },
-  { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin', 'manager'] },
-  { to: '/admin', label: 'Настройки', icon: Settings, roles: ['admin'] },
+  { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },
+  { to: '/expenses', label: 'Разходи', icon: Wallet, roles: ['admin'] },
+  { to: '/subscriptions', label: 'Абонаменти', icon: CreditCard, roles: ['admin'] },
+  { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin'] },
+  { to: '/admin', label: 'Настройки', icon: Settings, roles: ['admin', 'manager'] },
 ]
 
 const roleLabel: Record<string, string> = {

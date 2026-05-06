@@ -324,7 +324,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   }, [data, tagFilter])
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager'
-  const canDelete = user?.role === 'admin'
+  const canDelete = user?.role === 'admin' || user?.role === 'manager'
 
   const tableColumns: ColumnDef<ClientRow>[] = useMemo(() => {
     const cols: ColumnDef<ClientRow>[] = [

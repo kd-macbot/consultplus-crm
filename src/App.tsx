@@ -30,18 +30,21 @@ export default function App() {
             >
               <Route path="/" element={<Dashboard />} />
               <Route path="/clients" element={<ClientsPage />} />
-              <Route path="/staff" element={<StaffPage />} />
-              <Route path="/audit" element={<AuditLogPage />} />
-              <Route path="/expenses" element={<ExpensesPage />} />
-              <Route path="/subscriptions" element={<SubscriptionsPage />} />
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute allowedRoles={['admin']}>
-                    <AdminPage />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/staff" element={
+                <ProtectedRoute allowedRoles={['admin']}><StaffPage /></ProtectedRoute>
+              } />
+              <Route path="/audit" element={
+                <ProtectedRoute allowedRoles={['admin']}><AuditLogPage /></ProtectedRoute>
+              } />
+              <Route path="/expenses" element={
+                <ProtectedRoute allowedRoles={['admin']}><ExpensesPage /></ProtectedRoute>
+              } />
+              <Route path="/subscriptions" element={
+                <ProtectedRoute allowedRoles={['admin']}><SubscriptionsPage /></ProtectedRoute>
+              } />
+              <Route path="/admin" element={
+                <ProtectedRoute allowedRoles={['admin', 'manager']}><AdminPage /></ProtectedRoute>
+              } />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
