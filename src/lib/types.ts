@@ -97,6 +97,28 @@ export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   'Заплати', 'Наем', 'Софтуер', 'Реклама', 'Консумативи', 'Комунални', 'Транспорт', 'Обучения', 'Други'
 ]
 
+export interface Contact {
+  id: string
+  client_id: string
+  owner_name: string | null
+  owner_email: string | null
+  owner_phone: string | null
+  manager_name: string | null
+  manager_email: string | null
+  company_email: string | null
+  eik: string | null
+  vat_number: string | null
+  address: string | null
+  website: string | null
+  notes: string | null
+  created_at: string
+  created_by: string | null
+}
+
+export interface ContactWithClient extends Contact {
+  client_name: string
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory

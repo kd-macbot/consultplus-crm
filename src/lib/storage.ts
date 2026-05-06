@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Profile, Role } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role } from './types'
 
 // ==================== AUDIT LOG ====================
 
@@ -540,6 +540,101 @@ export async function deleteExpense(
       old_value: audit.description,
     })
   }
+}
+
+// ==================== CONTACTS ====================
+
+export async function getClientNames(): Promise<{ id: string; name: string }[]> {
+  const { data: clients, error } = await supabase
+    .from('crm_clients')
+    .select('id')
+    .eq('deleted', false)
+    .order('created_at')
+  if (error) throw error
+  const clientIds = (clients ?? []).map((c: any) => c.id)
+  if (clientIds.length === 0) return []
+
+  const { data: cols } = await supabase
+    .from('crm_columns')
+    .select('id')
+    .eq('type', 'text')
+    .order('position')
+    .limit(1)
+  const nameColId = cols?.[0]?.id
+  if (!nameColId) return clientIds.map((id: string) => ({ id, name: '—' }))
+
+  const { data: cells } = await supabase
+    .from('crm_cell_values')
+    .select('client_id, value_text')
+    .eq('column_id', nameColId)
+    .in('client_id', clientIds)
+  const nameMap: Record<string, string> = {}
+  cells?.forEach((c: any) => { nameMap[c.client_id] = c.value_text ?? '' })
+  return clientIds.map((id: string) => ({ id, name: nameMap[id] || '—' }))
+}
+
+export async function getContactsWithClients(): Promise<ContactWithClient[]> {
+  // Join contacts with clients to get the client name from cell values (name column)
+  const { data, error } = await supabase
+    .from('crm_contacts')
+    .select('*, crm_clients(id, created_at)')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+
+  // Get client names from cell values for the 'Наименование' / first text column
+  const clientIds = (data ?? []).map((r: any) => r.client_id)
+  if (clientIds.length === 0) return []
+
+  // Fetch all columns to find the name column
+  const { data: cols } = await supabase
+    .from('crm_columns')
+    .select('id, name, type')
+    .eq('type', 'text')
+    .order('position')
+
+  const nameColId = cols?.[0]?.id
+
+  let nameMap: Record<string, string> = {}
+  if (nameColId) {
+    const { data: cells } = await supabase
+      .from('crm_cell_values')
+      .select('client_id, value_text')
+      .eq('column_id', nameColId)
+      .in('client_id', clientIds)
+    cells?.forEach((c: any) => { nameMap[c.client_id] = c.value_text ?? '' })
+  }
+
+  return (data ?? []).map((r: any) => ({
+    ...r,
+    client_name: nameMap[r.client_id] ?? r.client_id,
+  })) as ContactWithClient[]
+}
+
+export async function getContactByClientId(clientId: string): Promise<Contact | null> {
+  const { data, error } = await supabase
+    .from('crm_contacts')
+    .select('*')
+    .eq('client_id', clientId)
+    .maybeSingle()
+  if (error) throw error
+  return data as Contact | null
+}
+
+export async function upsertContact(
+  contact: Omit<Contact, 'id' | 'created_at'> & { id?: string }
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_contacts')
+    .upsert(contact, { onConflict: 'client_id' })
+  if (error) throw error
+}
+
+export async function deleteContact(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('crm_contacts')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
 }
 
 // ==================== PROFILES ====================
