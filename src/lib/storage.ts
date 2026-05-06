@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Profile, Role } from './types'
 
 // ==================== AUDIT LOG ====================
 
@@ -542,7 +542,7 @@ export async function deleteExpense(
   }
 }
 
-// ==================== PROFILES (for audit filter) ====================
+// ==================== PROFILES ====================
 
 export async function getProfiles(): Promise<{ id: string; full_name: string }[]> {
   const { data, error } = await supabase
@@ -551,6 +551,38 @@ export async function getProfiles(): Promise<{ id: string; full_name: string }[]
     .order('full_name')
   if (error) throw error
   return data ?? []
+}
+
+export async function getAllProfiles(): Promise<Profile[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as Profile[]
+}
+
+export async function updateProfile(
+  id: string,
+  patch: { full_name?: string; role?: Role; is_active?: boolean }
+): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update(patch)
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function createProfileRecord(
+  id: string,
+  email: string,
+  full_name: string,
+  role: Role
+): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .upsert({ id, email, full_name, role, is_active: true })
+  if (error) throw error
 }
 
 // ==================== SEED / DATA ====================
