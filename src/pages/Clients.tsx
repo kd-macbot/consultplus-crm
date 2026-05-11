@@ -6,18 +6,26 @@ import { useAuth } from '../lib/auth'
 import { ImportDialog } from '../components/import/ImportDialog'
 import { Download, Upload, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 
 export function ClientsPage() {
   const { user } = useAuth()
   const [refreshKey, setRefreshKey] = useState(0)
   const onRefresh = useCallback(() => setRefreshKey(k => k + 1), [])
   const [showImport, setShowImport] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   const canAdd = user?.role === 'admin' || user?.role === 'manager'
 
   const handleAdd = async () => {
-    await addClient(user?.id, undefined, { userId: user?.id, userName: user?.full_name ?? '' })
-    onRefresh()
+    setAdding(true)
+    try {
+      await addClient(user?.id, undefined, { userId: user?.id, userName: user?.full_name ?? '' })
+      onRefresh()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при създаване на клиент')
+    }
+    setAdding(false)
   }
 
   return (
@@ -36,9 +44,9 @@ export function ClientsPage() {
             <span className="hidden sm:inline">Експорт</span>
           </Button>
           {canAdd && (
-            <Button size="sm" onClick={handleAdd}>
+            <Button size="sm" onClick={handleAdd} disabled={adding}>
               <Plus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Нов клиент</span>
+              <span className="hidden sm:inline">{adding ? 'Създаване...' : 'Нов клиент'}</span>
             </Button>
           )}
         </div>
