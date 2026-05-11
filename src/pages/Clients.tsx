@@ -21,6 +21,7 @@ export function ClientsPage() {
     setAdding(true)
     try {
       await addClient(user?.id, undefined, { userId: user?.id, userName: user?.full_name ?? '' })
+      toast.success('Нов клиент е добавен')
       onRefresh()
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при създаване на клиент')
