@@ -9,7 +9,7 @@ interface Props {
   clientName: string
   cell?: CellValue
   oldDisplay: string
-  onSave: () => void
+  onSave: (patch: Partial<CellValue>) => void
   onCancel: () => void
 }
 
@@ -82,7 +82,7 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
         newDisplay = value
       }
       await setCellValue(clientId, column.id, patch, auditInfo(newDisplay))
-      onSave()
+      onSave(patch)
     } catch (err) {
       console.error('Save error:', err)
       onCancel()
@@ -105,7 +105,7 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
           try {
             const newDisplay = e.target.checked ? '✓' : ''
             await setCellValue(clientId, column.id, { value_bool: e.target.checked }, auditInfo(newDisplay))
-            onSave()
+            onSave({ value_bool: e.target.checked })
           } catch (err) {
             console.error('Checkbox save error:', err)
             onCancel()
@@ -126,11 +126,9 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
             const newVal = e.target.value
             setValue(newVal)
             try {
-              await setCellValue(clientId, column.id, {
-                value_text: newVal || null,
-                value_dropdown: null,
-              }, auditInfo(newVal))
-              onSave()
+              const staffPatch = { value_text: newVal || null, value_dropdown: null }
+              await setCellValue(clientId, column.id, staffPatch, auditInfo(newVal))
+              onSave(staffPatch)
             } catch (err) {
               console.error('Staff dropdown save error:', err)
               onCancel()
@@ -156,8 +154,9 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
           setValue(newVal)
           try {
             const opt = dropdownOpts.find(d => d.id === newVal)
-            await setCellValue(clientId, column.id, { value_dropdown: newVal || null }, auditInfo(opt?.value ?? ''))
-            onSave()
+            const dropPatch = { value_dropdown: newVal || null }
+            await setCellValue(clientId, column.id, dropPatch, auditInfo(opt?.value ?? ''))
+            onSave(dropPatch)
           } catch (err) {
             console.error('Dropdown save error:', err)
             onCancel()

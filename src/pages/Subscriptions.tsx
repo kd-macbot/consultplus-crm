@@ -298,7 +298,14 @@ export function SubscriptionsPage() {
                           clientName={clientName(client.id)}
                           cell={cell}
                           oldDisplay={displayCell(col, cell)}
-                          onSave={() => { setEditCell(null); loadData() }}
+                          onSave={(patch) => {
+                            setEditCell(null)
+                            setAllCells(prev => {
+                              const idx = prev.findIndex(cv => cv.client_id === client.id && cv.column_id === col.id)
+                              if (idx >= 0) return prev.map((cv, i) => i === idx ? { ...cv, ...patch } : cv)
+                              return [...prev, { id: '', client_id: client.id, column_id: col.id, ...patch } as CellValue]
+                            })
+                          }}
                           onCancel={() => setEditCell(null)}
                         />
                       </td>
@@ -313,7 +320,7 @@ export function SubscriptionsPage() {
                       onClick={() => canEdit && setEditCell({ clientId: client.id, columnId: col.id })}
                     >
                       {col.type === 'number' && cell?.value_number != null
-                        ? <span className="font-medium">{display} €</span>
+                        ? <span className="font-medium text-navy">{display} €</span>
                         : display || <span className="text-dark/20">—</span>
                       }
                     </td>
@@ -330,7 +337,7 @@ export function SubscriptionsPage() {
               {tableColumns.map(col => (
                 <td key={col.id} className="px-4 py-2">
                   {col.id === honorarColumn?.id
-                    ? <span>{filteredTotalHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €</span>
+                    ? <span className="text-navy">{filteredTotalHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €</span>
                     : ''
                   }
                 </td>

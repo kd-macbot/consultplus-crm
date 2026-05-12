@@ -322,21 +322,19 @@ export async function getCellValues(clientId?: string): Promise<CellValue[]> {
     if (error) throw error
     return data ?? []
   }
-  let all: CellValue[] = []
-  let from = 0
+  const { count } = await supabase
+    .from('crm_cell_values')
+    .select('*', { count: 'exact', head: true })
+  const total = count ?? 0
+  if (total === 0) return []
   const PAGE = 1000
-  while (true) {
-    const { data, error } = await supabase
-      .from('crm_cell_values')
-      .select('*')
-      .range(from, from + PAGE - 1)
-    if (error) throw error
-    if (!data || data.length === 0) break
-    all = all.concat(data)
-    if (data.length < PAGE) break
-    from += PAGE
-  }
-  return all
+  const pages = Math.ceil(total / PAGE)
+  const results = await Promise.all(
+    Array.from({ length: pages }, (_, i) =>
+      supabase.from('crm_cell_values').select('*').range(i * PAGE, (i + 1) * PAGE - 1)
+    )
+  )
+  return results.flatMap(r => r.data ?? []) as CellValue[]
 }
 
 export async function setCellValue(
