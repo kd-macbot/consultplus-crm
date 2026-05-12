@@ -163,18 +163,11 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScrollPos = useRef<{ top: number; left: number } | null>(null)
+  const isInitialLoad = useRef(true)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   useEffect(() => { loadData() }, [refreshKey])
-
-  useEffect(() => {
-    if (!loading && savedScrollPos.current && scrollRef.current) {
-      scrollRef.current.scrollTop = savedScrollPos.current.top
-      scrollRef.current.scrollLeft = savedScrollPos.current.left
-      savedScrollPos.current = null
-    }
-  }, [loading])
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -193,7 +186,8 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         left: scrollRef.current.scrollLeft,
       }
     }
-    setLoading(true)
+    const firstLoad = isInitialLoad.current
+    if (firstLoad) setLoading(true)
     try {
       const [cols, clients, cells, dropdowns, tags, clientTags, staff] = await Promise.all([
         getColumns(), getClients(), getCellValues(), getDropdownOptions(), getTags(), getClientTags(),
@@ -208,10 +202,21 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       setAllTags(tags)
       setAllClientTags(clientTags)
       setStaffList(staff)
+      isInitialLoad.current = false
+      if (savedScrollPos.current && scrollRef.current) {
+        const pos = savedScrollPos.current
+        savedScrollPos.current = null
+        requestAnimationFrame(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = pos.top
+            scrollRef.current.scrollLeft = pos.left
+          }
+        })
+      }
     } catch (err) {
       console.error('Failed to load data:', err)
     } finally {
-      setLoading(false)
+      if (firstLoad) setLoading(false)
     }
   }
 
@@ -400,7 +405,14 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                 clientName={clientName}
                 cell={cellData}
                 oldDisplay={oldDisplay}
-                onSave={() => { setEditCell(null); onRefresh() }}
+                onSave={(patch) => {
+                  setEditCell(null)
+                  setAllCells(prev => {
+                    const idx = prev.findIndex(cv => cv.client_id === clientId && cv.column_id === col.id)
+                    if (idx >= 0) return prev.map((cv, i) => i === idx ? { ...cv, ...patch } : cv)
+                    return [...prev, { id: '', client_id: clientId, column_id: col.id, ...patch } as CellValue]
+                  })
+                }}
                 onCancel={() => setEditCell(null)}
               />
             )
