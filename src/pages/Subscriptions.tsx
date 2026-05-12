@@ -213,10 +213,19 @@ export function SubscriptionsPage() {
 
       {/* Table */}
       <div className="bg-white rounded-lg shadow overflow-x-auto">
+        <div className="px-4 py-2 border-b border-light flex items-center justify-between text-sm text-dark/50">
+          <span>
+            {isFiltered
+              ? <>{filteredClients.length} <span className="text-dark/30">от {clients.length}</span> фирми</>
+              : <>{clients.length} фирми</>
+            }
+          </span>
+        </div>
         <table className="w-full text-sm border-collapse">
           <thead>
             {/* Main header */}
             <tr className="bg-navy text-white">
+              <th className="px-3 py-3 text-left font-medium whitespace-nowrap w-10">#</th>
               <th className="px-4 py-3 text-left font-medium whitespace-nowrap">Клиент</th>
               {tableColumns.map(col => (
                 <th key={col.id} className="px-4 py-3 text-left font-medium whitespace-nowrap">
@@ -235,6 +244,7 @@ export function SubscriptionsPage() {
             </tr>
             {/* Filter row */}
             <tr className="bg-navy/80">
+              <th className="px-2 py-1" />
               <th className="px-2 py-1">
                 <input
                   type="text"
@@ -272,7 +282,7 @@ export function SubscriptionsPage() {
           <tbody>
             {filteredClients.length === 0 && (
               <tr>
-                <td colSpan={tableColumns.length + 1} className="px-4 py-8 text-center text-dark/40">
+                <td colSpan={tableColumns.length + 2} className="px-4 py-8 text-center text-dark/40">
                   {hasFilters ? 'Няма клиенти отговарящи на филтрите' : 'Няма клиенти'}
                 </td>
               </tr>
@@ -282,6 +292,9 @@ export function SubscriptionsPage() {
                 key={client.id}
                 className={`border-b border-light/50 ${i % 2 === 0 ? 'bg-white' : 'bg-light/20'} hover:bg-gold/5 transition-colors`}
               >
+                <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums w-10">
+                  {i + 1}
+                </td>
                 <td className="px-4 py-2 font-medium text-navy whitespace-nowrap">
                   {clientName(client.id)}
                 </td>
@@ -331,8 +344,11 @@ export function SubscriptionsPage() {
           </tbody>
           <tfoot className="bg-navy/5 border-t-2 border-light font-semibold">
             <tr>
+              <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums">
+                {filteredClients.length}
+              </td>
               <td className="px-4 py-2 text-navy">
-                Общо {isFiltered && <span className="text-xs font-normal text-dark/40">({filteredClients.length})</span>}
+                Общо {isFiltered && <span className="text-xs font-normal text-dark/40">({filteredClients.length} от {clients.length})</span>}
               </td>
               {tableColumns.map(col => (
                 <td key={col.id} className="px-4 py-2">
