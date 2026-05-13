@@ -5,7 +5,7 @@ import type { Expense } from '../lib/types'
 import { EXPENSE_CATEGORIES } from '../lib/types'
 import type { StaffMember } from '../lib/storage'
 import type { ExpenseCategory } from '../lib/types'
-import { Plus, Pencil, Trash2, TrendingDown, Users } from 'lucide-react'
+import { Plus, Pencil, Trash2, TrendingDown, Users, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,6 +40,7 @@ export function ExpensesPage() {
   const [activeTab, setActiveTab] = useState<Tab>('salaries')
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Expense | null>(null)
+  const [defaultStaffId, setDefaultStaffId] = useState<string | undefined>(undefined)
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null)
   const [filterCategory, setFilterCategory] = useState('all')
   const [sortAsc, setSortAsc] = useState(false)
@@ -81,16 +82,47 @@ export function ExpensesPage() {
     return Object.entries(map).sort((a, b) => b[1] - a[1])
   }, [otherExpenses])
 
-  const salariesByEmployee = useMemo(() => {
-    const map: Record<string, { sum: number; entries: Expense[] }> = {}
+  const staffSalaryRows = useMemo(() => {
+    const expMap: Record<string, { sum: number; entries: Expense[] }> = {}
     salaryExpenses.forEach(e => {
-      const name = e.staff_id ? staffList.find(s => s.id === e.staff_id)?.full_name ?? 'Неизвестен' : 'Без служител'
-      if (!map[name]) map[name] = { sum: 0, entries: [] }
-      map[name].sum += e.amount
-      map[name].entries.push(e)
+      const key = e.staff_id ?? '__none__'
+      if (!expMap[key]) expMap[key] = { sum: 0, entries: [] }
+      expMap[key].sum += e.amount
+      expMap[key].entries.push(e)
     })
-    return Object.entries(map).sort((a, b) => b[1].sum - a[1].sum)
+
+    const rows: Array<{ name: string; staffId: string | null; sum: number; entries: Expense[]; missing: boolean }> =
+      staffList.map(s => ({
+        name: s.full_name,
+        staffId: s.id,
+        sum: expMap[s.id]?.sum ?? 0,
+        entries: expMap[s.id]?.entries ?? [],
+        missing: !expMap[s.id],
+      }))
+
+    salaryExpenses.forEach(e => {
+      const linkedToActive = e.staff_id && staffList.some(s => s.id === e.staff_id)
+      if (!linkedToActive) {
+        const name = e.staff_id ? 'Бивш служител' : 'Без служител'
+        const existing = rows.find(r => r.name === name && r.staffId === e.staff_id)
+        if (existing) {
+          existing.sum += e.amount
+          existing.entries.push(e)
+          existing.missing = false
+        } else {
+          rows.push({ name, staffId: e.staff_id, sum: e.amount, entries: [e], missing: false })
+        }
+      }
+    })
+
+    return rows.sort((a, b) => {
+      if (a.missing && !b.missing) return 1
+      if (!a.missing && b.missing) return -1
+      return b.sum - a.sum
+    })
   }, [salaryExpenses, staffList])
+
+  const missingSalariesCount = useMemo(() => staffSalaryRows.filter(r => r.missing).length, [staffSalaryRows])
 
   async function handleSave(data: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) {
     const audit = { userId: user?.id, userName: user?.full_name ?? '' }
@@ -132,7 +164,6 @@ export function ExpensesPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-5">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl md:text-2xl font-bold text-foreground">Месечни разходи</h1>
         {canEdit && (
@@ -143,7 +174,6 @@ export function ExpensesPage() {
         )}
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-5">
@@ -184,48 +214,57 @@ export function ExpensesPage() {
         </Card>
       </div>
 
-      {/* Tabs */}
       <div className="border-b border-border">
         <div className="flex gap-0">
-          {([['salaries', 'Заплати', salaryExpenses.length], ['other', 'Други разходи', otherExpenses.length]] as const).map(([tab, label, count]) => (
-            <button
-              key={tab}
-              onClick={() => { setActiveTab(tab); setFilterCategory('all') }}
-              className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab
-                  ? 'border-navy text-navy'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {label}
-              <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
-                activeTab === tab ? 'bg-navy text-white' : 'bg-muted text-muted-foreground'
-              }`}>{count}</span>
-            </button>
-          ))}
+          <button
+            onClick={() => { setActiveTab('salaries'); setFilterCategory('all') }}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+              activeTab === 'salaries' ? 'border-navy text-navy' : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Заплати
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'salaries' ? 'bg-navy text-white' : 'bg-muted text-muted-foreground'}`}>
+              {staffList.length}
+            </span>
+            {missingSalariesCount > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">
+                {missingSalariesCount} без заплата
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => { setActiveTab('other'); setFilterCategory('all') }}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'other' ? 'border-navy text-navy' : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Други разходи
+            <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'other' ? 'bg-navy text-white' : 'bg-muted text-muted-foreground'}`}>
+              {otherExpenses.length}
+            </span>
+          </button>
         </div>
       </div>
 
-      {/* Tab: Заплати */}
       {activeTab === 'salaries' && (
         <div className="space-y-4">
-          {salariesByEmployee.length > 0 && (
+          {staffSalaryRows.some(r => r.sum > 0) && (
             <Card>
               <CardHeader className="px-5 pt-4 pb-2">
                 <CardTitle className="text-sm font-semibold">Заплати по служител</CardTitle>
               </CardHeader>
               <CardContent className="px-5 pb-4 space-y-2.5">
-                {salariesByEmployee.map(([name, { sum }]) => {
-                  const pct = totalSalaries > 0 ? (sum / totalSalaries) * 100 : 0
+                {staffSalaryRows.filter(r => r.sum > 0).map(row => {
+                  const pct = totalSalaries > 0 ? (row.sum / totalSalaries) * 100 : 0
                   return (
-                    <div key={name} className="flex items-center gap-3">
-                      <span className="text-sm w-36 text-muted-foreground truncate shrink-0">{name}</span>
+                    <div key={row.name} className="flex items-center gap-3">
+                      <span className="text-sm w-36 text-muted-foreground truncate shrink-0">{row.name}</span>
                       <div className="flex-1 bg-muted rounded-full h-5 overflow-hidden">
                         <div
                           className="h-full bg-navy rounded-full transition-all flex items-center justify-end pr-2"
                           style={{ width: `${Math.max(pct, 8)}%` }}
                         >
-                          <span className="text-[10px] text-white font-medium">{formatCurrency(sum)}</span>
+                          <span className="text-[10px] text-white font-medium">{formatCurrency(row.sum)}</span>
                         </div>
                       </div>
                     </div>
@@ -241,39 +280,64 @@ export function ExpensesPage() {
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Служител</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Описание</th>
-                    <th className="px-4 py-3 text-right font-medium text-muted-foreground text-xs uppercase tracking-wider">Сума</th>
+                    <th className="px-4 py-3 text-right font-medium text-muted-foreground text-xs uppercase tracking-wider">Месечна заплата</th>
                     {canEdit && <th className="px-4 py-3 text-right font-medium text-muted-foreground text-xs uppercase tracking-wider">Действия</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {salaryExpenses.length === 0 && (
-                    <tr><td colSpan={canEdit ? 4 : 3} className="px-4 py-10 text-center text-muted-foreground">Няма добавени заплати</td></tr>
-                  )}
-                  {salaryExpenses.map((expense, i) => (
-                    <tr key={expense.id} className={`border-b border-border/50 transition-colors hover:bg-muted/30 ${i % 2 === 0 ? '' : 'bg-muted/10'}`}>
-                      <td className="px-4 py-3 font-medium">{staffName(expense.staff_id)}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{expense.description || <span className="text-muted-foreground/40">—</span>}</td>
-                      <td className="px-4 py-3 text-right font-semibold">{formatCurrency(expense.amount, expense.currency)}</td>
+                  {staffSalaryRows.map((row, i) => (
+                    <tr key={`${row.name}-${i}`} className={`border-b border-border/50 transition-colors ${row.missing ? 'bg-amber-50/50' : `hover:bg-muted/30 ${i % 2 === 0 ? '' : 'bg-muted/10'}`}`}>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {row.missing && <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+                          <span className={row.missing ? 'text-amber-700' : 'font-medium'}>{row.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {row.missing ? (
+                          <span className="text-amber-500 text-xs font-medium">Няма въведена заплата</span>
+                        ) : (
+                          <span className="font-semibold">{formatCurrency(row.sum)}</span>
+                        )}
+                      </td>
                       {canEdit && (
                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                            onClick={() => { setEditing(expense); setShowForm(true) }}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          {isAdmin && (
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => setConfirmDelete(expense)}>
-                              <Trash2 className="h-3.5 w-3.5" />
+                          {row.missing ? (
+                            <Button size="sm" variant="outline"
+                              className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
+                              onClick={() => {
+                                setEditing(null)
+                                setDefaultStaffId(row.staffId ?? undefined)
+                                setShowForm(true)
+                              }}>
+                              <Plus className="h-3 w-3 mr-1" />
+                              Добави
                             </Button>
+                          ) : (
+                            <>
+                              {row.entries.map(expense => (
+                                <span key={expense.id}>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                    onClick={() => { setEditing(expense); setDefaultStaffId(undefined); setShowForm(true) }}>
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                  {isAdmin && (
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                      onClick={() => setConfirmDelete(expense)}>
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                </span>
+                              ))}
+                            </>
                           )}
                         </td>
                       )}
                     </tr>
                   ))}
-                  {salaryExpenses.length > 0 && (
+                  {staffSalaryRows.some(r => r.sum > 0) && (
                     <tr className="bg-muted/20 font-semibold">
-                      <td className="px-4 py-2 text-sm" colSpan={2}>Общо заплати</td>
+                      <td className="px-4 py-2 text-sm">Общо заплати</td>
                       <td className="px-4 py-2 text-right text-sm">{formatCurrency(totalSalaries)}</td>
                       {canEdit && <td />}
                     </tr>
@@ -285,7 +349,6 @@ export function ExpensesPage() {
         </div>
       )}
 
-      {/* Tab: Други разходи */}
       {activeTab === 'other' && (
         <div className="space-y-4">
           {otherByCategory.length > 0 && (
@@ -311,7 +374,6 @@ export function ExpensesPage() {
             </Card>
           )}
 
-          {/* Filter */}
           <div className="flex flex-wrap items-center gap-2">
             <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -397,8 +459,9 @@ export function ExpensesPage() {
         staffList={staffList}
         userId={user?.id}
         defaultCategory={activeTab === 'salaries' ? 'Заплати' : undefined}
+        defaultStaffId={defaultStaffId}
         onSave={handleSave}
-        onClose={() => { setShowForm(false); setEditing(null) }}
+        onClose={() => { setShowForm(false); setEditing(null); setDefaultStaffId(undefined) }}
       />
 
       <ConfirmDialog
@@ -414,12 +477,13 @@ export function ExpensesPage() {
   )
 }
 
-function ExpenseForm({ open, expense, staffList, userId, defaultCategory, onSave, onClose }: {
+function ExpenseForm({ open, expense, staffList, userId, defaultCategory, defaultStaffId, onSave, onClose }: {
   open: boolean
   expense: Expense | null
   staffList: StaffMember[]
   userId?: string
   defaultCategory?: ExpenseCategory
+  defaultStaffId?: string
   onSave: (data: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) => void
   onClose: () => void
 }) {
@@ -430,7 +494,7 @@ function ExpenseForm({ open, expense, staffList, userId, defaultCategory, onSave
   const [description, setDescription] = useState(expense?.description ?? '')
   const [amount, setAmount] = useState(expense?.amount?.toString() ?? '')
   const [currency, setCurrency] = useState(expense?.currency ?? 'EUR')
-  const [staffId, setStaffId] = useState(expense?.staff_id ?? '')
+  const [staffId, setStaffId] = useState(expense?.staff_id ?? defaultStaffId ?? '')
   const [amountError, setAmountError] = useState('')
 
   useEffect(() => {
@@ -439,10 +503,10 @@ function ExpenseForm({ open, expense, staffList, userId, defaultCategory, onSave
       setDescription(expense?.description ?? '')
       setAmount(expense?.amount?.toString() ?? '')
       setCurrency(expense?.currency ?? 'EUR')
-      setStaffId(expense?.staff_id ?? '')
+      setStaffId(expense?.staff_id ?? defaultStaffId ?? '')
       setAmountError('')
     }
-  }, [open, expense])
+  }, [open, expense, defaultStaffId])
 
   useEffect(() => {
     if (category !== 'Заплати') setStaffId('')
