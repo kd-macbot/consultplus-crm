@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import type { Client, Column, CellValue, DropdownOption, Expense } from '../lib/types'
 import { Users, Euro, CheckCircle2, TrendingUp, TrendingDown, Wallet, BookUser } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 
 export function Dashboard() {
   const { user } = useAuth()
@@ -27,40 +27,35 @@ export function Dashboard() {
 
   async function loadStats() {
     try {
-      let clients: Client[] = []
-      let columns: Column[] = []
-      let cells: CellValue[] = []
-      let dropdowns: DropdownOption[] = []
-      let exps: Expense[] = []
-      let contactsCount = 0
+      const [clientsRes, columnsRes, cellsRes, dropdownsRes, contactsRes, expsRes] =
+        await Promise.allSettled([
+          getClients(),
+          getColumns(),
+          getCellValues(),
+          getDropdownOptions(),
+          supabase.from('crm_contacts').select('*', { count: 'exact', head: true }),
+          isAdmin ? getExpenses() : Promise.resolve([] as Expense[]),
+        ])
 
-      try { clients = await getClients() } catch { /* */ }
-      try { columns = await getColumns() } catch { /* */ }
-      try { cells = await getCellValues() } catch { /* */ }
-      try { dropdowns = await getDropdownOptions() } catch { /* */ }
-      try {
-        const { count } = await supabase
-          .from('crm_contacts')
-          .select('*', { count: 'exact', head: true })
-        contactsCount = count ?? 0
-      } catch { /* */ }
-      if (isAdmin) {
-        try { exps = await getExpenses() } catch { /* */ }
-      }
+      const clients = clientsRes.status === 'fulfilled' ? clientsRes.value : []
+      const columns = columnsRes.status === 'fulfilled' ? columnsRes.value : []
+      const cells = cellsRes.status === 'fulfilled' ? cellsRes.value : []
+      const dropdowns = dropdownsRes.status === 'fulfilled' ? dropdownsRes.value : []
+      const contactsCount = contactsRes.status === 'fulfilled' ? (contactsRes.value.count ?? 0) : 0
+      const exps = expsRes.status === 'fulfilled' ? expsRes.value as Expense[] : []
+
+      const cellMap = new Map<string, CellValue>()
+      for (const cv of cells) cellMap.set(`${cv.client_id}:${cv.column_id}`, cv)
+      const dropdownMap = new Map(dropdowns.map((d: DropdownOption) => [d.id, d]))
 
       const statusCol = columns.find((c: Column) => c.name === 'Статус')
       const statusCounts: Record<string, number> = {}
 
       if (statusCol) {
         for (const client of clients) {
-          const cell = cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === statusCol.id)
-          if (cell?.value_dropdown) {
-            const opt = dropdowns.find((d: DropdownOption) => d.id === cell.value_dropdown)
-            const label = opt?.value || 'N/A'
-            statusCounts[label] = (statusCounts[label] || 0) + 1
-          } else {
-            statusCounts['N/A'] = (statusCounts['N/A'] || 0) + 1
-          }
+          const cell = cellMap.get(`${client.id}:${statusCol.id}`)
+          const label = cell?.value_dropdown ? (dropdownMap.get(cell.value_dropdown)?.value || 'N/A') : 'N/A'
+          statusCounts[label] = (statusCounts[label] || 0) + 1
         }
       }
 
@@ -72,12 +67,12 @@ export function Dashboard() {
 
       if (isAdmin) {
         for (const client of clients) {
-          const hCell = honorarCol ? cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === honorarCol.id) : null
+          const hCell = honorarCol ? cellMap.get(`${client.id}:${honorarCol.id}`) : null
           const amount = hCell?.value_number && hCell.value_number > 0 ? hCell.value_number : 0
           totalHonorar += amount
 
           if (accountantCol) {
-            const aCell = cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === accountantCol.id)
+            const aCell = cellMap.get(`${client.id}:${accountantCol.id}`)
             const name = aCell?.value_text || 'Без счетоводител'
             if (!honorarByAccountant[name]) honorarByAccountant[name] = { sum: 0, count: 0 }
             honorarByAccountant[name].sum += amount
@@ -85,12 +80,8 @@ export function Dashboard() {
           }
 
           if (statusCol) {
-            const sCell = cells.find((cv: CellValue) => cv.client_id === client.id && cv.column_id === statusCol.id)
-            let statusLabel = 'N/A'
-            if (sCell?.value_dropdown) {
-              const opt = dropdowns.find((d: DropdownOption) => d.id === sCell.value_dropdown)
-              statusLabel = opt?.value ?? 'N/A'
-            }
+            const sCell = cellMap.get(`${client.id}:${statusCol.id}`)
+            const statusLabel = sCell?.value_dropdown ? (dropdownMap.get(sCell.value_dropdown)?.value ?? 'N/A') : 'N/A'
             honorarByStatus[statusLabel] = (honorarByStatus[statusLabel] || 0) + amount
           }
         }
@@ -220,7 +211,7 @@ export function Dashboard() {
                 <Euro className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent className="px-5 pb-4">
-                <p className="text-3xl font-bold text-gold">{stats.totalHonorar.toLocaleString('bg-BG')} €</p>
+                <p className="text-3xl font-bold text-gold">{formatCurrency(stats.totalHonorar)}</p>
               </CardContent>
             </Card>
           </div>
@@ -234,7 +225,7 @@ export function Dashboard() {
               </CardHeader>
               <CardContent className="px-5 pb-4">
                 <p className="text-2xl font-bold text-green-600">
-                  {stats.totalHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
+                  {formatCurrency(stats.totalHonorar)}
                 </p>
               </CardContent>
             </Card>
@@ -245,7 +236,7 @@ export function Dashboard() {
               </CardHeader>
               <CardContent className="px-5 pb-4">
                 <p className="text-2xl font-bold text-red-500">
-                  {stats.monthlyExpenses.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
+                  {formatCurrency(stats.monthlyExpenses)}
                 </p>
               </CardContent>
             </Card>
@@ -256,7 +247,7 @@ export function Dashboard() {
               </CardHeader>
               <CardContent className="px-5 pb-4">
                 <p className={cn('text-2xl font-bold', profit >= 0 ? 'text-green-600' : 'text-red-500')}>
-                  {profit.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
+                  {formatCurrency(profit)}
                 </p>
               </CardContent>
             </Card>
@@ -296,7 +287,7 @@ export function Dashboard() {
                       <div className="flex-1 bg-muted rounded-full h-2.5 overflow-hidden">
                         <div className="h-full bg-gold rounded-full transition-all" style={{ width: `${stats.totalHonorar > 0 ? (sum / stats.totalHonorar) * 100 : 0}%` }} />
                       </div>
-                      <div className="w-20 text-sm text-right font-semibold">{sum.toLocaleString('bg-BG')} €</div>
+                      <div className="w-20 text-sm text-right font-semibold">{formatCurrency(sum)}</div>
                     </div>
                   ))}
                 </div>
@@ -321,7 +312,7 @@ export function Dashboard() {
                           className="h-full bg-navy rounded-full transition-all flex items-center justify-end pr-2"
                           style={{ width: `${stats.totalHonorar > 0 ? Math.max((sum / stats.totalHonorar) * 100, 8) : 0}%` }}
                         >
-                          <span className="text-[10px] text-white font-medium">{sum.toLocaleString('bg-BG')} €</span>
+                          <span className="text-[10px] text-white font-medium">{formatCurrency(sum)}</span>
                         </div>
                       </div>
                       <div className="w-14 text-xs text-muted-foreground text-right">{count} кл.</div>

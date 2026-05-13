@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuth } from '../lib/auth'
 import { getExpenses, addExpense, updateExpense, deleteExpense, getStaff } from '../lib/storage'
-import type { Expense } from '../lib/types'
-import { EXPENSE_CATEGORIES } from '../lib/types'
 import type { StaffMember } from '../lib/storage'
-import type { ExpenseCategory } from '../lib/types'
+import { EXPENSE_CATEGORIES } from '../lib/types'
+import type { Expense, ExpenseCategory } from '../lib/types'
+import { formatCurrency } from '@/lib/utils'
 import { Plus, Pencil, Trash2, TrendingDown, Users, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -13,10 +13,6 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/alert-dialog'
-
-function formatCurrency(amount: number, currency = 'EUR') {
-  return new Intl.NumberFormat('bg-BG', { style: 'currency', currency }).format(amount)
-}
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Заплати': '#1e3a5f',
@@ -40,7 +36,7 @@ export function ExpensesPage() {
   const [activeTab, setActiveTab] = useState<Tab>('salaries')
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Expense | null>(null)
-  const [defaultStaffId, setDefaultStaffId] = useState<string | undefined>(undefined)
+  const defaultStaffIdRef = useRef<string | undefined>(undefined)
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null)
   const [filterCategory, setFilterCategory] = useState('all')
   const [sortAsc, setSortAsc] = useState(false)
@@ -52,12 +48,9 @@ export function ExpensesPage() {
 
   async function loadData() {
     setLoading(true)
-    let exp: Expense[] = []
-    let staff: StaffMember[] = []
-    try { exp = await getExpenses() } catch { /* */ }
-    try { staff = await getStaff() } catch { /* */ }
-    setExpenses(exp)
-    setStaffList(staff)
+    const [expResult, staffResult] = await Promise.allSettled([getExpenses(), getStaff()])
+    setExpenses(expResult.status === 'fulfilled' ? expResult.value : [])
+    setStaffList(staffResult.status === 'fulfilled' ? staffResult.value : [])
     setLoading(false)
   }
 
@@ -71,7 +64,7 @@ export function ExpensesPage() {
   const filteredOther = useMemo(() => {
     let result = filterCategory !== 'all'
       ? otherExpenses.filter(e => e.category === filterCategory)
-      : [...otherExpenses]
+      : otherExpenses.slice()
     result.sort((a, b) => sortAsc ? a.amount - b.amount : b.amount - a.amount)
     return result
   }, [otherExpenses, filterCategory, sortAsc])
@@ -100,8 +93,9 @@ export function ExpensesPage() {
         missing: !expMap[s.id],
       }))
 
+    const activeStaffIds = new Set(staffList.map(s => s.id))
     salaryExpenses.forEach(e => {
-      const linkedToActive = e.staff_id && staffList.some(s => s.id === e.staff_id)
+      const linkedToActive = e.staff_id && activeStaffIds.has(e.staff_id)
       if (!linkedToActive) {
         const name = e.staff_id ? 'Бивш служител' : 'Без служител'
         const existing = rows.find(r => r.name === name && r.staffId === e.staff_id)
@@ -122,7 +116,7 @@ export function ExpensesPage() {
     })
   }, [salaryExpenses, staffList])
 
-  const missingSalariesCount = useMemo(() => staffSalaryRows.filter(r => r.missing).length, [staffSalaryRows])
+  const missingSalariesCount = staffSalaryRows.filter(r => r.missing).length
 
   async function handleSave(data: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) {
     const audit = { userId: user?.id, userName: user?.full_name ?? '' }
@@ -152,7 +146,6 @@ export function ExpensesPage() {
     await loadData()
   }
 
-  const staffName = (id: string | null) => id ? staffList.find(s => s.id === id)?.full_name ?? '—' : '—'
   const otherCategories = EXPENSE_CATEGORIES.filter(c => c !== 'Заплати')
 
   if (loading) return (
@@ -286,7 +279,7 @@ export function ExpensesPage() {
                 </thead>
                 <tbody>
                   {staffSalaryRows.map((row, i) => (
-                    <tr key={`${row.name}-${i}`} className={`border-b border-border/50 transition-colors ${row.missing ? 'bg-amber-50/50' : `hover:bg-muted/30 ${i % 2 === 0 ? '' : 'bg-muted/10'}`}`}>
+                    <tr key={row.staffId ?? row.name} className={`border-b border-border/50 transition-colors ${row.missing ? 'bg-amber-50/50' : `hover:bg-muted/30 ${i % 2 === 0 ? '' : 'bg-muted/10'}`}`}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           {row.missing && <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
@@ -307,7 +300,7 @@ export function ExpensesPage() {
                               className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
                               onClick={() => {
                                 setEditing(null)
-                                setDefaultStaffId(row.staffId ?? undefined)
+                                defaultStaffIdRef.current = row.staffId ?? undefined
                                 setShowForm(true)
                               }}>
                               <Plus className="h-3 w-3 mr-1" />
@@ -318,7 +311,7 @@ export function ExpensesPage() {
                               {row.entries.map(expense => (
                                 <span key={expense.id}>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                    onClick={() => { setEditing(expense); setDefaultStaffId(undefined); setShowForm(true) }}>
+                                    onClick={() => { setEditing(expense); defaultStaffIdRef.current = undefined; setShowForm(true) }}>
                                     <Pencil className="h-3.5 w-3.5" />
                                   </Button>
                                   {isAdmin && (
@@ -459,9 +452,9 @@ export function ExpensesPage() {
         staffList={staffList}
         userId={user?.id}
         defaultCategory={activeTab === 'salaries' ? 'Заплати' : undefined}
-        defaultStaffId={defaultStaffId}
+        defaultStaffId={defaultStaffIdRef.current}
         onSave={handleSave}
-        onClose={() => { setShowForm(false); setEditing(null); setDefaultStaffId(undefined) }}
+        onClose={() => { setShowForm(false); setEditing(null); defaultStaffIdRef.current = undefined }}
       />
 
       <ConfirmDialog
@@ -487,10 +480,9 @@ function ExpenseForm({ open, expense, staffList, userId, defaultCategory, defaul
   onSave: (data: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) => void
   onClose: () => void
 }) {
-  const initCategory = (): ExpenseCategory =>
+  const [category, setCategory] = useState<ExpenseCategory>(
     (expense?.category as ExpenseCategory) ?? defaultCategory ?? 'Други'
-
-  const [category, setCategory] = useState<ExpenseCategory>(initCategory)
+  )
   const [description, setDescription] = useState(expense?.description ?? '')
   const [amount, setAmount] = useState(expense?.amount?.toString() ?? '')
   const [currency, setCurrency] = useState(expense?.currency ?? 'EUR')
@@ -499,14 +491,14 @@ function ExpenseForm({ open, expense, staffList, userId, defaultCategory, defaul
 
   useEffect(() => {
     if (open) {
-      setCategory(initCategory())
+      setCategory((expense?.category as ExpenseCategory) ?? defaultCategory ?? 'Други')
       setDescription(expense?.description ?? '')
       setAmount(expense?.amount?.toString() ?? '')
       setCurrency(expense?.currency ?? 'EUR')
       setStaffId(expense?.staff_id ?? defaultStaffId ?? '')
       setAmountError('')
     }
-  }, [open, expense, defaultStaffId])
+  }, [open, expense, defaultStaffId, defaultCategory])
 
   useEffect(() => {
     if (category !== 'Заплати') setStaffId('')
