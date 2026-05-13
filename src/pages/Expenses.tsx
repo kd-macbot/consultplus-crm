@@ -335,6 +335,7 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
   const [amount, setAmount] = useState(expense?.amount?.toString() ?? '')
   const [currency, setCurrency] = useState(expense?.currency ?? 'EUR')
   const [staffId, setStaffId] = useState(expense?.staff_id ?? '')
+  const [amountError, setAmountError] = useState('')
 
   useEffect(() => {
     if (open) {
@@ -343,6 +344,7 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
       setAmount(expense?.amount?.toString() ?? '')
       setCurrency(expense?.currency ?? 'EUR')
       setStaffId(expense?.staff_id ?? '')
+      setAmountError('')
     }
   }, [open, expense])
 
@@ -352,8 +354,11 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
 
   function handleSubmit() {
     const amt = parseFloat(amount)
-    if (!category || isNaN(amt) || amt <= 0) return
-    const today = new Date().toISOString().split('T')[0]
+    if (isNaN(amt) || amt <= 0) {
+      setAmountError('Въведете сума по-голяма от 0')
+      return
+    }
+    setAmountError('')
     onSave({
       category,
       description: description.trim() || null,
@@ -390,7 +395,13 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Месечна сума *</Label>
-              <Input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" />
+              <Input
+                type="number" step="0.01" min="0.01" value={amount}
+                onChange={e => { setAmount(e.target.value); setAmountError('') }}
+                placeholder="0.00"
+                className={amountError ? 'border-red-500 focus-visible:ring-red-500' : ''}
+              />
+              {amountError && <p className="text-xs text-red-500">{amountError}</p>}
             </div>
             <div className="space-y-1.5">
               <Label>Валута</Label>
@@ -414,7 +425,7 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Отказ</Button>
-          <Button onClick={handleSubmit} disabled={!category || !amount}>{expense ? 'Запази' : 'Добави'}</Button>
+          <Button onClick={handleSubmit}>{expense ? 'Запази' : 'Добави'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
