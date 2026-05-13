@@ -5,14 +5,13 @@ import type { Expense } from '../lib/types'
 import { EXPENSE_CATEGORIES } from '../lib/types'
 import type { StaffMember } from '../lib/storage'
 import type { ExpenseCategory } from '../lib/types'
-import { Plus, Pencil, Trash2, TrendingDown, Filter } from 'lucide-react'
+import { Plus, Pencil, Trash2, TrendingDown, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/ui/alert-dialog'
 
 function formatCurrency(amount: number, currency = 'EUR') {
@@ -31,17 +30,18 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Други': '#9ca3af',
 }
 
+type Tab = 'salaries' | 'other'
+
 export function ExpensesPage() {
   const { user } = useAuth()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [staffList, setStaffList] = useState<StaffMember[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<Tab>('salaries')
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Expense | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null)
-  const [filterStaff, setFilterStaff] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
-  const [sortField, setSortField] = useState<'amount' | 'category'>('amount')
   const [sortAsc, setSortAsc] = useState(false)
 
   const isAdmin = user?.role === 'admin'
@@ -60,36 +60,37 @@ export function ExpensesPage() {
     setLoading(false)
   }
 
-  const filtered = useMemo(() => {
-    let result = expenses.filter(e => {
-      if (filterStaff !== 'all' && e.staff_id !== filterStaff) return false
-      if (filterCategory !== 'all' && e.category !== filterCategory) return false
-      return true
-    })
-    result.sort((a, b) => {
-      const cmp = sortField === 'amount' ? a.amount - b.amount : a.category.localeCompare(b.category)
-      return sortAsc ? cmp : -cmp
-    })
-    return result
-  }, [expenses, filterStaff, filterCategory, sortField, sortAsc])
+  const salaryExpenses = useMemo(() => expenses.filter(e => e.category === 'Заплати'), [expenses])
+  const otherExpenses = useMemo(() => expenses.filter(e => e.category !== 'Заплати'), [expenses])
 
   const totalMonthly = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses])
-  const filteredTotal = useMemo(() => filtered.reduce((s, e) => s + e.amount, 0), [filtered])
+  const totalSalaries = useMemo(() => salaryExpenses.reduce((s, e) => s + e.amount, 0), [salaryExpenses])
+  const totalOther = useMemo(() => otherExpenses.reduce((s, e) => s + e.amount, 0), [otherExpenses])
 
-  const byCategory = useMemo(() => {
+  const filteredOther = useMemo(() => {
+    let result = filterCategory !== 'all'
+      ? otherExpenses.filter(e => e.category === filterCategory)
+      : [...otherExpenses]
+    result.sort((a, b) => sortAsc ? a.amount - b.amount : b.amount - a.amount)
+    return result
+  }, [otherExpenses, filterCategory, sortAsc])
+
+  const otherByCategory = useMemo(() => {
     const map: Record<string, number> = {}
-    filtered.forEach(e => { map[e.category] = (map[e.category] ?? 0) + e.amount })
+    otherExpenses.forEach(e => { map[e.category] = (map[e.category] ?? 0) + e.amount })
     return Object.entries(map).sort((a, b) => b[1] - a[1])
-  }, [filtered])
+  }, [otherExpenses])
 
-  const byStaff = useMemo(() => {
-    const map: Record<string, number> = {}
-    filtered.forEach(e => {
+  const salariesByEmployee = useMemo(() => {
+    const map: Record<string, { sum: number; entries: Expense[] }> = {}
+    salaryExpenses.forEach(e => {
       const name = e.staff_id ? staffList.find(s => s.id === e.staff_id)?.full_name ?? 'Неизвестен' : 'Без служител'
-      map[name] = (map[name] ?? 0) + e.amount
+      if (!map[name]) map[name] = { sum: 0, entries: [] }
+      map[name].sum += e.amount
+      map[name].entries.push(e)
     })
-    return Object.entries(map).sort((a, b) => b[1] - a[1])
-  }, [filtered, staffList])
+    return Object.entries(map).sort((a, b) => b[1].sum - a[1].sum)
+  }, [salaryExpenses, staffList])
 
   async function handleSave(data: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) {
     const audit = { userId: user?.id, userName: user?.full_name ?? '' }
@@ -119,14 +120,8 @@ export function ExpensesPage() {
     await loadData()
   }
 
-  function handleSort(field: 'amount' | 'category') {
-    if (sortField === field) setSortAsc(!sortAsc)
-    else { setSortField(field); setSortAsc(false) }
-  }
-
-  const sortIcon = (field: string) => sortField === field ? (sortAsc ? ' ↑' : ' ↓') : ''
   const staffName = (id: string | null) => id ? staffList.find(s => s.id === id)?.full_name ?? '—' : '—'
-  const hasFilters = filterStaff !== 'all' || filterCategory !== 'all'
+  const otherCategories = EXPENSE_CATEGORIES.filter(c => c !== 'Заплати')
 
   if (loading) return (
     <div className="p-6 flex items-center gap-2 text-muted-foreground">
@@ -143,7 +138,7 @@ export function ExpensesPage() {
         {canEdit && (
           <Button size="sm" onClick={() => { setEditing(null); setShowForm(true) }}>
             <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Нов разход</span>
+            <span className="hidden sm:inline">{activeTab === 'salaries' ? 'Нова заплата' : 'Нов разход'}</span>
           </Button>
         )}
       </div>
@@ -161,150 +156,247 @@ export function ExpensesPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-5">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Филтрирано</CardTitle>
-            <Filter className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Заплати</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="px-5 pb-4">
-            <p className="text-2xl font-bold text-gold">{formatCurrency(filteredTotal)}</p>
-            <p className="text-xs text-muted-foreground">{filtered.length} записа</p>
+            <p className="text-2xl font-bold text-navy">{formatCurrency(totalSalaries)}</p>
+            {totalMonthly > 0 && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {Math.round((totalSalaries / totalMonthly) * 100)}% от общото
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-5">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Категории</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Други разходи</CardTitle>
+            <TrendingDown className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="px-5 pb-4">
-            <p className="text-2xl font-bold text-green-600">{byCategory.length}</p>
+            <p className="text-2xl font-bold text-gold">{formatCurrency(totalOther)}</p>
+            {totalMonthly > 0 && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {Math.round((totalOther / totalMonthly) * 100)}% от общото
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Bar charts */}
-      {byCategory.length > 0 && (
-        <Card>
-          <CardHeader className="px-5 pt-4 pb-2">
-            <CardTitle className="text-sm font-semibold">Разходи по категория</CardTitle>
-          </CardHeader>
-          <CardContent className="px-5 pb-4 space-y-2">
-            {byCategory.map(([cat, amount]) => {
-              const pct = filteredTotal > 0 ? (amount / filteredTotal) * 100 : 0
-              return (
-                <div key={cat} className="flex items-center gap-3">
-                  <span className="text-xs w-24 text-right text-muted-foreground shrink-0">{cat}</span>
-                  <div className="flex-1 bg-muted rounded-full h-4 overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-300"
-                      style={{ width: `${pct}%`, backgroundColor: CATEGORY_COLORS[cat] ?? '#9ca3af' }} />
-                  </div>
-                  <span className="text-xs w-28 text-muted-foreground shrink-0 text-right">{formatCurrency(amount)}</span>
-                </div>
-              )
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {byStaff.length > 1 && (
-        <Card>
-          <CardHeader className="px-5 pt-4 pb-2">
-            <CardTitle className="text-sm font-semibold">Разходи по служител</CardTitle>
-          </CardHeader>
-          <CardContent className="px-5 pb-4 space-y-2">
-            {byStaff.map(([name, amount]) => {
-              const pct = filteredTotal > 0 ? (amount / filteredTotal) * 100 : 0
-              return (
-                <div key={name} className="flex items-center gap-3">
-                  <span className="text-xs w-32 text-right text-muted-foreground shrink-0 truncate">{name}</span>
-                  <div className="flex-1 bg-muted rounded-full h-4 overflow-hidden">
-                    <div className="h-full rounded-full bg-primary/70 transition-all duration-300" style={{ width: `${pct}%` }} />
-                  </div>
-                  <span className="text-xs w-28 text-muted-foreground shrink-0 text-right">{formatCurrency(amount)}</span>
-                </div>
-              )
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <select value={filterStaff} onChange={e => setFilterStaff(e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <option value="all">Всички служители</option>
-          {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
-        </select>
-        <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <option value="all">Всички категории</option>
-          {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        {hasFilters && (
-          <Button variant="ghost" size="sm" onClick={() => { setFilterStaff('all'); setFilterCategory('all') }}
-            className="text-muted-foreground text-xs h-9">
-            ✕ Изчисти
-          </Button>
-        )}
-      </div>
-
-      {/* Table */}
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <th className="px-4 py-3 text-left cursor-pointer select-none font-medium text-muted-foreground text-xs uppercase tracking-wider"
-                  onClick={() => handleSort('category')}>
-                  Категория{sortIcon('category')}
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Описание</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Служител</th>
-                <th className="px-4 py-3 text-right cursor-pointer select-none font-medium text-muted-foreground text-xs uppercase tracking-wider"
-                  onClick={() => handleSort('amount')}>
-                  Сума{sortIcon('amount')}
-                </th>
-                {canEdit && <th className="px-4 py-3 text-right font-medium text-muted-foreground text-xs uppercase tracking-wider">Действия</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && (
-                <tr><td colSpan={canEdit ? 5 : 4} className="px-4 py-10 text-center text-muted-foreground">Няма разходи</td></tr>
-              )}
-              {filtered.map((expense, i) => (
-                <tr key={expense.id} className={`border-b border-border/50 transition-colors hover:bg-muted/30 ${i % 2 === 0 ? '' : 'bg-muted/10'}`}>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white"
-                      style={{ backgroundColor: CATEGORY_COLORS[expense.category] ?? '#9ca3af' }}>
-                      {expense.category}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{expense.description || <span className="text-muted-foreground/40">—</span>}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{staffName(expense.staff_id)}</td>
-                  <td className="px-4 py-3 text-right font-semibold">{formatCurrency(expense.amount, expense.currency)}</td>
-                  {canEdit && (
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                        onClick={() => { setEditing(expense); setShowForm(true) }}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      {isAdmin && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => setConfirmDelete(expense)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Tabs */}
+      <div className="border-b border-border">
+        <div className="flex gap-0">
+          {([['salaries', 'Заплати', salaryExpenses.length], ['other', 'Други разходи', otherExpenses.length]] as const).map(([tab, label, count]) => (
+            <button
+              key={tab}
+              onClick={() => { setActiveTab(tab); setFilterCategory('all') }}
+              className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab
+                  ? 'border-navy text-navy'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {label}
+              <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+                activeTab === tab ? 'bg-navy text-white' : 'bg-muted text-muted-foreground'
+              }`}>{count}</span>
+            </button>
+          ))}
         </div>
-      </Card>
+      </div>
+
+      {/* Tab: Заплати */}
+      {activeTab === 'salaries' && (
+        <div className="space-y-4">
+          {salariesByEmployee.length > 0 && (
+            <Card>
+              <CardHeader className="px-5 pt-4 pb-2">
+                <CardTitle className="text-sm font-semibold">Заплати по служител</CardTitle>
+              </CardHeader>
+              <CardContent className="px-5 pb-4 space-y-2.5">
+                {salariesByEmployee.map(([name, { sum }]) => {
+                  const pct = totalSalaries > 0 ? (sum / totalSalaries) * 100 : 0
+                  return (
+                    <div key={name} className="flex items-center gap-3">
+                      <span className="text-sm w-36 text-muted-foreground truncate shrink-0">{name}</span>
+                      <div className="flex-1 bg-muted rounded-full h-5 overflow-hidden">
+                        <div
+                          className="h-full bg-navy rounded-full transition-all flex items-center justify-end pr-2"
+                          style={{ width: `${Math.max(pct, 8)}%` }}
+                        >
+                          <span className="text-[10px] text-white font-medium">{formatCurrency(sum)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40">
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Служител</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Описание</th>
+                    <th className="px-4 py-3 text-right font-medium text-muted-foreground text-xs uppercase tracking-wider">Сума</th>
+                    {canEdit && <th className="px-4 py-3 text-right font-medium text-muted-foreground text-xs uppercase tracking-wider">Действия</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {salaryExpenses.length === 0 && (
+                    <tr><td colSpan={canEdit ? 4 : 3} className="px-4 py-10 text-center text-muted-foreground">Няма добавени заплати</td></tr>
+                  )}
+                  {salaryExpenses.map((expense, i) => (
+                    <tr key={expense.id} className={`border-b border-border/50 transition-colors hover:bg-muted/30 ${i % 2 === 0 ? '' : 'bg-muted/10'}`}>
+                      <td className="px-4 py-3 font-medium">{staffName(expense.staff_id)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{expense.description || <span className="text-muted-foreground/40">—</span>}</td>
+                      <td className="px-4 py-3 text-right font-semibold">{formatCurrency(expense.amount, expense.currency)}</td>
+                      {canEdit && (
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                            onClick={() => { setEditing(expense); setShowForm(true) }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          {isAdmin && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => setConfirmDelete(expense)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  {salaryExpenses.length > 0 && (
+                    <tr className="bg-muted/20 font-semibold">
+                      <td className="px-4 py-2 text-sm" colSpan={2}>Общо заплати</td>
+                      <td className="px-4 py-2 text-right text-sm">{formatCurrency(totalSalaries)}</td>
+                      {canEdit && <td />}
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Tab: Други разходи */}
+      {activeTab === 'other' && (
+        <div className="space-y-4">
+          {otherByCategory.length > 0 && (
+            <Card>
+              <CardHeader className="px-5 pt-4 pb-2">
+                <CardTitle className="text-sm font-semibold">Разходи по категория</CardTitle>
+              </CardHeader>
+              <CardContent className="px-5 pb-4 space-y-2">
+                {otherByCategory.map(([cat, amount]) => {
+                  const pct = totalOther > 0 ? (amount / totalOther) * 100 : 0
+                  return (
+                    <div key={cat} className="flex items-center gap-3">
+                      <span className="text-xs w-24 text-right text-muted-foreground shrink-0">{cat}</span>
+                      <div className="flex-1 bg-muted rounded-full h-4 overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${pct}%`, backgroundColor: CATEGORY_COLORS[cat] ?? '#9ca3af' }} />
+                      </div>
+                      <span className="text-xs w-28 text-muted-foreground shrink-0 text-right">{formatCurrency(amount)}</span>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Filter */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="all">Всички категории</option>
+              {otherCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <button
+              onClick={() => setSortAsc(v => !v)}
+              className="h-9 px-3 rounded-md border border-input bg-background text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Сума {sortAsc ? '↑' : '↓'}
+            </button>
+            {filterCategory !== 'all' && (
+              <Button variant="ghost" size="sm" onClick={() => setFilterCategory('all')}
+                className="text-muted-foreground text-xs h-9">
+                ✕ Изчисти
+              </Button>
+            )}
+          </div>
+
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40">
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Категория</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Описание</th>
+                    <th className="px-4 py-3 text-right font-medium text-muted-foreground text-xs uppercase tracking-wider">Сума</th>
+                    {canEdit && <th className="px-4 py-3 text-right font-medium text-muted-foreground text-xs uppercase tracking-wider">Действия</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOther.length === 0 && (
+                    <tr><td colSpan={canEdit ? 4 : 3} className="px-4 py-10 text-center text-muted-foreground">Няма разходи</td></tr>
+                  )}
+                  {filteredOther.map((expense, i) => (
+                    <tr key={expense.id} className={`border-b border-border/50 transition-colors hover:bg-muted/30 ${i % 2 === 0 ? '' : 'bg-muted/10'}`}>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white"
+                          style={{ backgroundColor: CATEGORY_COLORS[expense.category] ?? '#9ca3af' }}>
+                          {expense.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{expense.description || <span className="text-muted-foreground/40">—</span>}</td>
+                      <td className="px-4 py-3 text-right font-semibold">{formatCurrency(expense.amount, expense.currency)}</td>
+                      {canEdit && (
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                            onClick={() => { setEditing(expense); setShowForm(true) }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          {isAdmin && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => setConfirmDelete(expense)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  {filteredOther.length > 0 && (
+                    <tr className="bg-muted/20 font-semibold">
+                      <td className="px-4 py-2 text-sm" colSpan={2}>
+                        Общо{filterCategory !== 'all' ? ` (${filterCategory})` : ''}
+                      </td>
+                      <td className="px-4 py-2 text-right text-sm">
+                        {formatCurrency(filteredOther.reduce((s, e) => s + e.amount, 0))}
+                      </td>
+                      {canEdit && <td />}
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
 
       <ExpenseForm
         open={showForm}
         expense={editing}
         staffList={staffList}
         userId={user?.id}
+        defaultCategory={activeTab === 'salaries' ? 'Заплати' : undefined}
         onSave={handleSave}
         onClose={() => { setShowForm(false); setEditing(null) }}
       />
@@ -322,15 +414,19 @@ export function ExpensesPage() {
   )
 }
 
-function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
+function ExpenseForm({ open, expense, staffList, userId, defaultCategory, onSave, onClose }: {
   open: boolean
   expense: Expense | null
   staffList: StaffMember[]
   userId?: string
+  defaultCategory?: ExpenseCategory
   onSave: (data: Omit<Expense, 'id' | 'created_at' | 'updated_at'>) => void
   onClose: () => void
 }) {
-  const [category, setCategory] = useState<ExpenseCategory>(expense?.category as ExpenseCategory ?? 'Други')
+  const initCategory = (): ExpenseCategory =>
+    (expense?.category as ExpenseCategory) ?? defaultCategory ?? 'Други'
+
+  const [category, setCategory] = useState<ExpenseCategory>(initCategory)
   const [description, setDescription] = useState(expense?.description ?? '')
   const [amount, setAmount] = useState(expense?.amount?.toString() ?? '')
   const [currency, setCurrency] = useState(expense?.currency ?? 'EUR')
@@ -339,7 +435,7 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
 
   useEffect(() => {
     if (open) {
-      setCategory(expense?.category as ExpenseCategory ?? 'Други')
+      setCategory(initCategory())
       setDescription(expense?.description ?? '')
       setAmount(expense?.amount?.toString() ?? '')
       setCurrency(expense?.currency ?? 'EUR')
@@ -378,7 +474,7 @@ function ExpenseForm({ open, expense, staffList, userId, onSave, onClose }: {
     <Dialog open={open} onOpenChange={o => { if (!o) onClose() }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{expense ? 'Редактирай разход' : 'Нов месечен разход'}</DialogTitle>
+          <DialogTitle>{expense ? 'Редактирай разход' : category === 'Заплати' ? 'Нова заплата' : 'Нов разход'}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
