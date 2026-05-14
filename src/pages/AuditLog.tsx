@@ -17,17 +17,17 @@ const ACTION_LABELS: Record<string, string> = {
 }
 
 const ACTION_COLORS: Record<string, { bg: string; icon: string }> = {
-  create_client: { bg: 'bg-green-100 text-green-700', icon: '➕' },
-  update_cell: { bg: 'bg-blue-100 text-blue-700', icon: '✏️' },
-  delete_client: { bg: 'bg-red-100 text-red-700', icon: '🗑️' },
-  create_column: { bg: 'bg-green-100 text-green-700', icon: '📊' },
-  delete_column: { bg: 'bg-red-100 text-red-700', icon: '📊' },
-  create_dropdown_option: { bg: 'bg-green-100 text-green-700', icon: '📋' },
-  delete_dropdown_option: { bg: 'bg-red-100 text-red-700', icon: '📋' },
-  create_tag: { bg: 'bg-green-100 text-green-700', icon: '🏷️' },
-  delete_tag: { bg: 'bg-red-100 text-red-700', icon: '🏷️' },
-  add_tag: { bg: 'bg-amber-100 text-amber-700', icon: '🏷️' },
-  remove_tag: { bg: 'bg-amber-100 text-amber-700', icon: '🏷️' },
+  create_client: { bg: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400', icon: '➕' },
+  update_cell: { bg: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400', icon: '✏️' },
+  delete_client: { bg: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400', icon: '🗑️' },
+  create_column: { bg: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400', icon: '📊' },
+  delete_column: { bg: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400', icon: '📊' },
+  create_dropdown_option: { bg: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400', icon: '📋' },
+  delete_dropdown_option: { bg: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400', icon: '📋' },
+  create_tag: { bg: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400', icon: '🏷️' },
+  delete_tag: { bg: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400', icon: '🏷️' },
+  add_tag: { bg: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400', icon: '🏷️' },
+  remove_tag: { bg: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400', icon: '🏷️' },
 }
 
 function relativeTime(dateStr: string): string {
@@ -52,30 +52,30 @@ function describeAction(entry: AuditEntry): string {
   switch (action) {
     case 'update_cell':
       if (old_value && new_value) {
-        return `промени ${column_name ?? 'стойност'}${clientLabel} от „${old_value}" на „${new_value}"`
+        return `промени ${column_name ?? 'стойност'}${clientLabel} от „${old_value}“ на „${new_value}“`
       }
-      if (new_value) return `зададе ${column_name ?? 'стойност'}${clientLabel} на „${new_value}"`
+      if (new_value) return `зададе ${column_name ?? 'стойност'}${clientLabel} на „${new_value}“`
       return `промени ${column_name ?? 'стойност'}${clientLabel}`
     case 'create_client':
       return 'добави нов клиент'
     case 'delete_client':
       return `изтри клиент${client_name ? ` ${client_name}` : ''}`
     case 'create_column':
-      return `добави колона „${new_value ?? column_name ?? ''}"`
+      return `добави колона „${new_value ?? column_name ?? ''}“`
     case 'delete_column':
-      return `изтри колона „${old_value ?? column_name ?? ''}"`
+      return `изтри колона „${old_value ?? column_name ?? ''}“`
     case 'create_dropdown_option':
-      return `добави опция „${new_value ?? ''}" в ${column_name ?? 'падащо меню'}`
+      return `добави опция „${new_value ?? ''}“ в ${column_name ?? 'падащо меню'}`
     case 'delete_dropdown_option':
-      return `изтри опция „${old_value ?? ''}" от ${column_name ?? 'падащо меню'}`
+      return `изтри опция „${old_value ?? ''}“ от ${column_name ?? 'падащо меню'}`
     case 'create_tag':
-      return `създаде таг „${new_value ?? ''}"`
+      return `създаде таг „${new_value ?? ''}“`
     case 'delete_tag':
-      return `изтри таг „${old_value ?? ''}"`
+      return `изтри таг „${old_value ?? ''}“`
     case 'add_tag':
-      return `добави таг „${new_value ?? ''}"${clientLabel}`
+      return `добави таг „${new_value ?? ''}“${clientLabel}`
     case 'remove_tag':
-      return `премахна таг „${old_value ?? ''}"${clientLabel}`
+      return `премахна таг „${old_value ?? ''}“${clientLabel}`
     default:
       return ACTION_LABELS[action] ?? action
   }
@@ -143,16 +143,16 @@ export function AuditLogPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto">
-      <h1 className="text-xl md:text-2xl font-bold text-navy mb-6">📝 Дневник на промените</h1>
+      <h1 className="text-xl md:text-2xl font-bold text-foreground mb-6">📝 Дневник на промените</h1>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-3 md:p-4 mb-6 flex flex-wrap gap-3 items-end">
+      <div className="bg-card border border-border rounded-lg p-3 md:p-4 mb-6 flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-xs text-dark/50 mb-1">Потребител</label>
+          <label className="block text-xs text-muted-foreground mb-1">Потребител</label>
           <select
             value={filterUser}
             onChange={e => setFilterUser(e.target.value)}
-            className="px-3 py-1.5 border border-light rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-navy"
+            className="px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">Всички</option>
             {users.map(u => (
@@ -161,11 +161,11 @@ export function AuditLogPage() {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-dark/50 mb-1">Действие</label>
+          <label className="block text-xs text-muted-foreground mb-1">Действие</label>
           <select
             value={filterAction}
             onChange={e => setFilterAction(e.target.value)}
-            className="px-3 py-1.5 border border-light rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-navy"
+            className="px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           >
             {ACTION_OPTIONS.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -173,27 +173,27 @@ export function AuditLogPage() {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-dark/50 mb-1">От дата</label>
+          <label className="block text-xs text-muted-foreground mb-1">От дата</label>
           <input
             type="date"
             value={filterDateFrom}
             onChange={e => setFilterDateFrom(e.target.value)}
-            className="px-3 py-1.5 border border-light rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-navy"
+            className="px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
         <div>
-          <label className="block text-xs text-dark/50 mb-1">До дата</label>
+          <label className="block text-xs text-muted-foreground mb-1">До дата</label>
           <input
             type="date"
             value={filterDateTo}
             onChange={e => setFilterDateTo(e.target.value)}
-            className="px-3 py-1.5 border border-light rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-navy"
+            className="px-3 py-1.5 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
         {(filterUser || filterAction || filterDateFrom || filterDateTo) && (
           <button
             onClick={() => { setFilterUser(''); setFilterAction(''); setFilterDateFrom(''); setFilterDateTo('') }}
-            className="px-3 py-1.5 text-sm text-red-500 hover:text-red-700"
+            className="px-3 py-1.5 text-sm text-destructive hover:text-destructive/80"
           >
             ✕ Изчисти
           </button>
@@ -202,24 +202,24 @@ export function AuditLogPage() {
 
       {/* Timeline */}
       {loading ? (
-        <div className="text-dark/50 py-10 text-center">Зареждане...</div>
+        <div className="text-muted-foreground py-10 text-center">Зареждане...</div>
       ) : entries.length === 0 ? (
-        <div className="text-dark/40 py-10 text-center">Няма записи</div>
+        <div className="text-muted-foreground py-10 text-center">Няма записи</div>
       ) : (
         <div className="space-y-1">
           {entries.map(entry => {
-            const colors = ACTION_COLORS[entry.action] ?? { bg: 'bg-gray-100 text-gray-700', icon: '📌' }
+            const colors = ACTION_COLORS[entry.action] ?? { bg: 'bg-muted text-muted-foreground', icon: '📌' }
             return (
-              <div key={entry.id} className="flex items-start gap-3 bg-white rounded-lg p-3 shadow-sm hover:shadow transition">
+              <div key={entry.id} className="flex items-start gap-3 bg-card border border-border rounded-lg p-3 hover:bg-muted/30 transition-colors">
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0 ${colors.bg}`}>
                   {colors.icon}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm">
-                    <span className="font-medium text-navy">{entry.user_name}</span>{' '}
-                    <span className="text-dark/70">{describeAction(entry)}</span>
+                    <span className="font-medium text-foreground">{entry.user_name}</span>{' '}
+                    <span className="text-muted-foreground">{describeAction(entry)}</span>
                   </p>
-                  <p className="text-xs text-dark/40 mt-0.5">{relativeTime(entry.created_at)}</p>
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">{relativeTime(entry.created_at)}</p>
                 </div>
               </div>
             )
@@ -233,7 +233,7 @@ export function AuditLogPage() {
           <button
             onClick={() => loadEntries(false)}
             disabled={loadingMore}
-            className="px-6 py-2 bg-navy text-white rounded-md hover:bg-navy-light transition text-sm disabled:opacity-50"
+            className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition text-sm disabled:opacity-50"
           >
             {loadingMore ? 'Зареждане...' : `Зареди още (${entries.length} от ${total})`}
           </button>
