@@ -8,6 +8,26 @@ function norm(s = '') {
   return s.replace(/\s+/g, ' ').trim()
 }
 
+function normForEik(s = '') {
+  return s
+    .replace(/["""]/g, ' ')
+    .replace(/[–—]/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+}
+
+function stripEntityIterative(s: string): string {
+  const entityRe = /\s+(ЕООД|ООД|ЕАД|АД|ЕДПК|ЕТ|ЗП)$/
+  let prev = ''
+  while (prev !== s) {
+    prev = s
+    s = s.replace(entityRe, '').trim()
+  }
+  return s
+}
+
 type CellRecord = {
   client_id: string
   column_id: string
@@ -218,10 +238,104 @@ const CSV_ROWS = CSV_RAW.split('\n').filter(Boolean).map(line => {
   }
 }).filter(r => r.name)
 
+// Hardcoded aliases for names in the EIK file that differ from CRM names
+const EIK_ALIASES: Record<string, string> = {
+  'ДЕЙВИД БЮНЕТ ПИЕР': 'ДЕЙВИД ПИЕР БЮНЕТ',
+  'ОЛИВИЕР': 'ОЛИВИЕ АНРИ АНТОНИО УСАН',
+}
+
+const EIK_DATA: { name: string; eik: string }[] = [
+  { name: '"ФИЛОСОФИЯ НА ВКУСА" ООД', eik: '206881704' },
+  { name: 'АДВАНС ХОУМС ООД ООД', eik: '208584178' },
+  { name: 'АГРОГРУП 2017 ООД', eik: '204465251' },
+  { name: 'АГРОДЕН ООД', eik: '115760921' },
+  { name: 'АДРИАТИКА БЛУ ЕООД', eik: '115870645' },
+  { name: 'АДВОКАТСКО СЪДРУЖИЕ"ЗЛАТКОВА И БРЕЗОВСКА', eik: '181084391' },
+  { name: 'АЛЕКС - К 2002 ЕООД', eik: '200776753' },
+  { name: 'АЛЕКС - С - 2002 ЕООД', eik: '115750028' },
+  { name: 'БОРЕ ГРУП ЕООД', eik: '205143100' },
+  { name: 'БРАТЯ ДИМОВИ 2009 ООД', eik: '200830158' },
+  { name: 'ВАЛСПОРТ 84 ЕООД', eik: '205246189' },
+  { name: 'ВАТЕРПОЛО КОМЕРС', eik: '40145577' },
+  { name: 'ВЕК ТРЕЙДИНГ ООД', eik: '115662135' },
+  { name: 'ВИКИ 2 ООД', eik: '160133764' },
+  { name: 'ВИКИВАТ ООД', eik: '160138003' },
+  { name: 'ВИЛХЕЛМ БЪЛГАРИЯ ЕООД', eik: '206060045' },
+  { name: 'ГЕРИ МУР 2016 ЕООД', eik: '204079869' },
+  { name: 'ГЛИТ ЦРО ЕООД', eik: '206121726' },
+  { name: 'ГРАФИС ООД', eik: '825282444' },
+  { name: 'ДЕЙВИД ПОСТАЛ МАРКЕТ ООД', eik: '825383518' },
+  { name: 'ДЕЙВИД ПРОФЕШЪНЪЛ ООД', eik: '206593965' },
+  { name: 'ДЖИВИЕМСИ МЕНПАУЪР МЕНИДЖМЪНТ ООД', eik: '207373438' },
+  { name: 'ДЖИ ТИ ДРАЙВ ЕООД', eik: '208646936' },
+  { name: 'ДИВЕРСО ГРУП 13 ООД', eik: '202685892' },
+  { name: 'ДЕЙВИД БЮНЕТ ПИЕР', eik: '181399113' },
+  { name: 'ДИГИ 84 ООД', eik: '115881104' },
+  { name: 'ЕВРОТЕХ БЪЛГАРИЯ 2022 ЕООД', eik: '206828438' },
+  { name: 'ЕКОТЕРМ БЪЛГАРИЯ ЕООД', eik: '201915775' },
+  { name: 'ЕЛ БЪЛГАРИЯ ЕООД', eik: '115827416' },
+  { name: 'ЗВЕЗДА 21 ЕООД', eik: '206368751' },
+  { name: 'ИМЕРИС МИНЕРАЛС БЪЛГАРИЯ АД', eik: '108010951' },
+  { name: 'ИНВЕНИО БЪЛГАРИЯ ЕООД', eik: '206088977' },
+  { name: 'ИНВЕНИО РК ЕООД', eik: '203734738' },
+  { name: 'ИСИ ПЛОВДИВ ЕООД', eik: '205851380' },
+  { name: 'КАЛМАНОЛА ЕООД', eik: '207276526' },
+  { name: 'КИАРА НОВЕ ЕООД', eik: '208338810' },
+  { name: 'КОРЕКТ ИВ ЕООД', eik: '115874800' },
+  { name: 'КАР ДЕ ЛУКС 88 ЕООД', eik: '205976996' },
+  { name: 'КЛЪСТЪРМАРКЕТ - БЪЛГАРИЯ ЕООД', eik: '206569708' },
+  { name: 'КМК - 05 ООД', eik: '115865502' },
+  { name: 'КТК – КЪМПЛИТ ТРЕЙДИНГ КЪМПАНИ ЕООД', eik: '205176812' },
+  { name: 'ЛБГ ЕООД', eik: '204127303' },
+  { name: 'ЛТИ - ИНЖЕНЕРИНГ ЕООД', eik: '201295299' },
+  { name: 'МАРИАНА КОЛЕВА 7 ЕООД', eik: '203888526' },
+  { name: 'МАРКЕТИНГ БГ ЕООД', eik: '206610020' },
+  { name: 'МАРТКОНСУЛТ 21 ЕООД', eik: '206475641' },
+  { name: 'МЕГА МАРКЕТ РИТЕЙЛ ЕООД', eik: '201759276' },
+  { name: 'МЕЛИТЕК ООД', eik: '207956177' },
+  { name: 'МИРОКС ДЕКОР ООД', eik: '200149206' },
+  { name: 'НОТА МЕДЖИК ЕДПК', eik: '208531478' },
+  { name: 'НЮ ЕСТЕЙТ 2024 ЕООД', eik: '207774609' },
+  { name: 'ОЛИВИЕР', eik: '181325668' },
+  { name: 'ПЕРМАНЕНЦА ЕООД', eik: '208208182' },
+  { name: 'ПЕРЛАИНВЕСТ ООД', eik: '831274943' },
+  { name: 'ПЛАМА СОФТ ООД', eik: '207862703' },
+  { name: 'ПЛОЧКИТЕ ЕООД', eik: '202157175' },
+  { name: 'ПРЕКОС ООД', eik: '115915510' },
+  { name: 'РЕНТАРО ЕООД', eik: '207260114' },
+  { name: 'САМПО ООД', eik: '115150310' },
+  { name: 'СИРИУС ДЪКС ООД', eik: '208184885' },
+  { name: 'СИДИ ТРЕЙД ЕООД', eik: '115853628' },
+  { name: 'СО - СПЕКТЪР ЕАД', eik: '115018585' },
+  { name: 'СТ ПРОПЪРТИС ООД', eik: '206748038' },
+  { name: 'СТИЛ ЕНД  ВЕС ООД', eik: '203323459' },
+  { name: 'СТИЛ ЕНД ВЕС 2 ООД', eik: '205283325' },
+  { name: 'ТИТАН - ХХ ООД', eik: '115850614' },
+  { name: 'ТОЙ ЕООД', eik: '207222735' },
+  { name: 'УАЙН ХЪНТ ЕООД', eik: '208077762' },
+  { name: 'ТОП ТЕН ИНВЕСТ ЕООД', eik: '205303658' },
+  { name: 'ФАБИО СИЛВАН ДЕ РОЗ', eik: '181313783' },
+  { name: 'ФАРМГЛОУ ЕООД', eik: '208338874' },
+  { name: 'ФИНЕСТА ЕООД', eik: '160037776' },
+  { name: 'ФМ ПЛЮС ГРУП ЕООД', eik: '115516251' },
+  { name: 'ФРАНЧЕСКО СОЛЮШЪНС ЕООД', eik: '208129771' },
+  { name: 'ФРЕА 28 ООД ЕООД', eik: '160097617' },
+  { name: 'ФРУКТ КОМЕРС ООД', eik: '115765384' },
+  { name: 'ФЛЕАР ЕВРОПА ООД', eik: '207975843' },
+  { name: 'ФУТУРО ЕООД', eik: '115888110' },
+  { name: 'ХЕЛТИ ТРИЙТС ЕООД', eik: '204207742' },
+  { name: 'ХЕЛТИ ЛАЙФ 2022 ЕООД', eik: '207130799' },
+  { name: 'ХЕМИНГУЕЙ БЪЛГАРИЯ ЕООД', eik: '115863978' },
+  { name: 'ХИСАР - МИЛЕНИУМ ООД', eik: '115566813' },
+  { name: 'ХЪМИНГБЪРД ТРАВЕЛ БЪЛГАРИЯ ЕООД', eik: '208079731' },
+]
+
 export function ImportPage() {
   const { user } = useAuth()
   const [phase, setPhase] = useState<'idle' | 'running' | 'done'>('idle')
   const [logs, setLogs] = useState<string[]>([])
+  const [eikPhase, setEikPhase] = useState<'idle' | 'running' | 'done'>('idle')
+  const [eikLogs, setEikLogs] = useState<string[]>([])
 
   async function runImport() {
     setPhase('running')
@@ -381,51 +495,223 @@ export function ImportPage() {
     }
   }
 
+  async function runEikImport() {
+    setEikPhase('running')
+    setEikLogs([])
+    const log = (msg: string) => setEikLogs(prev => [...prev, msg])
+
+    try {
+      // 1. Find the name column
+      log('📋 Зареждам колони...')
+      const columns = await getColumns()
+      const nameCol = [...columns].filter(c => c.type === 'text').sort((a, b) => a.position - b.position)[0]
+      if (!nameCol) throw new Error('Не намерих колона за имена')
+
+      // 2. Load all client name cells from DB
+      log('👥 Зареждам клиентски имена...')
+      const { data: nameCells, error: nameErr } = await supabase
+        .from('crm_cell_values')
+        .select('client_id,value_text')
+        .eq('column_id', nameCol.id)
+      if (nameErr) throw nameErr
+
+      // 3. Build two lookup maps: exact and entity-stripped
+      const exactMap = new Map<string, string>()   // normForEik(crmName) → clientId
+      const strippedMap = new Map<string, string>() // stripped(normForEik(crmName)) → clientId
+
+      for (const cell of nameCells ?? []) {
+        if (!cell.value_text) continue
+        const normed = normForEik(cell.value_text)
+        const stripped = stripEntityIterative(normed)
+        exactMap.set(normed, cell.client_id)
+        if (!strippedMap.has(stripped)) strippedMap.set(stripped, cell.client_id)
+      }
+      log(`  ${exactMap.size} клиента заредени`)
+
+      // 4. Match each EIK entry to a client
+      const matched: { clientId: string; eik: string; displayName: string }[] = []
+      const unmatched: string[] = []
+
+      for (const entry of EIK_DATA) {
+        const resolvedName = EIK_ALIASES[entry.name] ?? entry.name
+        const normed = normForEik(resolvedName)
+        const stripped = stripEntityIterative(normed)
+        const clientId = exactMap.get(normed) ?? strippedMap.get(stripped)
+        if (clientId) {
+          matched.push({ clientId, eik: entry.eik, displayName: entry.name })
+        } else {
+          unmatched.push(entry.name)
+        }
+      }
+
+      log(`  Намерени: ${matched.length}  Ненамерени: ${unmatched.length}`)
+      if (unmatched.length > 0) {
+        log('⚠️ Ненамерени клиенти:')
+        unmatched.forEach(n => log(`  · ${n}`))
+      }
+
+      // 5. Check which matched clients already have a contact record
+      log('🔍 Проверявам съществуващи контакти...')
+      const matchedClientIds = matched.map(m => m.clientId)
+      const { data: existingContacts, error: contactErr } = await supabase
+        .from('crm_contacts')
+        .select('id,client_id')
+        .in('client_id', matchedClientIds)
+      if (contactErr) throw contactErr
+
+      const existingContactMap = new Map<string, string>() // clientId → contactId
+      for (const c of existingContacts ?? []) {
+        existingContactMap.set(c.client_id, c.id)
+      }
+
+      const toUpdate = matched.filter(m => existingContactMap.has(m.clientId))
+      const toInsert = matched.filter(m => !existingContactMap.has(m.clientId))
+      log(`  Обновяване: ${toUpdate.length}  Нови контакти: ${toInsert.length}`)
+
+      // 6. Insert new contact rows (only client_id + eik)
+      if (toInsert.length > 0) {
+        log('➕ Създавам нови контакти...')
+        const { error } = await supabase.from('crm_contacts').insert(
+          toInsert.map(m => ({ client_id: m.clientId, eik: m.eik, created_by: user?.id ?? null }))
+        )
+        if (error) throw error
+      }
+
+      // 7. Update existing contacts — set only the eik field (20 in parallel)
+      if (toUpdate.length > 0) {
+        log('✏️  Обновявам ЕИК...')
+        const PARALLEL = 20
+        for (let i = 0; i < toUpdate.length; i += PARALLEL) {
+          const batch = toUpdate.slice(i, i + PARALLEL)
+          const results = await Promise.allSettled(
+            batch.map(m =>
+              supabase
+                .from('crm_contacts')
+                .update({ eik: m.eik })
+                .eq('id', existingContactMap.get(m.clientId)!)
+            )
+          )
+          const failed = results.find(
+            r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value.error)
+          )
+          if (failed) {
+            const err =
+              failed.status === 'rejected'
+                ? failed.reason
+                : (failed as PromiseFulfilledResult<{ error: Error }>).value.error
+            throw err
+          }
+        }
+        log(`  Обновени ${toUpdate.length} ЕИК-а`)
+      }
+
+      log('✅ ЕИК импортирането завърши успешно!')
+      setEikPhase('done')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log(`❌ Грешка: ${msg}`)
+      setEikPhase('idle')
+    }
+  }
+
   return (
-    <div className="p-4 md:p-6 max-w-3xl mx-auto">
-      <h1 className="text-xl md:text-2xl font-bold text-foreground mb-1">Импорт на клиенти</h1>
-      <p className="text-sm text-muted-foreground mb-6">
-        {CSV_ROWS.length} реда · Съществуващите клиенти се обновяват, нови се добавят.
-      </p>
+    <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-10">
+      {/* ── Client import ── */}
+      <section>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground mb-1">Импорт на клиенти</h1>
+        <p className="text-sm text-muted-foreground mb-6">
+          {CSV_ROWS.length} реда · Съществуващите клиенти се обновяват, нови се добавят.
+        </p>
 
-      {phase !== 'running' && phase !== 'done' && (
-        <button
-          onClick={runImport}
-          className="px-6 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition text-sm font-medium"
-        >
-          Стартирай импорт
-        </button>
-      )}
+        {phase !== 'running' && phase !== 'done' && (
+          <button
+            onClick={runImport}
+            className="px-6 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition text-sm font-medium"
+          >
+            Стартирай импорт
+          </button>
+        )}
 
-      {phase === 'running' && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-          Импортиране в процес...
-        </div>
-      )}
+        {phase === 'running' && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            Импортиране в процес...
+          </div>
+        )}
 
-      {logs.length > 0 && (
-        <div className="mt-5 bg-muted/30 rounded-lg border border-border p-4 space-y-0.5 max-h-96 overflow-y-auto font-mono text-xs leading-relaxed">
-          {logs.map((msg, i) => (
-            <div
-              key={i}
-              className={
-                msg.startsWith('❌') ? 'text-red-500' :
-                msg.startsWith('✅') ? 'text-green-600 dark:text-green-400 font-semibold' :
-                'text-foreground/75'
-              }
-            >
-              {msg}
-            </div>
-          ))}
-        </div>
-      )}
+        {logs.length > 0 && (
+          <div className="mt-5 bg-muted/30 rounded-lg border border-border p-4 space-y-0.5 max-h-96 overflow-y-auto font-mono text-xs leading-relaxed">
+            {logs.map((msg, i) => (
+              <div
+                key={i}
+                className={
+                  msg.startsWith('❌') ? 'text-red-500' :
+                  msg.startsWith('✅') ? 'text-green-600 dark:text-green-400 font-semibold' :
+                  'text-foreground/75'
+                }
+              >
+                {msg}
+              </div>
+            ))}
+          </div>
+        )}
 
-      {phase === 'done' && (
-        <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-400 text-sm font-medium">
-          Готово! <a href="#/clients" className="underline">Виж клиентите →</a>
-        </div>
-      )}
+        {phase === 'done' && (
+          <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-400 text-sm font-medium">
+            Готово! <a href="#/clients" className="underline">Виж клиентите →</a>
+          </div>
+        )}
+      </section>
+
+      <div className="border-t border-border" />
+
+      {/* ── EIK import ── */}
+      <section>
+        <h2 className="text-xl md:text-2xl font-bold text-foreground mb-1">Импорт на ЕИК</h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          {EIK_DATA.length} записа · Съпоставя по име и записва ЕИК в контактите на клиента.
+        </p>
+
+        {eikPhase !== 'running' && eikPhase !== 'done' && (
+          <button
+            onClick={runEikImport}
+            className="px-6 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition text-sm font-medium"
+          >
+            Импортирай ЕИК
+          </button>
+        )}
+
+        {eikPhase === 'running' && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            Импортиране в процес...
+          </div>
+        )}
+
+        {eikLogs.length > 0 && (
+          <div className="mt-5 bg-muted/30 rounded-lg border border-border p-4 space-y-0.5 max-h-96 overflow-y-auto font-mono text-xs leading-relaxed">
+            {eikLogs.map((msg, i) => (
+              <div
+                key={i}
+                className={
+                  msg.startsWith('❌') ? 'text-red-500' :
+                  msg.startsWith('✅') ? 'text-green-600 dark:text-green-400 font-semibold' :
+                  msg.startsWith('⚠️') ? 'text-yellow-600 dark:text-yellow-400' :
+                  'text-foreground/75'
+                }
+              >
+                {msg}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {eikPhase === 'done' && (
+          <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-400 text-sm font-medium">
+            Готово! <a href="#/contacts" className="underline">Виж контактите →</a>
+          </div>
+        )}
+      </section>
     </div>
   )
 }
