@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
-import { getClients, getColumns, getDropdownOptions, addDropdownOption } from '../lib/storage'
+import { getClients, getColumns, getClientNames, getDropdownOptions, addDropdownOption } from '../lib/storage'
 import type { Column } from '../lib/types'
 
 function norm(s = '') {
@@ -501,32 +501,22 @@ export function ImportPage() {
     const log = (msg: string) => setEikLogs(prev => [...prev, msg])
 
     try {
-      // 1. Find the name column
-      log('📋 Зареждам колони...')
-      const columns = await getColumns()
-      const nameCol = [...columns].filter(c => c.type === 'text').sort((a, b) => a.position - b.position)[0]
-      if (!nameCol) throw new Error('Не намерих колона за имена')
-
-      // 2. Load all client name cells from DB
+      // 1. Load all client names from DB
       log('👥 Зареждам клиентски имена...')
-      const { data: nameCells, error: nameErr } = await supabase
-        .from('crm_cell_values')
-        .select('client_id,value_text')
-        .eq('column_id', nameCol.id)
-      if (nameErr) throw nameErr
+      const clientNames = await getClientNames()
+      log(`  ${clientNames.length} клиента заредени`)
 
-      // 3. Build two lookup maps: exact and entity-stripped
-      const exactMap = new Map<string, string>()   // normForEik(crmName) → clientId
+      // 2. Build two lookup maps: exact and entity-stripped
+      const exactMap = new Map<string, string>()    // normForEik(crmName) → clientId
       const strippedMap = new Map<string, string>() // stripped(normForEik(crmName)) → clientId
 
-      for (const cell of nameCells ?? []) {
-        if (!cell.value_text) continue
-        const normed = normForEik(cell.value_text)
+      for (const { id, name } of clientNames) {
+        if (!name || name === '—') continue
+        const normed = normForEik(name)
         const stripped = stripEntityIterative(normed)
-        exactMap.set(normed, cell.client_id)
-        if (!strippedMap.has(stripped)) strippedMap.set(stripped, cell.client_id)
+        exactMap.set(normed, id)
+        if (!strippedMap.has(stripped)) strippedMap.set(stripped, id)
       }
-      log(`  ${exactMap.size} клиента заредени`)
 
       // 4. Match each EIK entry to a client
       const matched: { clientId: string; eik: string; displayName: string }[] = []
