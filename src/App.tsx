@@ -13,6 +13,7 @@ import { StaffPage } from './pages/Staff'
 import { AuditLogPage } from './pages/AuditLog'
 import { ExpensesPage } from './pages/Expenses'
 import { SubscriptionsPage } from './pages/Subscriptions'
+import { ImportPage } from './pages/Import'
 
 export default function App() {
   return (
@@ -46,6 +47,9 @@ export default function App() {
               } />
               <Route path="/admin" element={
                 <ProtectedRoute allowedRoles={['admin', 'manager']}><AdminPage /></ProtectedRoute>
+              } />
+              <Route path="/import" element={
+                <ProtectedRoute allowedRoles={['admin']}><ImportPage /></ProtectedRoute>
               } />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
