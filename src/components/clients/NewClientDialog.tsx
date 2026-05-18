@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import {
   addClient, setCellValue, upsertContact, getColumns,
-  lookupByEik, lookupEikByName, type EikLookupResult,
+  lookupByEik, lookupEikByName, fetchEikRaw, type EikLookupResult,
 } from '../../lib/storage'
 
 interface Props {
@@ -23,6 +23,30 @@ export function NewClientDialog({ onClose, onCreated, userId, userName }: Props)
   const [result, setResult] = useState<EikLookupResult | null>(null)
   // Името, което ще се запази в "Фирма" колоната — потребителят може да го редактира преди запис
   const [nameOverride, setNameOverride] = useState('')
+  const [rawJson, setRawJson] = useState<string | null>(null)
+  const [loadingRaw, setLoadingRaw] = useState(false)
+
+  async function handleShowRaw() {
+    if (!isEik) { toast.error('Диагностиката изисква ЕИК (9 или 13 цифри)'); return }
+    setLoadingRaw(true)
+    try {
+      const raw = await fetchEikRaw(query.trim())
+      setRawJson(JSON.stringify(raw, null, 2))
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при диагностика')
+    }
+    setLoadingRaw(false)
+  }
+
+  async function copyRaw() {
+    if (!rawJson) return
+    try {
+      await navigator.clipboard.writeText(rawJson)
+      toast.success('Копирано')
+    } catch {
+      toast.error('Не можах да копирам')
+    }
+  }
 
   const isEik = /^\d{9}(\d{4})?$/.test(query.trim())
 
@@ -126,7 +150,32 @@ export function NewClientDialog({ onClose, onCreated, userId, userName }: Props)
             <p className="text-xs text-muted-foreground mt-1.5">
               {isEik ? 'Ще се извлекат данни директно по ЕИК.' : 'Ще се търси по име в регистъра.'}
             </p>
+            {isEik && (
+              <button
+                type="button"
+                onClick={handleShowRaw}
+                disabled={loadingRaw}
+                className="mt-1 text-xs text-blue-600 hover:underline"
+              >
+                {loadingRaw ? 'Зареждане...' : '🔍 Виж RAW от регистъра (diagnostic)'}
+              </button>
+            )}
           </div>
+
+          {rawJson && (
+            <div className="border border-border rounded-md p-3 space-y-2 bg-muted/30">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground uppercase">RAW отговор от regdata</span>
+                <div className="flex gap-2">
+                  <button type="button" onClick={copyRaw} className="text-xs text-blue-600 hover:underline">Копирай</button>
+                  <button type="button" onClick={() => setRawJson(null)} className="text-xs text-muted-foreground hover:underline">Затвори</button>
+                </div>
+              </div>
+              <pre className="text-[10px] font-mono whitespace-pre-wrap break-all max-h-80 overflow-auto bg-background p-2 rounded border border-border">
+                {rawJson}
+              </pre>
+            </div>
+          )}
 
           {result && result.fields && (
             <div className="border border-border rounded-md p-3 space-y-2 bg-muted/30">

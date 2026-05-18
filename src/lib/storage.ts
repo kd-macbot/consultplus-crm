@@ -686,6 +686,26 @@ export async function lookupByEik(eik: string): Promise<EikLookupResult> {
   return invokeFetchEik({ eik })
 }
 
+export async function fetchEikRaw(eik: string): Promise<unknown> {
+  // Диагностичен режим — връща суровия отговор от regdata data/fetch
+  const { data, error } = await supabase.functions.invoke('swift-task', {
+    body: { fetchEik: eik },
+  })
+  if (error) {
+    const ctx = (error as any).context
+    if (ctx && typeof ctx.text === 'function') {
+      try {
+        const text = await ctx.text()
+        throw new Error(text || error.message)
+      } catch (e) {
+        if (e instanceof Error && e.message !== error.message) throw e
+      }
+    }
+    throw error
+  }
+  return data
+}
+
 // ==================== PROFILES ====================
 
 export async function getProfiles(): Promise<{ id: string; full_name: string }[]> {
