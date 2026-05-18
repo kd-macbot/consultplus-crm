@@ -166,7 +166,7 @@ export function SubscriptionsPage() {
 
       {/* Summary */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+        <div className="bg-card rounded-lg shadow p-4 border-l-4 border-green-500">
           <p className="text-sm text-dark/50">
             {isFiltered ? `Хонорари (${filteredClients.length} от ${clients.length})` : 'Общо хонорари'}
           </p>
@@ -179,7 +179,7 @@ export function SubscriptionsPage() {
             </p>
           )}
         </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-navy">
+        <div className="bg-card rounded-lg shadow p-4 border-l-4 border-navy">
           <p className="text-sm text-dark/50">Брой клиенти</p>
           <p className="text-2xl font-bold text-navy">
             {isFiltered ? (
@@ -198,7 +198,7 @@ export function SubscriptionsPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Търсене по клиент..."
-            className="w-full pl-8 pr-3 py-2 text-sm border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy bg-white"
+            className="w-full pl-8 pr-3 py-2 text-sm border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy bg-card"
           />
         </div>
         {hasFilters && (
@@ -212,7 +212,7 @@ export function SubscriptionsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
+      <div className="bg-card rounded-lg shadow overflow-x-auto">
         <div className="px-4 py-2 border-b border-light flex items-center justify-between text-sm text-dark/50">
           <span>
             {isFiltered
@@ -251,7 +251,7 @@ export function SubscriptionsPage() {
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Филтър..."
-                  className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark placeholder-dark/30 focus:outline-none"
+                  className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none"
                 />
               </th>
               {tableColumns.map(col => (
@@ -260,7 +260,7 @@ export function SubscriptionsPage() {
                     <select
                       value={colFilters[col.id] ?? ''}
                       onChange={e => setColFilter(col.id, e.target.value)}
-                      className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark focus:outline-none"
+                      className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white text-slate-900 focus:outline-none"
                     >
                       <option value="">Всички</option>
                       <option value="true">✓ Отметнати</option>
@@ -272,7 +272,7 @@ export function SubscriptionsPage() {
                       value={colFilters[col.id] ?? ''}
                       onChange={e => setColFilter(col.id, e.target.value)}
                       placeholder="Филтър..."
-                      className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark placeholder-dark/30 focus:outline-none"
+                      className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none"
                     />
                   )}
                 </th>
@@ -290,7 +290,7 @@ export function SubscriptionsPage() {
             {filteredClients.map((client, i) => (
               <tr
                 key={client.id}
-                className={`border-b border-light/50 ${i % 2 === 0 ? 'bg-white' : 'bg-light/20'} hover:bg-gold/5 transition-colors`}
+                className={`border-b border-light/50 ${i % 2 === 0 ? 'bg-card' : 'bg-light/20'} hover:bg-gold/5 transition-colors`}
               >
                 <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums w-10">
                   {i + 1}
