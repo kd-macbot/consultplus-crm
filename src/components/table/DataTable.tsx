@@ -32,7 +32,7 @@ import {
   getColumns, getClients, getCellValues, getDropdownOptions,
   softDeleteClient, getTags, getClientTags, updateColumnPositions,
   setCellValue, getStaff, type StaffMember,
-  getAllContacts, upsertContact,
+  getAllContacts, upsertContact, buildContactPayload,
 } from '../../lib/storage'
 import { useAuth } from '../../lib/auth'
 import { toast } from 'sonner'
@@ -305,6 +305,11 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     return allClients
   }, [allClients, user])
 
+  const contactsByClientId = useMemo(
+    () => new Map(allContacts.map(c => [c.client_id, c])),
+    [allContacts]
+  )
+
   const orderedColumns = useMemo(
     () => columnOrder.map(id => columns.find(c => c.id === id)).filter((c): c is Column => !!c),
     [columnOrder, columns]
@@ -457,12 +462,12 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         enableSorting: true,
         enableColumnFilter: true,
         accessorFn: (row: ClientRow) => {
-          const contact = allContacts.find(c => c.client_id === row.clientId)
+          const contact = contactsByClientId.get(row.clientId)
           return contact?.eik ?? ''
         },
         cell: info => {
           const clientId = info.row.original.clientId
-          const contact = allContacts.find(c => c.client_id === clientId)
+          const contact = contactsByClientId.get(clientId)
           const eik = contact?.eik ?? ''
           const isEditing = editingEikFor === clientId
 
@@ -477,24 +482,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                   setEditingEikFor(null)
                   if (trimmed === (contact?.eik ?? '')) return
                   try {
-                    await upsertContact({
-                      ...(contact ? { id: contact.id } : {}),
-                      client_id: clientId,
-                      eik: trimmed || null,
-                      owner_name: contact?.owner_name ?? null,
-                      owner_email: contact?.owner_email ?? null,
-                      owner_phone: contact?.owner_phone ?? null,
-                      manager_name: contact?.manager_name ?? null,
-                      manager_email: contact?.manager_email ?? null,
-                      company_email: contact?.company_email ?? null,
-                      vat_number: contact?.vat_number ?? null,
-                      vat_registered_at: contact?.vat_registered_at ?? null,
-                      address: contact?.address ?? null,
-                      website: contact?.website ?? null,
-                      public_url: contact?.public_url ?? null,
-                      notes: contact?.notes ?? null,
-                      created_by: contact?.created_by ?? user?.id ?? null,
-                    })
+                    await upsertContact(buildContactPayload(clientId, contact, { eik: trimmed || null }, user?.id))
                     setAllContacts(prev => {
                       const idx = prev.findIndex(c => c.client_id === clientId)
                       if (idx >= 0) return prev.map((c, i) => i === idx ? { ...c, eik: trimmed || null } : c)
@@ -502,6 +490,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                     })
                   } catch (e: any) {
                     toast.error(e.message ?? 'Грешка при запис на ЕИК')
+                    onRefresh() // презареждаме, за да изчистим оптимистичния local state
                   }
                 }}
                 onKeyDown={e => {
@@ -536,12 +525,12 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         enableSorting: true,
         enableColumnFilter: true,
         accessorFn: (row: ClientRow) => {
-          const contact = allContacts.find(c => c.client_id === row.clientId)
+          const contact = contactsByClientId.get(row.clientId)
           return contact?.vat_registered_at ?? (contact?.vat_number ? '1' : '')
         },
         cell: info => {
           const clientId = info.row.original.clientId
-          const contact = allContacts.find(c => c.client_id === clientId)
+          const contact = contactsByClientId.get(clientId)
           const date = contact?.vat_registered_at ?? ''
           const hasVat = !!contact?.vat_number || !!date
           const isEditing = editingVatFor === clientId
@@ -562,32 +551,16 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                     const eik = contact?.eik ?? null
                     // При въведена дата → също попълваме vat_number = BG{eik}; при изчистване → и двете null
                     const newVatNumber = newDate ? (eik ? `BG${eik}` : contact?.vat_number ?? null) : null
-                    await upsertContact({
-                      ...(contact ? { id: contact.id } : {}),
-                      client_id: clientId,
-                      eik,
-                      vat_number: newVatNumber,
-                      vat_registered_at: newDate || null,
-                      address: contact?.address ?? null,
-                      owner_name: contact?.owner_name ?? null,
-                      owner_email: contact?.owner_email ?? null,
-                      owner_phone: contact?.owner_phone ?? null,
-                      manager_name: contact?.manager_name ?? null,
-                      manager_email: contact?.manager_email ?? null,
-                      company_email: contact?.company_email ?? null,
-                      website: contact?.website ?? null,
-                      public_url: contact?.public_url ?? null,
-                      notes: contact?.notes ?? null,
-                      created_by: contact?.created_by ?? user?.id ?? null,
-                    })
+                    const patch = { vat_registered_at: newDate || null, vat_number: newVatNumber }
+                    await upsertContact(buildContactPayload(clientId, contact, patch, user?.id))
                     setAllContacts(prev => {
                       const idx = prev.findIndex(c => c.client_id === clientId)
-                      const patch = { vat_registered_at: newDate || null, vat_number: newVatNumber }
                       if (idx >= 0) return prev.map((c, i) => i === idx ? { ...c, ...patch } : c)
                       return [...prev, { client_id: clientId, ...patch } as Contact]
                     })
                   } catch (e: any) {
                     toast.error(e.message ?? 'Грешка при запис на ДДС дата')
+                    onRefresh()
                   }
                 }}
                 onKeyDown={e => {
@@ -678,7 +651,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
 
     return cols
-  }, [visibleColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user, selected, globalFilter, allContacts, editingEikFor, eikDraft, editingVatFor, vatDraft])
+  }, [visibleColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user, selected, globalFilter, contactsByClientId, editingEikFor, eikDraft, editingVatFor, vatDraft])
 
   const fullColumnOrder = useMemo(
     () => [

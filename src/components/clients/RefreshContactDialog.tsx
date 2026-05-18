@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
-  lookupByEik, lookupEikByName, upsertContact, getContactByClientId,
+  lookupByEik, lookupEikByName, upsertContact, buildContactPayload, getContactByClientId,
   type EikLookupResult,
 } from '../../lib/storage'
 import type { Contact } from '../../lib/types'
@@ -84,9 +84,7 @@ export function RefreshContactDialog({ clientId, clientName, onClose, onDone, us
     if (!result?.fields) return
     setSaving(true)
     try {
-      await upsertContact({
-        ...(contact?.id ? { id: contact.id } : {}),
-        client_id: clientId,
+      await upsertContact(buildContactPayload(clientId, contact, {
         eik: result.fields.eik ?? contact?.eik ?? null,
         vat_number: result.fields.vat_number,
         vat_registered_at: result.fields.vat_registered_at,
@@ -94,14 +92,7 @@ export function RefreshContactDialog({ clientId, clientName, onClose, onDone, us
         owner_name: result.fields.owner_name,
         manager_name: result.fields.manager_name,
         public_url: result.fields.public_url,
-        owner_email: contact?.owner_email ?? null,
-        owner_phone: contact?.owner_phone ?? null,
-        manager_email: contact?.manager_email ?? null,
-        company_email: contact?.company_email ?? null,
-        website: contact?.website ?? null,
-        notes: contact?.notes ?? null,
-        created_by: contact?.created_by ?? userId ?? null,
-      })
+      }, userId))
       toast.success(`${changes.length} полета обновени`)
       onDone()
       onClose()
