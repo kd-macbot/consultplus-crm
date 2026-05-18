@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getContactsWithClients, getClientNames, upsertContact, deleteContact } from '../lib/storage'
+import { getContactsWithClients, getClientNames, upsertContact, deleteContact, lookupEikByName } from '../lib/storage'
 import type { ContactWithClient } from '../lib/types'
 import { useAuth } from '../lib/auth'
-import { Plus, Pencil, Trash2, Search, X, ExternalLink } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, X, ExternalLink, Download, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -42,6 +42,7 @@ export function ContactsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [fetchingEik, setFetchingEik] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<ContactWithClient | null>(null)
 
   useEffect(() => { load() }, [])
@@ -131,6 +132,27 @@ export function ContactsPage() {
       toast.error(e.message ?? 'Грешка при запис')
     }
     setSaving(false)
+  }
+
+  async function handleFetchEik() {
+    const clientName = clientOptions.find(o => o.id === form.client_id)?.name
+    if (!clientName) { toast.error('Изберете клиент'); return }
+    setFetchingEik(true)
+    try {
+      const res = await lookupEikByName(clientName)
+      if (!res.eik) {
+        toast.error(`Няма намерен ЕИК за "${clientName}"`)
+      } else if (res.total > 1 && res.candidates.length > 1) {
+        set('eik', res.eik)
+        toast.warning(`Намерени ${res.total} съвпадения — попълнен е първият (${res.caption ?? res.eik}). Проверете.`)
+      } else {
+        set('eik', res.eik)
+        toast.success(`ЕИК ${res.eik} — ${res.caption ?? ''}`)
+      }
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при заявка към регистъра')
+    }
+    setFetchingEik(false)
   }
 
   async function handleDelete(c: ContactWithClient) {
@@ -322,7 +344,22 @@ export function ContactsPage() {
                 <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Фирмени данни</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Input placeholder="Фирмен имейл" type="email" value={form.company_email} onChange={e => set('company_email', e.target.value)} />
-                  <Input placeholder="ЕИК" value={form.eik} onChange={e => set('eik', e.target.value)} />
+                  <div className="flex gap-1">
+                    <Input placeholder="ЕИК" value={form.eik} onChange={e => set('eik', e.target.value)} />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      title="Изтегли ЕИК от Търговския регистър по име на клиента"
+                      disabled={fetchingEik || !form.client_id}
+                      onClick={handleFetchEik}
+                      className="shrink-0"
+                    >
+                      {fetchingEik
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Download className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
                   <Input placeholder="ДДС номер" value={form.vat_number} onChange={e => set('vat_number', e.target.value)} />
                   <Input placeholder="Уебсайт" type="url" value={form.website} onChange={e => set('website', e.target.value)} />
                   <Input placeholder="Адрес / Седалище" value={form.address} onChange={e => set('address', e.target.value)} className="sm:col-span-2" />
