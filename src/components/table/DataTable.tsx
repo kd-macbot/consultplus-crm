@@ -905,7 +905,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
             <select
               defaultValue=""
               onChange={e => { if (e.target.value) { handleBulkStatus(e.target.value); e.target.value = '' } }}
-              className="h-7 px-2 rounded text-sm text-dark bg-white/90 border-0 focus:outline-none"
+              className="h-7 px-2 rounded text-sm text-slate-900 bg-white border-0 focus:outline-none"
             >
               <option value="" disabled>Промени статус...</option>
               {statusOptions.map(opt => (
@@ -918,7 +918,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
             <select
               defaultValue=""
               onChange={e => { if (e.target.value) { handleBulkAccountant(e.target.value); e.target.value = '' } }}
-              className="h-7 px-2 rounded text-sm text-dark bg-white/90 border-0 focus:outline-none"
+              className="h-7 px-2 rounded text-sm text-slate-900 bg-white border-0 focus:outline-none"
             >
               <option value="" disabled>Присвои счетоводител...</option>
               {accountantStaffList.map(s => (
@@ -976,7 +976,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                           <select
                             value={(header.column.getFilterValue() as string) ?? ''}
                             onChange={e => header.column.setFilterValue(e.target.value || undefined)}
-                            className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark focus:outline-none"
+                            className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white text-slate-900 focus:outline-none"
                           >
                             <option value="">Всички</option>
                             <option value="__empty__">(Празно)</option>
@@ -996,7 +996,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                               <select
                                 value={letter}
                                 onChange={e => apply(e.target.value, text)}
-                                className="px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark focus:outline-none"
+                                className="px-1 py-0.5 text-xs rounded border-0 bg-white text-slate-900 focus:outline-none"
                                 title="Филтър по първа буква"
                               >
                                 <option value="">Всички</option>
@@ -1008,7 +1008,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                                 value={text}
                                 onChange={e => apply(letter, e.target.value)}
                                 placeholder="Филтър..."
-                                className="flex-1 min-w-0 px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark placeholder-dark/30 focus:outline-none"
+                                className="flex-1 min-w-0 px-1 py-0.5 text-xs rounded border-0 bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none"
                               />
                             </div>
                           )
@@ -1018,7 +1018,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                             value={(header.column.getFilterValue() as string) ?? ''}
                             onChange={e => header.column.setFilterValue(e.target.value)}
                             placeholder="Филтър..."
-                            className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark placeholder-dark/30 focus:outline-none"
+                            className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none"
                           />
                         )
                       ) : null}
