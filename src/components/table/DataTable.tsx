@@ -535,16 +535,18 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         enableColumnFilter: true,
         accessorFn: (row: ClientRow) => {
           const contact = allContacts.find(c => c.client_id === row.clientId)
-          return contact?.vat_registered_at ?? ''
+          return contact?.vat_registered_at ?? (contact?.vat_number ? '1' : '')
         },
         cell: info => {
           const clientId = info.row.original.clientId
           const contact = allContacts.find(c => c.client_id === clientId)
           const date = contact?.vat_registered_at
-          if (!date) return <span className="text-dark/20">—</span>
+          const hasVat = !!contact?.vat_number || !!date
+          if (!hasVat) return <span className="text-dark/20">—</span>
           return (
             <span className="text-xs">
-              <span className="text-emerald-600 font-semibold">✓</span> {date}
+              <span className="text-emerald-600 font-semibold">✓</span>
+              {date ? <> {date}</> : <span className="text-muted-foreground"> рег.</span>}
             </span>
           )
         },
