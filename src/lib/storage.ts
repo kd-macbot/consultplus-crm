@@ -615,6 +615,14 @@ export async function getContactByClientId(clientId: string): Promise<Contact | 
   return data as Contact | null
 }
 
+export async function getAllContacts(): Promise<Contact[]> {
+  const { data, error } = await supabase
+    .from('crm_contacts')
+    .select('*')
+  if (error) throw error
+  return (data ?? []) as Contact[]
+}
+
 export async function upsertContact(
   contact: Omit<Contact, 'id' | 'created_at'> & { id?: string }
 ): Promise<void> {
@@ -653,6 +661,15 @@ export async function lookupEikByName(name: string): Promise<EikLookupResult> {
   // URL-ът използва slug. verify_jwt=false е настроен, така че supabase.functions.invoke работи нормално.
   const { data, error } = await supabase.functions.invoke('swift-task', {
     body: { name },
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data as EikLookupResult
+}
+
+export async function lookupByEik(eik: string): Promise<EikLookupResult> {
+  const { data, error } = await supabase.functions.invoke('swift-task', {
+    body: { eik },
   })
   if (error) throw error
   if (data?.error) throw new Error(data.error)

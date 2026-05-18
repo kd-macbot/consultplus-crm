@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getContactsWithClients, getClientNames, upsertContact, deleteContact, lookupEikByName } from '../lib/storage'
+import { getContactsWithClients, getClientNames, upsertContact, deleteContact, lookupEikByName, lookupByEik } from '../lib/storage'
 import type { ContactWithClient } from '../lib/types'
 import { useAuth } from '../lib/auth'
 import { Plus, Pencil, Trash2, Search, X, ExternalLink, Download, Loader2 } from 'lucide-react'
@@ -136,12 +136,16 @@ export function ContactsPage() {
 
   async function handleFetchEik() {
     const clientName = clientOptions.find(o => o.id === form.client_id)?.name
-    if (!clientName) { toast.error('Изберете клиент'); return }
+    if (!clientName && !form.eik) { toast.error('Изберете клиент или въведете ЕИК'); return }
     setFetchingEik(true)
     try {
-      const res = await lookupEikByName(clientName)
+      // Ако вече има въведен ЕИК — извличаме директно по него (бързо и точно).
+      // Иначе търсим по име на клиента в регистъра.
+      const res = form.eik
+        ? await lookupByEik(form.eik.trim())
+        : await lookupEikByName(clientName!)
       if (!res.eik) {
-        toast.error(`Няма намерен ЕИК за "${clientName}"`)
+        toast.error(form.eik ? `Не са намерени данни за ЕИК ${form.eik}` : `Няма намерен ЕИК за "${clientName}"`)
       } else {
         // Попълваме само празните полета — не презаписваме това, което потребителят
         // вече е въвел ръчно. Бутонът „Изтегли" по презумпция е за първоначално запълване.

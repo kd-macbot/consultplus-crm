@@ -27,11 +27,12 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, SlidersHorizontal, X } from 'lucide-react'
-import type { Column, CellValue, DropdownOption, Tag, ClientTag, Client } from '../../lib/types'
+import type { Column, CellValue, DropdownOption, Tag, ClientTag, Client, Contact } from '../../lib/types'
 import {
   getColumns, getClients, getCellValues, getDropdownOptions,
   softDeleteClient, getTags, getClientTags, updateColumnPositions,
   setCellValue, getStaff, type StaffMember,
+  getAllContacts, upsertContact,
 } from '../../lib/storage'
 import { useAuth } from '../../lib/auth'
 import { toast } from 'sonner'
@@ -159,6 +160,9 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [allClients, setAllClients] = useState<Client[]>([])
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [allClientTags, setAllClientTags] = useState<ClientTag[]>([])
+  const [allContacts, setAllContacts] = useState<Contact[]>([])
+  const [editingEikFor, setEditingEikFor] = useState<string | null>(null)
+  const [eikDraft, setEikDraft] = useState('')
   const [confirmDeleteRow, setConfirmDeleteRow] = useState<ClientRow | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -189,9 +193,10 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     const firstLoad = isInitialLoad.current
     if (firstLoad) setLoading(true)
     try {
-      const [cols, clients, cells, dropdowns, tags, clientTags, staff] = await Promise.all([
+      const [cols, clients, cells, dropdowns, tags, clientTags, staff, contacts] = await Promise.all([
         getColumns(), getClients(), getCellValues(), getDropdownOptions(), getTags(), getClientTags(),
         getStaff().catch(() => [] as StaffMember[]),
+        getAllContacts().catch(() => [] as Contact[]),
       ])
       const filtered = cols.filter((c: Column) => c.name !== 'Хонорар' && c.staff_department !== '__sub__')
       setColumnsState(filtered)
@@ -202,6 +207,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       setAllTags(tags)
       setAllClientTags(clientTags)
       setStaffList(staff)
+      setAllContacts(contacts)
       isInitialLoad.current = false
       if (savedScrollPos.current && scrollRef.current) {
         const pos = savedScrollPos.current
@@ -441,6 +447,83 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           : 'includesString',
       })),
       {
+        id: '_eik',
+        header: 'ЕИК',
+        size: 130,
+        enableSorting: true,
+        enableColumnFilter: true,
+        accessorFn: (row: ClientRow) => {
+          const contact = allContacts.find(c => c.client_id === row.clientId)
+          return contact?.eik ?? ''
+        },
+        cell: info => {
+          const clientId = info.row.original.clientId
+          const contact = allContacts.find(c => c.client_id === clientId)
+          const eik = contact?.eik ?? ''
+          const isEditing = editingEikFor === clientId
+
+          if (isEditing && canEdit) {
+            return (
+              <input
+                autoFocus
+                value={eikDraft}
+                onChange={e => setEikDraft(e.target.value.replace(/\D/g, '').slice(0, 13))}
+                onBlur={async () => {
+                  const trimmed = eikDraft.trim()
+                  setEditingEikFor(null)
+                  if (trimmed === (contact?.eik ?? '')) return
+                  try {
+                    await upsertContact({
+                      ...(contact ? { id: contact.id } : {}),
+                      client_id: clientId,
+                      eik: trimmed || null,
+                      owner_name: contact?.owner_name ?? null,
+                      owner_email: contact?.owner_email ?? null,
+                      owner_phone: contact?.owner_phone ?? null,
+                      manager_name: contact?.manager_name ?? null,
+                      manager_email: contact?.manager_email ?? null,
+                      company_email: contact?.company_email ?? null,
+                      vat_number: contact?.vat_number ?? null,
+                      address: contact?.address ?? null,
+                      website: contact?.website ?? null,
+                      notes: contact?.notes ?? null,
+                      created_by: contact?.created_by ?? user?.id ?? null,
+                    })
+                    setAllContacts(prev => {
+                      const idx = prev.findIndex(c => c.client_id === clientId)
+                      if (idx >= 0) return prev.map((c, i) => i === idx ? { ...c, eik: trimmed || null } : c)
+                      return [...prev, { client_id: clientId, eik: trimmed || null } as Contact]
+                    })
+                  } catch (e: any) {
+                    toast.error(e.message ?? 'Грешка при запис на ЕИК')
+                  }
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                  if (e.key === 'Escape') { setEditingEikFor(null) }
+                }}
+                className="h-7 px-1 w-full font-mono text-xs border border-primary rounded bg-background"
+              />
+            )
+          }
+
+          return (
+            <div
+              className={`font-mono text-xs truncate ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
+              onClick={() => {
+                if (!canEdit) return
+                setEikDraft(eik)
+                setEditingEikFor(clientId)
+              }}
+              title={eik}
+            >
+              {eik || <span className="text-dark/20">—</span>}
+            </div>
+          )
+        },
+        filterFn: 'includesString',
+      },
+      {
         id: '_tags',
         header: 'Тагове',
         size: 180,
@@ -480,13 +563,14 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
 
     return cols
-  }, [visibleColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user, selected, globalFilter])
+  }, [visibleColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user, selected, globalFilter, allContacts, editingEikFor, eikDraft])
 
   const fullColumnOrder = useMemo(
     () => [
       '_index',
       ...(canEdit ? ['_select'] : []),
       ...visibleColumns.map(c => c.id),
+      '_eik',
       '_tags',
       ...(canDelete ? ['_actions'] : []),
     ],

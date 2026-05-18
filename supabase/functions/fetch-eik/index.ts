@@ -232,6 +232,20 @@ Deno.serve(async (req) => {
       return json({ raw: await fetchData(token, payload.fetchEik, packetId) })
     }
 
+    // Bypass на search-а: ако клиентът вече знае ЕИК, директно вземаме full data
+    if (payload.eik && typeof payload.eik === "string") {
+      const fetched = await fetchData(token, payload.eik, packetId)
+      const details = Array.isArray(fetched) ? fetched[0] : fetched
+      const fields = parseDetails(details)
+      return json({
+        eik: payload.eik,
+        caption: details?.name ? `${details.name}${details.legalFormShort ? " " + details.legalFormShort : ""}` : null,
+        total: 1,
+        candidates: [],
+        fields,
+      })
+    }
+
     const { name, subType } = payload
     if (!name || typeof name !== "string") {
       return json({ error: "name is required" }, 400)
