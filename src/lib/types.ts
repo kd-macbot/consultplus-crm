@@ -121,6 +121,60 @@ export interface ContactWithClient extends Contact {
   client_name: string
 }
 
+export const OPPORTUNITY_STAGES = [
+  'Нов',
+  'В контакт',
+  'Изпратена оферта',
+  'Преговори',
+  'Печеливш',
+  'Загубен',
+] as const
+
+export type OpportunityStage = typeof OPPORTUNITY_STAGES[number]
+
+export const OPPORTUNITY_SOURCES = [
+  'Препоръка',
+  'Обаждане',
+  'Сайт',
+  'Социални мрежи',
+  'Събитие',
+  'Друго',
+] as const
+
+export interface Opportunity {
+  id: string
+  name: string
+  eik: string | null
+  vat_number: string | null
+  vat_registered_at: string | null
+  address: string | null
+  public_url: string | null
+  owner_name_legal: string | null
+  manager_name_legal: string | null
+
+  stage: OpportunityStage | string
+  estimated_value: number | null
+  source: string | null
+  responsible: string | null
+
+  next_action: string | null
+  next_action_date: string | null
+
+  contact_person: string | null
+  contact_phone: string | null
+  contact_email: string | null
+
+  notes: string | null
+  lost_reason: string | null
+  converted_to_client_id: string | null
+  converted_at: string | null
+
+  created_at: string
+  created_by: string | null
+  updated_at: string
+  deleted: boolean
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory
