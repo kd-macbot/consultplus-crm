@@ -46,7 +46,7 @@ type FormState = typeof EMPTY_FORM
 
 function formatMoney(v: number | null): string {
   if (v == null) return '—'
-  return new Intl.NumberFormat('bg-BG', { style: 'currency', currency: 'BGN', maximumFractionDigits: 0 }).format(v)
+  return new Intl.NumberFormat('bg-BG', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v)
 }
 
 function isOverdue(date: string | null): boolean {
@@ -464,7 +464,7 @@ export function OpportunitiesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1">Очаквана стойност (BGN/мес)</label>
+                  <label className="block text-xs font-semibold text-muted-foreground uppercase mb-1">Очаквана стойност (EUR/мес)</label>
                   <Input type="number" step="0.01" placeholder="0" value={form.estimated_value} onChange={e => setF('estimated_value', e.target.value)} />
                 </div>
                 <div>
