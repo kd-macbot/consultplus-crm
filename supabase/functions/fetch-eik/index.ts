@@ -93,11 +93,16 @@ function cleanName(name: string): string {
     .trim()
 }
 
-async function searchByName(token: string, name: string) {
+async function searchByName(token: string, name: string, subType: string) {
+  // TextSearch очаква JSON-сериализиран обект със subType (от nom/22)
   const body = {
     condition: "AND",
     rules: [
-      { id: "TextSearch", operator: "in", value: [cleanName(name)] },
+      {
+        id: "TextSearch",
+        operator: "in",
+        value: [JSON.stringify({ text: cleanName(name), type: subType })],
+      },
     ],
   }
   const r = await fetch(`${API_BASE}/data/search2/1/10`, {
@@ -120,23 +125,46 @@ async function searchByName(token: string, name: string) {
   }
 }
 
+async function getNomenclature(token: string, nomType: number) {
+  const r = await fetch(`${API_BASE}/data/nom/${nomType}`, {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  })
+  if (!r.ok) {
+    const text = await r.text()
+    throw new Error(`regdata nom/${nomType} ${r.status}: ${text}`)
+  }
+  return await r.json()
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   try {
-    const { name } = await req.json()
-    if (!name || typeof name !== "string") {
-      return json({ error: "name is required" }, 400)
-    }
-
+    const payload = await req.json()
     const sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     )
-
     const token = await getToken(sb)
-    const search = await searchByName(token, name)
 
+    // Диагностичен режим — върни съдържанието на nomenclature
+    if (payload.diagnose) {
+      const nomType = typeof payload.diagnose === "number" ? payload.diagnose : 22
+      return json({ nomType, items: await getNomenclature(token, nomType) })
+    }
+
+    const { name, subType } = payload
+    if (!name || typeof name !== "string") {
+      return json({ error: "name is required" }, 400)
+    }
+    if (!subType || typeof subType !== "string") {
+      return json({ error: "subType is required (use {diagnose: 22} to list TextSearch sub-types)" }, 400)
+    }
+
+    const search = await searchByName(token, name, subType)
     const active = search.results.filter((r) => r.activity === 1)
     const best = active[0] ?? search.results[0]
 
