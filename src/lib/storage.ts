@@ -659,6 +659,15 @@ export async function lookupEikByName(name: string): Promise<EikLookupResult> {
   return data as EikLookupResult
 }
 
+export async function lookupByEik(eik: string): Promise<EikLookupResult> {
+  const { data, error } = await supabase.functions.invoke('swift-task', {
+    body: { eik },
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data as EikLookupResult
+}
+
 // ==================== PROFILES ====================
 
 export async function getProfiles(): Promise<{ id: string; full_name: string }[]> {
