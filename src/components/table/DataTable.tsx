@@ -40,6 +40,11 @@ import { CellEditor } from './CellEditor'
 import { TagEditor } from '../tags/TagEditor'
 import { ConfirmDialog } from '@/components/ui/alert-dialog'
 import { RefreshContactDialog } from '../clients/RefreshContactDialog'
+import { ViewsMenu } from './ViewsMenu'
+import {
+  getViews, getDefaultView, getActiveViewId, setActiveViewId,
+  saveView, deleteView, setDefaultView, type View,
+} from '../../lib/views'
 
 interface ClientRow {
   clientId: string
@@ -144,12 +149,27 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [tagFilter, setTagFilter] = useState<string[]>([])
   const [columnOrder, setColumnOrder] = useState<string[]>([])
 
+  // Saved views: на mount-а зареждаме default-а (или активния, ако е bookmark-нат)
+  const [views, setViews] = useState<View[]>(() => getViews())
+  const [activeViewId, setActiveViewIdLocal] = useState<string | null>(() => {
+    return getActiveViewId() ?? getDefaultView()?.id ?? null
+  })
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('crm-hidden-cols') ?? '[]')) }
-    catch { return new Set() }
+    const v = getViews().find(view => view.id === (getActiveViewId() ?? getDefaultView()?.id))
+    return new Set(v?.hiddenCols ?? [])
   })
   const [showColPanel, setShowColPanel] = useState(false)
   const colPanelRef = useRef<HTMLDivElement>(null)
+
+  const activeView = views.find(v => v.id === activeViewId) ?? null
+  // „Dirty" = текущите скрити колони се различават от запазените в активния view
+  const isViewDirty = useMemo(() => {
+    if (!activeView) return false
+    const saved = new Set(activeView.hiddenCols)
+    if (saved.size !== hiddenCols.size) return true
+    for (const id of saved) if (!hiddenCols.has(id)) return true
+    return false
+  }, [activeView, hiddenCols])
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
@@ -235,7 +255,45 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     if (next.has(colId)) next.delete(colId)
     else next.add(colId)
     setHiddenCols(next)
-    localStorage.setItem('crm-hidden-cols', JSON.stringify([...next]))
+  }
+
+  function handleSelectView(id: string) {
+    const v = views.find(view => view.id === id)
+    if (!v) return
+    setActiveViewIdLocal(id)
+    setActiveViewId(id)
+    setHiddenCols(new Set(v.hiddenCols))
+  }
+
+  function handleSaveViewAs(name: string) {
+    const v = saveView({ name, hiddenCols: [...hiddenCols], isDefault: false })
+    setViews(getViews())
+    setActiveViewIdLocal(v.id)
+    setActiveViewId(v.id)
+  }
+
+  function handleUpdateView(id: string) {
+    const existing = views.find(view => view.id === id)
+    if (!existing || existing.isPreset) return
+    saveView({ ...existing, hiddenCols: [...hiddenCols] })
+    setViews(getViews())
+  }
+
+  function handleDeleteView(id: string) {
+    deleteView(id)
+    const next = getViews()
+    setViews(next)
+    if (activeViewId === id) {
+      const fallback = next.find(v => v.isDefault) ?? next[0]
+      setActiveViewIdLocal(fallback?.id ?? null)
+      setActiveViewId(fallback?.id ?? null)
+      setHiddenCols(new Set(fallback?.hiddenCols ?? []))
+    }
+  }
+
+  function handleSetDefaultView(id: string) {
+    setDefaultView(id)
+    setViews(getViews())
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -319,6 +377,13 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     () => orderedColumns.filter(c => !hiddenCols.has(c.id)),
     [orderedColumns, hiddenCols]
   )
+
+  // Синтетичните колони (ЕИК, ДДС, Тагове) могат да се скриват чрез същия механизъм
+  const HIDEABLE_PSEUDO: Array<{ id: string; name: string }> = [
+    { id: '_eik', name: 'ЕИК' },
+    { id: '_vat', name: 'Рег. по ДДС' },
+    { id: '_tags', name: 'Тагове' },
+  ]
 
   const data: ClientRow[] = useMemo(() => {
     const rows = clients.map(client => {
@@ -658,12 +723,10 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       '_index',
       ...(canEdit ? ['_select'] : []),
       ...visibleColumns.map(c => c.id),
-      '_eik',
-      '_vat',
-      '_tags',
+      ...HIDEABLE_PSEUDO.filter(p => !hiddenCols.has(p.id)).map(p => p.id),
       ...(canDelete ? ['_actions'] : []),
     ],
-    [visibleColumns, canEdit, canDelete]
+    [visibleColumns, canEdit, canDelete, hiddenCols]
   )
 
   const table = useReactTable({
@@ -742,7 +805,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           </button>
 
           {showColPanel && (
-            <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl p-2 min-w-[180px]">
+            <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl p-2 min-w-[200px] max-h-[70vh] overflow-y-auto">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider px-2 pb-1 font-semibold">
                 Видими колони
               </p>
@@ -757,9 +820,21 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                   {col.name}
                 </label>
               ))}
+              <div className="border-t border-border my-1" />
+              {HIDEABLE_PSEUDO.map(col => (
+                <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={!hiddenCols.has(col.id)}
+                    onChange={() => toggleColVisibility(col.id)}
+                    className="w-3.5 h-3.5"
+                  />
+                  {col.name}
+                </label>
+              ))}
               {hiddenCols.size > 0 && (
                 <button
-                  onClick={() => { setHiddenCols(new Set()); localStorage.removeItem('crm-hidden-cols') }}
+                  onClick={() => setHiddenCols(new Set())}
                   className="mt-1 w-full text-xs text-center text-muted-foreground hover:text-foreground py-1"
                 >
                   Покажи всички
@@ -768,6 +843,17 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
             </div>
           )}
         </div>
+
+        <ViewsMenu
+          views={views}
+          activeViewId={activeViewId}
+          isDirty={isViewDirty}
+          onSelect={handleSelectView}
+          onSaveAs={handleSaveViewAs}
+          onUpdate={handleUpdateView}
+          onDelete={handleDeleteView}
+          onSetDefault={handleSetDefaultView}
+        />
 
         <span className="text-sm text-dark/50">
           {table.getFilteredRowModel().rows.length} от {filteredByTags.length} клиента
