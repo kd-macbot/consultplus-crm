@@ -615,6 +615,14 @@ export async function getContactByClientId(clientId: string): Promise<Contact | 
   return data as Contact | null
 }
 
+export async function getAllContacts(): Promise<Contact[]> {
+  const { data, error } = await supabase
+    .from('crm_contacts')
+    .select('*')
+  if (error) throw error
+  return (data ?? []) as Contact[]
+}
+
 export async function upsertContact(
   contact: Omit<Contact, 'id' | 'created_at'> & { id?: string }
 ): Promise<void> {
