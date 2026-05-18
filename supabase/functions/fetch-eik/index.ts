@@ -190,21 +190,31 @@ function formatAddress(a?: RegDataAddress | null): string | null {
 interface ParsedCompany {
   eik: string | null
   vat_number: string | null
+  vat_registered_at: string | null
   address: string | null
   owner_name: string | null
   manager_name: string | null
+  public_url: string | null
 }
 
 function parseDetails(d: any): ParsedCompany {
   const eik: string | null = d?.identifier ?? null
-  const hasVat = Array.isArray(d?.vat?.states) && d.vat.states.length > 0
-  const vat_number = hasVat && eik ? `BG${eik}` : null
+  const states: Array<{ date?: string; code?: string }> = Array.isArray(d?.vat?.states) ? d.vat.states : []
+  // Сортираме по дата ascending → последния запис е актуалното състояние
+  const sortedStates = [...states].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
+  const lastState = sortedStates[sortedStates.length - 1]
+  // D20 = регистрирана; ако има по-нов запис с друг код → отписана
+  const vatActive = lastState?.code === "D20"
+  const vat_number = vatActive && eik ? `BG${eik}` : null
+  // Дата на първоначална ДДС регистрация = първия D20 запис
+  const firstD20 = sortedStates.find((s) => s.code === "D20")
+  const vat_registered_at = vatActive && firstD20?.date ? firstD20.date.split("T")[0] : null
   const address = formatAddress(d?.addresses?.[0] ?? d?.vat?.address) ?? null
   const owner_name = d?.owners?.[0]?.name ?? null
-  // Често има няколко управители — обединяваме до 3 имена
   const managers: string[] = (d?.managers ?? []).map((m: any) => m?.name).filter(Boolean)
   const manager_name = managers.length ? managers.slice(0, 3).join(", ") : null
-  return { eik, vat_number, address, owner_name, manager_name }
+  const public_url: string | null = typeof d?.url === "string" ? d.url : null
+  return { eik, vat_number, vat_registered_at, address, owner_name, manager_name, public_url }
 }
 
 Deno.serve(async (req) => {

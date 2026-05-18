@@ -108,8 +108,10 @@ export interface Contact {
   company_email: string | null
   eik: string | null
   vat_number: string | null
+  vat_registered_at: string | null
   address: string | null
   website: string | null
+  public_url: string | null
   notes: string | null
   created_at: string
   created_by: string | null
