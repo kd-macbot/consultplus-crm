@@ -222,13 +222,13 @@ export function SubscriptionsPage() {
           </span>
         </div>
         <table className="w-full text-sm border-collapse">
-          <thead>
+          <thead className="bg-navy text-white sticky top-0 z-10">
             {/* Main header */}
-            <tr className="bg-navy text-white">
-              <th className="px-3 py-3 text-left font-medium whitespace-nowrap w-10">#</th>
-              <th className="px-4 py-3 text-left font-medium whitespace-nowrap">Клиент</th>
+            <tr>
+              <th className="px-3 py-2 text-left text-xs font-semibold whitespace-nowrap w-10">#</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold whitespace-nowrap">Клиент</th>
               {tableColumns.map(col => (
-                <th key={col.id} className="px-4 py-3 text-left font-medium whitespace-nowrap">
+                <th key={col.id} className="px-3 py-2 text-left text-xs font-semibold whitespace-nowrap">
                   <div className="flex items-center gap-1">
                     <span>{col.name}</span>
                     {isAdmin && col.staff_department === SUB_MARKER && (
@@ -243,7 +243,7 @@ export function SubscriptionsPage() {
               ))}
             </tr>
             {/* Filter row */}
-            <tr className="bg-navy/80">
+            <tr className="bg-navy-light">
               <th className="px-2 py-1" />
               <th className="px-2 py-1">
                 <input
@@ -290,12 +290,12 @@ export function SubscriptionsPage() {
             {filteredClients.map((client, i) => (
               <tr
                 key={client.id}
-                className={`border-b border-light/50 ${i % 2 === 0 ? 'bg-card' : 'bg-light/20'} hover:bg-gold/5 transition-colors`}
+                className={`border-b border-light/50 ${i % 2 === 0 ? 'bg-card' : 'bg-muted/20'} hover:bg-gold/5 transition-colors`}
               >
                 <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums w-10">
                   {i + 1}
                 </td>
-                <td className="px-4 py-2 font-medium text-navy whitespace-nowrap">
+                <td className="px-3 py-1.5 font-medium text-navy whitespace-nowrap">
                   {clientName(client.id)}
                 </td>
                 {tableColumns.map(col => {
@@ -329,7 +329,7 @@ export function SubscriptionsPage() {
                   return (
                     <td
                       key={col.id}
-                      className={`px-4 py-2 ${canEdit ? 'cursor-pointer hover:bg-navy/5 rounded' : ''}`}
+                      className={`px-3 py-1.5 ${canEdit ? 'cursor-pointer hover:bg-navy/5 rounded' : ''}`}
                       onClick={() => canEdit && setEditCell({ clientId: client.id, columnId: col.id })}
                     >
                       {col.type === 'number' && cell?.value_number != null
@@ -347,11 +347,11 @@ export function SubscriptionsPage() {
               <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums">
                 {filteredClients.length}
               </td>
-              <td className="px-4 py-2 text-navy">
+              <td className="px-3 py-1.5 text-navy">
                 Общо {isFiltered && <span className="text-xs font-normal text-dark/40">({filteredClients.length} от {clients.length})</span>}
               </td>
               {tableColumns.map(col => (
-                <td key={col.id} className="px-4 py-2">
+                <td key={col.id} className="px-3 py-1.5">
                   {col.id === honorarColumn?.id
                     ? <span className="text-navy">{filteredTotalHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €</span>
                     : ''
