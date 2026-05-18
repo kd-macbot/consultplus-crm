@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity } from './types'
 
 // ==================== AUDIT LOG ====================
 
@@ -833,4 +833,90 @@ export async function clearAll() {
   await supabase.from('crm_clients').delete().neq('id', '00000000-0000-0000-0000-000000000000')
   await supabase.from('crm_dropdown_options').delete().neq('id', '00000000-0000-0000-0000-000000000000')
   await supabase.from('crm_columns').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+}
+
+// ==================== OPPORTUNITIES ====================
+
+export async function getOpportunities(): Promise<Opportunity[]> {
+  const { data, error } = await supabase
+    .from('crm_opportunities')
+    .select('*')
+    .eq('deleted', false)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as Opportunity[]
+}
+
+export async function addOpportunity(
+  patch: Partial<Omit<Opportunity, 'id' | 'created_at' | 'updated_at' | 'deleted'>> & { name: string }
+): Promise<Opportunity> {
+  const { data, error } = await supabase
+    .from('crm_opportunities')
+    .insert([patch])
+    .select()
+    .single()
+  if (error) throw error
+  return data as Opportunity
+}
+
+export async function updateOpportunity(id: string, patch: Partial<Opportunity>): Promise<void> {
+  const { error } = await supabase
+    .from('crm_opportunities')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function softDeleteOpportunity(id: string): Promise<void> {
+  await updateOpportunity(id, { deleted: true })
+}
+
+/**
+ * Конвертира opportunity в client: създава нов client, копира името в първата text колона,
+ * създава контакт с цялата информация и маркира opportunity-то като конвертирано.
+ */
+export async function convertOpportunityToClient(
+  opp: Opportunity,
+  userId?: string,
+  userName?: string,
+): Promise<{ clientId: string }> {
+  // 1. Нов клиент
+  const client = await addClient(userId, undefined, { userId, userName })
+
+  // 2. Името в първата text колона
+  const cols = await getColumns()
+  const nameCol = cols.find(c => c.type === 'text')
+  if (nameCol && opp.name) {
+    await setCellValue(client.id, nameCol.id, { value_text: opp.name })
+  }
+  // 3. Отговорник в колоната „Отговорник" (ако е попълнен)
+  if (opp.responsible) {
+    const respCol = cols.find(c => c.name === 'Отговорник')
+    if (respCol) {
+      await setCellValue(client.id, respCol.id, { value_text: opp.responsible })
+    }
+  }
+
+  // 4. Контакт с попълнени данни
+  await upsertContact(buildContactPayload(client.id, null, {
+    eik: opp.eik,
+    vat_number: opp.vat_number,
+    vat_registered_at: opp.vat_registered_at,
+    address: opp.address,
+    public_url: opp.public_url,
+    owner_name: opp.owner_name_legal,
+    manager_name: opp.manager_name_legal,
+    owner_email: opp.contact_email,
+    owner_phone: opp.contact_phone,
+    notes: opp.notes,
+  }, userId))
+
+  // 5. Маркираме opportunity-то
+  await updateOpportunity(opp.id, {
+    converted_to_client_id: client.id,
+    converted_at: new Date().toISOString(),
+    stage: 'Печеливш',
+  })
+
+  return { clientId: client.id }
 }
