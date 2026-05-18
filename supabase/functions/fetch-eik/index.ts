@@ -234,16 +234,23 @@ Deno.serve(async (req) => {
 
     // Bypass на search-а: ако клиентът вече знае ЕИК, директно вземаме full data
     if (payload.eik && typeof payload.eik === "string") {
-      const fetched = await fetchData(token, payload.eik, packetId)
-      const details = Array.isArray(fetched) ? fetched[0] : fetched
-      const fields = parseDetails(details)
-      return json({
-        eik: payload.eik,
-        caption: details?.name ? `${details.name}${details.legalFormShort ? " " + details.legalFormShort : ""}` : null,
-        total: 1,
-        candidates: [],
-        fields,
-      })
+      try {
+        const fetched = await fetchData(token, payload.eik, packetId)
+        const details = Array.isArray(fetched) ? fetched[0] : fetched
+        if (!details || !details.identifier) {
+          return json({ eik: null, caption: null, total: 0, candidates: [], fields: null, error: `ЕИК ${payload.eik} не е намерен в регистъра` })
+        }
+        const fields = parseDetails(details)
+        return json({
+          eik: payload.eik,
+          caption: details?.name ? `${details.name}${details.legalFormShort ? " " + details.legalFormShort : ""}` : null,
+          total: 1,
+          candidates: [],
+          fields,
+        })
+      } catch (e) {
+        return json({ eik: null, caption: null, total: 0, candidates: [], fields: null, error: `Грешка при извличане на ЕИК ${payload.eik}: ${(e as Error).message}` })
+      }
     }
 
     const { name, subType } = payload
