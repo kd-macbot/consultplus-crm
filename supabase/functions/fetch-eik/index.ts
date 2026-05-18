@@ -98,16 +98,14 @@ function cleanName(name: string): string {
 }
 
 async function searchByName(token: string, name: string, subType: string) {
-  // TextSearch очаква JSON-сериализиран обект със subType (от nom/22)
-  // Номенклатурните стойности в API-то винаги имат префикс "nom_"
-  const typeValue = subType.startsWith("nom_") ? subType : `nom_${subType}`
+  // TextSearch: value е stringified JSON със searchText + searchFields (ID от nom/22)
   const body = {
     condition: "AND",
     rules: [
       {
         id: "TextSearch",
         operator: "in",
-        value: [JSON.stringify({ text: cleanName(name), type: typeValue })],
+        value: [JSON.stringify({ searchText: cleanName(name), searchFields: [subType] })],
       },
     ],
   }

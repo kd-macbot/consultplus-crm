@@ -79,7 +79,10 @@ class RegData:
                 {
                     "id": "TextSearch",
                     "operator": "in",
-                    "value": [json.dumps({"text": clean_name(name), "type": TEXT_SUBTYPE_TITLE})],
+                    "value": [json.dumps({
+                        "searchText": clean_name(name),
+                        "searchFields": [TEXT_SUBTYPE_TITLE],
+                    })],
                 }
             ],
         }
