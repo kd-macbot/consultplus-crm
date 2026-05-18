@@ -211,7 +211,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   try {
-    const payload = await req.json()
+    // Body може да дойде като application/json или text/plain (заобикаляне на CORS preflight)
+    const rawBody = await req.text()
+    const payload = rawBody ? JSON.parse(rawBody) : {}
     const sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
