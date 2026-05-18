@@ -632,6 +632,22 @@ export async function deleteContact(id: string): Promise<void> {
   if (error) throw error
 }
 
+export interface EikLookupResult {
+  eik: string | null
+  caption: string | null
+  total: number
+  candidates: Array<{ identifier: string; caption: string; activity: number }>
+}
+
+export async function lookupEikByName(name: string): Promise<EikLookupResult> {
+  const { data, error } = await supabase.functions.invoke('fetch-eik', {
+    body: { name },
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data as EikLookupResult
+}
+
 // ==================== PROFILES ====================
 
 export async function getProfiles(): Promise<{ id: string; full_name: string }[]> {
