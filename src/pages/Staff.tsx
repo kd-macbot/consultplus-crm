@@ -22,11 +22,12 @@ interface StaffMember {
   created_at: string
 }
 
-const DEPARTMENTS = ['Счетоводство', 'ТРЗ', 'Управление', 'Друго']
+const DEPARTMENTS = ['Счетоводство', 'ТРЗ', 'Тийм Лийд', 'Управление', 'Друго']
 
 const DEPT_VARIANT: Record<string, 'info' | 'success' | 'warning' | 'muted'> = {
   'Счетоводство': 'info',
   'ТРЗ': 'success',
+  'Тийм Лийд': 'warning',
   'Управление': 'warning',
   'Друго': 'muted',
 }

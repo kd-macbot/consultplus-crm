@@ -180,6 +180,49 @@ export async function updateColumn(id: string, updates: Partial<Column>) {
   if (error) throw error
 }
 
+/**
+ * Свързва или развързва dropdown колона с отдел от персонала.
+ * При свързване — мигрира съществуващите value_dropdown → value_text
+ * (използва текста на dropdown опцията), за да се запазят данните.
+ * При развързване — оставя value_text-овете (потребителят може да създаде
+ * нови dropdown options ръчно).
+ */
+export async function setColumnStaffDepartment(columnId: string, department: string | null): Promise<void> {
+  if (department) {
+    // Прехвърляме value_dropdown → value_text за всички съществуващи cells в тази колона
+    const { data: cells, error: cellsErr } = await supabase
+      .from('crm_cell_values')
+      .select('id, value_dropdown')
+      .eq('column_id', columnId)
+      .not('value_dropdown', 'is', null)
+    if (cellsErr) throw cellsErr
+
+    if (cells && cells.length > 0) {
+      const optionIds = [...new Set(cells.map(c => c.value_dropdown).filter(Boolean) as string[])]
+      const { data: opts, error: optsErr } = await supabase
+        .from('crm_dropdown_options')
+        .select('id, value')
+        .in('id', optionIds)
+      if (optsErr) throw optsErr
+
+      const optMap = new Map((opts ?? []).map(o => [o.id, o.value]))
+      await Promise.all(cells.map(cell => {
+        const text = cell.value_dropdown ? optMap.get(cell.value_dropdown) ?? null : null
+        return supabase
+          .from('crm_cell_values')
+          .update({ value_text: text, value_dropdown: null })
+          .eq('id', cell.id)
+      }))
+    }
+  }
+  // Нулирането изисква DB null, а не undefined — пишем директно
+  const { error } = await supabase
+    .from('crm_columns')
+    .update({ staff_department: department })
+    .eq('id', columnId)
+  if (error) throw error
+}
+
 export async function updateColumnPositions(orderedIds: string[]): Promise<void> {
   await Promise.all(
     orderedIds.map((id, index) =>

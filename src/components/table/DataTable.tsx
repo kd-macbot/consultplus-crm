@@ -339,6 +339,10 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
 
   const statusCol = useMemo(() => columns.find(c => c.name === 'Статус'), [columns])
   const accountantCol = useMemo(() => columns.find(c => c.name === 'Счетоводител'), [columns])
+  const accountantStaffList = useMemo(() => {
+    if (!accountantCol?.staff_department) return staffList
+    return staffList.filter(s => s.department === accountantCol.staff_department)
+  }, [staffList, accountantCol])
   const statusOptions = useMemo(
     () => statusCol ? allDropdowns.filter(d => d.column_id === statusCol.id) : [],
     [statusCol, allDropdowns]
@@ -910,14 +914,14 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
             </select>
           )}
 
-          {accountantCol && staffList.length > 0 && (
+          {accountantCol && accountantStaffList.length > 0 && (
             <select
               defaultValue=""
               onChange={e => { if (e.target.value) { handleBulkAccountant(e.target.value); e.target.value = '' } }}
               className="h-7 px-2 rounded text-sm text-dark bg-white/90 border-0 focus:outline-none"
             >
               <option value="" disabled>Присвои счетоводител...</option>
-              {staffList.map(s => (
+              {accountantStaffList.map(s => (
                 <option key={s.id} value={s.full_name}>{s.full_name}</option>
               ))}
             </select>
