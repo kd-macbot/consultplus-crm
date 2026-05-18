@@ -26,7 +26,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, SlidersHorizontal, X } from 'lucide-react'
+import { GripVertical, SlidersHorizontal, X, RefreshCw } from 'lucide-react'
 import type { Column, CellValue, DropdownOption, Tag, ClientTag, Client, Contact } from '../../lib/types'
 import {
   getColumns, getClients, getCellValues, getDropdownOptions,
@@ -39,6 +39,7 @@ import { toast } from 'sonner'
 import { CellEditor } from './CellEditor'
 import { TagEditor } from '../tags/TagEditor'
 import { ConfirmDialog } from '@/components/ui/alert-dialog'
+import { RefreshContactDialog } from '../clients/RefreshContactDialog'
 
 interface ClientRow {
   clientId: string
@@ -164,6 +165,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [editingEikFor, setEditingEikFor] = useState<string | null>(null)
   const [eikDraft, setEikDraft] = useState('')
   const [confirmDeleteRow, setConfirmDeleteRow] = useState<ClientRow | null>(null)
+  const [refreshTarget, setRefreshTarget] = useState<ClientRow | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScrollPos = useRef<{ top: number; left: number } | null>(null)
@@ -484,8 +486,10 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                       manager_email: contact?.manager_email ?? null,
                       company_email: contact?.company_email ?? null,
                       vat_number: contact?.vat_number ?? null,
+                      vat_registered_at: contact?.vat_registered_at ?? null,
                       address: contact?.address ?? null,
                       website: contact?.website ?? null,
+                      public_url: contact?.public_url ?? null,
                       notes: contact?.notes ?? null,
                       created_by: contact?.created_by ?? user?.id ?? null,
                     })
@@ -524,6 +528,34 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         filterFn: 'includesString',
       },
       {
+        id: '_vat',
+        header: 'Рег. по ДДС',
+        size: 130,
+        enableSorting: true,
+        enableColumnFilter: true,
+        accessorFn: (row: ClientRow) => {
+          const contact = allContacts.find(c => c.client_id === row.clientId)
+          return contact?.vat_registered_at ?? ''
+        },
+        cell: info => {
+          const clientId = info.row.original.clientId
+          const contact = allContacts.find(c => c.client_id === clientId)
+          const date = contact?.vat_registered_at
+          if (!date) return <span className="text-dark/20">—</span>
+          return (
+            <span className="text-xs">
+              <span className="text-emerald-600 font-semibold">✓</span> {date}
+            </span>
+          )
+        },
+        filterFn: (row, _columnId, filterValue) => {
+          const v = row.getValue('_vat') as string
+          if (filterValue === '__yes__') return !!v
+          if (filterValue === '__no__') return !v
+          return true
+        },
+      },
+      {
         id: '_tags',
         header: 'Тагове',
         size: 180,
@@ -549,14 +581,24 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       cols.push({
         id: '_actions',
         header: '',
-        size: 60,
+        size: 80,
         cell: info => (
-          <button
-            onClick={() => setConfirmDeleteRow(info.row.original)}
-            className="text-red-500 hover:text-red-700 text-xs"
-          >
-            🗑️
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setRefreshTarget(info.row.original)}
+              className="text-muted-foreground hover:text-blue-600"
+              title="Обнови от регистъра"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setConfirmDeleteRow(info.row.original)}
+              className="text-red-500 hover:text-red-700 text-xs"
+              title="Изтрий"
+            >
+              🗑️
+            </button>
+          </div>
         ),
         enableSorting: false,
       })
@@ -571,6 +613,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       ...(canEdit ? ['_select'] : []),
       ...visibleColumns.map(c => c.id),
       '_eik',
+      '_vat',
       '_tags',
       ...(canDelete ? ['_actions'] : []),
     ],
@@ -837,6 +880,16 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         onConfirm={handleBulkDelete}
         onCancel={() => setConfirmBulkDelete(false)}
       />
+
+      {refreshTarget && (
+        <RefreshContactDialog
+          clientId={refreshTarget.clientId}
+          clientName={refreshTarget.clientName}
+          onClose={() => setRefreshTarget(null)}
+          onDone={onRefresh}
+          userId={user?.id}
+        />
+      )}
 
       <div className="p-2 md:p-3 border-t border-light flex flex-wrap items-center justify-between gap-2 bg-card text-sm">
         <div className="flex items-center gap-2">

@@ -643,9 +643,11 @@ export async function deleteContact(id: string): Promise<void> {
 export interface EikLookupFields {
   eik: string | null
   vat_number: string | null
+  vat_registered_at: string | null
   address: string | null
   owner_name: string | null
   manager_name: string | null
+  public_url: string | null
 }
 
 export interface EikLookupResult {

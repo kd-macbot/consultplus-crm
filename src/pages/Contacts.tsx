@@ -22,8 +22,10 @@ const EMPTY_FORM = {
   company_email: '',
   eik: '',
   vat_number: '',
+  vat_registered_at: '',
   address: '',
   website: '',
+  public_url: '',
   notes: '',
 }
 
@@ -94,8 +96,10 @@ export function ContactsPage() {
       company_email: c.company_email ?? '',
       eik: c.eik ?? '',
       vat_number: c.vat_number ?? '',
+      vat_registered_at: c.vat_registered_at ?? '',
       address: c.address ?? '',
       website: c.website ?? '',
+      public_url: c.public_url ?? '',
       notes: c.notes ?? '',
     })
     setShowModal(true)
@@ -120,8 +124,10 @@ export function ContactsPage() {
         company_email: form.company_email || null,
         eik: form.eik || null,
         vat_number: form.vat_number || null,
+        vat_registered_at: form.vat_registered_at || null,
         address: form.address || null,
         website: form.website || null,
+        public_url: form.public_url || null,
         notes: form.notes || null,
         created_by: user?.id ?? null,
       })
@@ -153,16 +159,20 @@ export function ContactsPage() {
           ...f,
           eik: f.eik || res.fields?.eik || res.eik || '',
           vat_number: f.vat_number || res.fields?.vat_number || '',
+          vat_registered_at: f.vat_registered_at || res.fields?.vat_registered_at || '',
           address: f.address || res.fields?.address || '',
           owner_name: f.owner_name || res.fields?.owner_name || '',
           manager_name: f.manager_name || res.fields?.manager_name || '',
+          public_url: f.public_url || res.fields?.public_url || '',
         }))
         const filled: string[] = []
         if (res.fields?.eik) filled.push('ЕИК')
         if (res.fields?.vat_number) filled.push('ДДС')
+        if (res.fields?.vat_registered_at) filled.push('дата ДДС')
         if (res.fields?.address) filled.push('адрес')
         if (res.fields?.owner_name) filled.push('собственик')
         if (res.fields?.manager_name) filled.push('управляващ')
+        if (res.fields?.public_url) filled.push('линк')
         const note = filled.length ? ` — попълнени: ${filled.join(', ')}` : ''
         if (res.total > 1 && res.candidates.length > 1) {
           toast.warning(`${res.caption ?? res.eik} (${res.total} съвпадения${note}). Проверете.`)
@@ -382,8 +392,17 @@ export function ContactsPage() {
                     </Button>
                   </div>
                   <Input placeholder="ДДС номер" value={form.vat_number} onChange={e => set('vat_number', e.target.value)} />
+                  <Input placeholder="Дата на ДДС регистрация" type="date" value={form.vat_registered_at} onChange={e => set('vat_registered_at', e.target.value)} />
                   <Input placeholder="Уебсайт" type="url" value={form.website} onChange={e => set('website', e.target.value)} />
                   <Input placeholder="Адрес / Седалище" value={form.address} onChange={e => set('address', e.target.value)} className="sm:col-span-2" />
+                  <div className="sm:col-span-2 flex items-center gap-2">
+                    <Input placeholder="Линк към регистъра (apis.bg)" type="url" value={form.public_url} onChange={e => set('public_url', e.target.value)} className="flex-1" />
+                    {form.public_url && (
+                      <a href={form.public_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline whitespace-nowrap">
+                        Виж →
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
 
