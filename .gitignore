@@ -4,3 +4,6 @@ dist
 .env.local
 *.pdf
 # .github intentionally tracked for CI/CD
+
+# Supabase CLI local state
+supabase/.temp/

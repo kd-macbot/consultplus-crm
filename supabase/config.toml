@@ -1,0 +1,4 @@
+project_id = "consultplus-crm"
+
+[functions.fetch-eik]
+verify_jwt = false
