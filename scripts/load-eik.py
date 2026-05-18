@@ -34,6 +34,8 @@ except ImportError:
 
 API_BASE = "https://regdata.apis.bg/api/v1"
 LEGAL_FORMS = re.compile(r"\b(ЕООД|ООД|АД|ЕАД|СД|ЕТ|КД|КДА)\b", re.IGNORECASE)
+# TextSearch sub-type "Заглавие" (от GET /data/nom/22)
+TEXT_SUBTYPE_TITLE = "d5cf10b9"
 
 
 def clean_name(name: str) -> str:
@@ -74,7 +76,11 @@ class RegData:
         body = {
             "condition": "AND",
             "rules": [
-                {"id": "TextSearch", "operator": "in", "value": [clean_name(name)]}
+                {
+                    "id": "TextSearch",
+                    "operator": "in",
+                    "value": [json.dumps({"text": clean_name(name), "type": TEXT_SUBTYPE_TITLE})],
+                }
             ],
         }
         r = requests.post(

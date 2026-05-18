@@ -13,6 +13,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const API_BASE = "https://regdata.apis.bg/api/v1"
+// TextSearch sub-type IDs (от GET /data/nom/22):
+//   a9d4070f = Навсякъде, d5cf10b9 = Заглавие, dfbc200 = Предмет на дейност,
+//   4fa0dc32 = Собственици, 185b135c = Управляващи
+const TEXT_SUBTYPE_TITLE = "d5cf10b9"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -160,11 +164,8 @@ Deno.serve(async (req) => {
     if (!name || typeof name !== "string") {
       return json({ error: "name is required" }, 400)
     }
-    if (!subType || typeof subType !== "string") {
-      return json({ error: "subType is required (use {diagnose: 22} to list TextSearch sub-types)" }, 400)
-    }
 
-    const search = await searchByName(token, name, subType)
+    const search = await searchByName(token, name, subType || TEXT_SUBTYPE_TITLE)
     const active = search.results.filter((r) => r.activity === 1)
     const best = active[0] ?? search.results[0]
 
