@@ -649,18 +649,13 @@ export interface EikLookupResult {
 }
 
 export async function lookupEikByName(name: string): Promise<EikLookupResult> {
-  // Извикваме директно с fetch + text/plain, за да не задействаме CORS preflight
-  // (Supabase router отказва OPTIONS заявки и не можем да минем през supabase.functions.invoke).
-  const url = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/fetch-eik'
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ name }),
+  // Slug-ът на функцията в Supabase е "swift-task" (auto-генериран), но името й е "fetch-eik".
+  // URL-ът използва slug. verify_jwt=false е настроен, така че supabase.functions.invoke работи нормално.
+  const { data, error } = await supabase.functions.invoke('swift-task', {
+    body: { name },
   })
-  const text = await r.text()
-  let data: any
-  try { data = JSON.parse(text) } catch { throw new Error(`Non-JSON response: ${text.slice(0, 200)}`) }
-  if (!r.ok || data?.error) throw new Error(data?.error ?? `HTTP ${r.status}`)
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
   return data as EikLookupResult
 }
 
