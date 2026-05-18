@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import {
-  addClient, setCellValue, upsertContact, getColumns,
+  addClient, setCellValue, upsertContact, buildContactPayload, getColumns,
   lookupByEik, lookupEikByName, fetchEikRaw, type EikLookupResult,
 } from '../../lib/storage'
 
@@ -84,8 +84,7 @@ export function NewClientDialog({ onClose, onCreated, userId, userName }: Props)
       }
 
       // 3. Контакт с попълнени данни от регистъра
-      await upsertContact({
-        client_id: client.id,
+      await upsertContact(buildContactPayload(client.id, null, {
         eik: result.fields.eik,
         vat_number: result.fields.vat_number,
         vat_registered_at: result.fields.vat_registered_at,
@@ -93,11 +92,7 @@ export function NewClientDialog({ onClose, onCreated, userId, userName }: Props)
         owner_name: result.fields.owner_name,
         manager_name: result.fields.manager_name,
         public_url: result.fields.public_url,
-        owner_email: null, owner_phone: null,
-        manager_email: null, company_email: null,
-        website: null, notes: null,
-        created_by: userId ?? null,
-      })
+      }, userId))
 
       toast.success(`"${nameOverride}" е създаден с данни от регистъра`)
       onCreated()

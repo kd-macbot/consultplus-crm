@@ -632,6 +632,37 @@ export async function upsertContact(
   if (error) throw error
 }
 
+/**
+ * Build a complete contact upsert payload by merging `existing` values with `patch`.
+ * Eliminates 12-line boilerplate at each call site and guarantees no field is forgotten.
+ */
+export function buildContactPayload(
+  clientId: string,
+  existing: Contact | null | undefined,
+  patch: Partial<Omit<Contact, 'id' | 'created_at' | 'client_id'>>,
+  userId?: string | null,
+): Omit<Contact, 'id' | 'created_at'> & { id?: string } {
+  const base: Omit<Contact, 'id' | 'created_at'> = {
+    client_id: clientId,
+    owner_name: existing?.owner_name ?? null,
+    owner_email: existing?.owner_email ?? null,
+    owner_phone: existing?.owner_phone ?? null,
+    manager_name: existing?.manager_name ?? null,
+    manager_email: existing?.manager_email ?? null,
+    company_email: existing?.company_email ?? null,
+    eik: existing?.eik ?? null,
+    vat_number: existing?.vat_number ?? null,
+    vat_registered_at: existing?.vat_registered_at ?? null,
+    address: existing?.address ?? null,
+    website: existing?.website ?? null,
+    public_url: existing?.public_url ?? null,
+    notes: existing?.notes ?? null,
+    created_by: existing?.created_by ?? userId ?? null,
+  }
+  const merged = { ...base, ...patch }
+  return existing?.id ? { ...merged, id: existing.id } : merged
+}
+
 export async function deleteContact(id: string): Promise<void> {
   const { error } = await supabase
     .from('crm_contacts')
@@ -658,7 +689,7 @@ export interface EikLookupResult {
   fields: EikLookupFields | null
 }
 
-async function invokeFetchEik(body: object): Promise<EikLookupResult> {
+async function invokeEdge<T = unknown>(body: object): Promise<T> {
   const { data, error } = await supabase.functions.invoke('swift-task', { body })
   if (error) {
     // FunctionsHttpError носи body-то на отговора в .context (Response). Извличаме реалното съобщение.
@@ -666,16 +697,24 @@ async function invokeFetchEik(body: object): Promise<EikLookupResult> {
     if (ctx && typeof ctx.text === 'function') {
       try {
         const text = await ctx.text()
-        const parsed = JSON.parse(text)
-        throw new Error(parsed?.error ?? text ?? error.message)
-      } catch (parseErr) {
-        if (parseErr instanceof Error && parseErr.message !== error.message) throw parseErr
+        try {
+          const parsed = JSON.parse(text)
+          throw new Error(parsed?.error ?? text ?? error.message)
+        } catch {
+          throw new Error(text || error.message)
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message !== error.message) throw e
       }
     }
     throw error
   }
-  if (data?.error) throw new Error(data.error)
-  return data as EikLookupResult
+  if ((data as any)?.error) throw new Error((data as any).error)
+  return data as T
+}
+
+async function invokeFetchEik(body: object): Promise<EikLookupResult> {
+  return invokeEdge<EikLookupResult>(body)
 }
 
 export async function lookupEikByName(name: string): Promise<EikLookupResult> {
@@ -690,22 +729,7 @@ export async function lookupByEik(eik: string): Promise<EikLookupResult> {
 
 export async function fetchEikRaw(eik: string): Promise<unknown> {
   // Диагностичен режим — връща суровия отговор от regdata data/fetch
-  const { data, error } = await supabase.functions.invoke('swift-task', {
-    body: { fetchEik: eik },
-  })
-  if (error) {
-    const ctx = (error as any).context
-    if (ctx && typeof ctx.text === 'function') {
-      try {
-        const text = await ctx.text()
-        throw new Error(text || error.message)
-      } catch (e) {
-        if (e instanceof Error && e.message !== error.message) throw e
-      }
-    }
-    throw error
-  }
-  return data
+  return invokeEdge({ fetchEik: eik })
 }
 
 // ==================== PROFILES ====================
