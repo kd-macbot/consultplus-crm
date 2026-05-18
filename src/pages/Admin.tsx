@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getColumns, addColumn, deleteColumn, getDropdownOptions, addDropdownOption, deleteDropdownOption, clearAll, getTags, createTag, deleteTag, getAllProfiles, updateProfile } from '../lib/storage'
+import { getColumns, addColumn, deleteColumn, getDropdownOptions, addDropdownOption, deleteDropdownOption, clearAll, getTags, createTag, deleteTag, getAllProfiles, updateProfile, setColumnStaffDepartment } from '../lib/storage'
 import { adminCreateUser } from '../lib/auth'
 import type { Column, ColumnType, DropdownOption, Tag, Profile, Role } from '../lib/types'
 import { useAuth } from '../lib/auth'
@@ -33,6 +33,8 @@ const TYPE_LABELS: Record<ColumnType, string> = {
   dropdown: 'Падащо меню', checkbox: 'Отметка', email: 'Имейл', phone: 'Телефон',
 }
 
+const STAFF_DEPARTMENTS = ['Счетоводство', 'ТРЗ', 'Тийм Лийд', 'Управление', 'Друго']
+
 const selectClass = "h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
 export function AdminPage() {
@@ -42,6 +44,8 @@ export function AdminPage() {
   const [newColName, setNewColName] = useState('')
   const [newColType, setNewColType] = useState<ColumnType>('text')
   const [editingDropdown, setEditingDropdown] = useState<string | null>(null)
+  const [editingStaffDept, setEditingStaffDept] = useState<string | null>(null)
+  const [staffDeptDraft, setStaffDeptDraft] = useState<string>('')
   const [newOptValue, setNewOptValue] = useState('')
   const [dropdownOpts, setDropdownOpts] = useState<DropdownOption[]>([])
   const [tags, setTags] = useState<Tag[]>([])
@@ -339,8 +343,11 @@ export function AdminPage() {
                   <span className="w-5 text-xs text-muted-foreground/50 shrink-0">{i + 1}</span>
                   <span className="flex-1 text-sm font-medium truncate">{col.name}</span>
                   <Badge variant="muted" className="text-[10px] shrink-0">{TYPE_LABELS[col.type]}</Badge>
-                  {col.staff_department && (
+                  {col.staff_department === '__sub__' && (
                     <Badge variant="success" className="text-[10px] shrink-0">абонаменти</Badge>
+                  )}
+                  {col.staff_department && col.staff_department !== '__sub__' && (
+                    <Badge variant="info" className="text-[10px] shrink-0">отдел: {col.staff_department}</Badge>
                   )}
                   {col.type === 'dropdown' && !col.staff_department && (
                     <Button variant="ghost" size="sm" className="h-7 text-xs px-2 gap-1"
@@ -349,11 +356,57 @@ export function AdminPage() {
                       Стойности
                     </Button>
                   )}
+                  {col.type === 'dropdown' && col.staff_department !== '__sub__' && (
+                    <Button variant="ghost" size="sm" className="h-7 text-xs px-2 gap-1"
+                      onClick={() => {
+                        if (editingStaffDept === col.id) {
+                          setEditingStaffDept(null)
+                        } else {
+                          setEditingStaffDept(col.id)
+                          setStaffDeptDraft(col.staff_department ?? '')
+                        }
+                      }}>
+                      🔗 Отдел
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive/60 hover:text-destructive shrink-0"
                     onClick={() => setConfirmDeleteCol({ id: col.id, name: col.name })}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
+
+                {/* Inline staff department picker */}
+                {editingStaffDept === col.id && (
+                  <div className="ml-7 mt-1 mb-2 pl-3 border-l-2 border-blue-200">
+                    <div className="flex gap-2 items-center py-2">
+                      <span className="text-xs text-muted-foreground">Свържи с отдел:</span>
+                      <select
+                        value={staffDeptDraft}
+                        onChange={e => setStaffDeptDraft(e.target.value)}
+                        className="px-2 py-1 text-sm border border-border rounded bg-background"
+                      >
+                        <option value="">— без отдел —</option>
+                        {STAFF_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                      <Button size="sm" onClick={async () => {
+                        try {
+                          await setColumnStaffDepartment(col.id, staffDeptDraft || null)
+                          toast.success(staffDeptDraft ? `Свързана с отдел „${staffDeptDraft}"` : 'Връзката с отдел е премахната')
+                          setEditingStaffDept(null)
+                          await loadColumns()
+                        } catch (e: any) {
+                          toast.error(e.message ?? 'Грешка')
+                        }
+                      }}>Запази</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setEditingStaffDept(null)}>Отказ</Button>
+                    </div>
+                    {col.staff_department && (
+                      <p className="text-[11px] text-muted-foreground pb-2">
+                        Падащото меню ще показва активни служители от избрания отдел. Старите ръчни стойности се запазват като текст.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Inline dropdown editor */}
                 {editingDropdown === col.id && (
