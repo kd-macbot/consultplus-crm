@@ -81,7 +81,7 @@ export function TagEditor({ clientId, clientName, assignedTags, allTags, onUpdat
 
       {/* Popover */}
       {open && (
-        <div className="absolute z-50 top-full left-0 mt-1 w-64 bg-white rounded-lg shadow-lg border border-light p-3">
+        <div className="absolute z-50 top-full left-0 mt-1 w-64 bg-card rounded-lg shadow-lg border border-light p-3">
           {/* Assigned tags */}
           {assignedTags.length > 0 && (
             <div className="mb-2">

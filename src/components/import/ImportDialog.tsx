@@ -97,7 +97,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+        className="bg-card rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -216,7 +216,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
                     </thead>
                     <tbody>
                       {sheet.rows.slice(0, 10).map((row, i) => (
-                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-light/50'}>
+                        <tr key={i} className={i % 2 === 0 ? 'bg-card' : 'bg-light/50'}>
                           <td className="px-2 py-1 text-dark/40">{i + 1}</td>
                           {mappings.filter(m => m.crmColumn).map(m => (
                             <td key={m.excelIndex} className="px-2 py-1 max-w-[200px] truncate">

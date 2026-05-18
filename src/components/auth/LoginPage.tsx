@@ -25,7 +25,7 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-light">
-      <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
+      <div className="bg-card rounded-lg shadow-lg p-8 w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-navy">Consult Plus</h1>
           <p className="text-dark/60 mt-2">Система за управление на клиенти</p>

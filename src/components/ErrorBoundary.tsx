@@ -27,7 +27,7 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) return this.props.fallback
       return (
         <div className="min-h-screen flex items-center justify-center bg-light p-6">
-          <div className="bg-white rounded-lg shadow-lg max-w-lg w-full p-6">
+          <div className="bg-card rounded-lg shadow-lg max-w-lg w-full p-6">
             <h1 className="text-xl font-bold text-red-600 mb-2">Възникна грешка</h1>
             <p className="text-sm text-dark/70 mb-4">
               Приложението срещна неочаквана грешка. Моля, презаредете страницата или опитайте отново.
