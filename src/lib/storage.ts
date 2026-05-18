@@ -649,9 +649,10 @@ export interface EikLookupResult {
 }
 
 export async function lookupEikByName(name: string): Promise<EikLookupResult> {
-  // Извикваме директно с fetch + text/plain, за да не задействаме CORS preflight
-  // (Supabase router отказва OPTIONS заявки и не можем да минем през supabase.functions.invoke).
-  const url = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/fetch-eik'
+  // Извикваме директно с fetch + text/plain, за да не задействаме CORS preflight.
+  // apikey се подава като query param (а не header) по същата причина.
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-eik?apikey=${anonKey}`
   const r = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
