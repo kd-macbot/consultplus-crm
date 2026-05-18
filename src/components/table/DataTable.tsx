@@ -4,7 +4,6 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   getFilteredRowModel,
-  getPaginationRowModel,
   flexRender,
   type ColumnDef,
   type SortingState,
@@ -740,8 +739,6 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 50 } },
   })
 
   if (loading) {
@@ -1023,27 +1020,8 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         />
       )}
 
-      <div className="p-2 md:p-3 border-t border-light flex flex-wrap items-center justify-between gap-2 bg-card text-sm">
-        <div className="flex items-center gap-2">
-          <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-2 md:px-3 py-1 rounded border border-light disabled:opacity-30 hover:bg-muted transition text-xs md:text-sm text-foreground">
-            ←
-          </button>
-          <span className="text-muted-foreground text-xs md:text-sm">
-            {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
-          </span>
-          <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-2 md:px-3 py-1 rounded border border-light disabled:opacity-30 hover:bg-muted transition text-xs md:text-sm text-foreground">
-            →
-          </button>
-        </div>
-        <select
-          value={table.getState().pagination.pageSize}
-          onChange={e => table.setPageSize(Number(e.target.value))}
-          className="px-2 py-1 border border-light rounded text-xs md:text-sm bg-background text-foreground"
-        >
-          {[25, 50, 100, 200].map(size => (
-            <option key={size} value={size}>{size} реда</option>
-          ))}
-        </select>
+      <div className="p-2 md:p-3 border-t border-light flex items-center justify-end gap-2 bg-card text-xs md:text-sm text-muted-foreground">
+        Показани {table.getFilteredRowModel().rows.length} реда
       </div>
     </div>
   )
