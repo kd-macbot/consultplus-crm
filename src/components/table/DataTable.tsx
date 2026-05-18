@@ -166,6 +166,8 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [eikDraft, setEikDraft] = useState('')
   const [confirmDeleteRow, setConfirmDeleteRow] = useState<ClientRow | null>(null)
   const [refreshTarget, setRefreshTarget] = useState<ClientRow | null>(null)
+  const [editingVatFor, setEditingVatFor] = useState<string | null>(null)
+  const [vatDraft, setVatDraft] = useState('')
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScrollPos = useRef<{ top: number; left: number } | null>(null)
@@ -530,7 +532,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       {
         id: '_vat',
         header: 'Рег. по ДДС',
-        size: 130,
+        size: 150,
         enableSorting: true,
         enableColumnFilter: true,
         accessorFn: (row: ClientRow) => {
@@ -540,14 +542,83 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         cell: info => {
           const clientId = info.row.original.clientId
           const contact = allContacts.find(c => c.client_id === clientId)
-          const date = contact?.vat_registered_at
+          const date = contact?.vat_registered_at ?? ''
           const hasVat = !!contact?.vat_number || !!date
-          if (!hasVat) return <span className="text-dark/20">—</span>
+          const isEditing = editingVatFor === clientId
+
+          if (isEditing && canEdit) {
+            return (
+              <input
+                autoFocus
+                type="date"
+                value={vatDraft}
+                onChange={e => setVatDraft(e.target.value)}
+                onBlur={async () => {
+                  const newDate = vatDraft.trim()
+                  setEditingVatFor(null)
+                  const oldDate = contact?.vat_registered_at ?? ''
+                  if (newDate === oldDate) return
+                  try {
+                    const eik = contact?.eik ?? null
+                    // При въведена дата → също попълваме vat_number = BG{eik}; при изчистване → и двете null
+                    const newVatNumber = newDate ? (eik ? `BG${eik}` : contact?.vat_number ?? null) : null
+                    await upsertContact({
+                      ...(contact ? { id: contact.id } : {}),
+                      client_id: clientId,
+                      eik,
+                      vat_number: newVatNumber,
+                      vat_registered_at: newDate || null,
+                      address: contact?.address ?? null,
+                      owner_name: contact?.owner_name ?? null,
+                      owner_email: contact?.owner_email ?? null,
+                      owner_phone: contact?.owner_phone ?? null,
+                      manager_name: contact?.manager_name ?? null,
+                      manager_email: contact?.manager_email ?? null,
+                      company_email: contact?.company_email ?? null,
+                      website: contact?.website ?? null,
+                      public_url: contact?.public_url ?? null,
+                      notes: contact?.notes ?? null,
+                      created_by: contact?.created_by ?? user?.id ?? null,
+                    })
+                    setAllContacts(prev => {
+                      const idx = prev.findIndex(c => c.client_id === clientId)
+                      const patch = { vat_registered_at: newDate || null, vat_number: newVatNumber }
+                      if (idx >= 0) return prev.map((c, i) => i === idx ? { ...c, ...patch } : c)
+                      return [...prev, { client_id: clientId, ...patch } as Contact]
+                    })
+                  } catch (e: any) {
+                    toast.error(e.message ?? 'Грешка при запис на ДДС дата')
+                  }
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                  if (e.key === 'Escape') setEditingVatFor(null)
+                }}
+                className="h-7 px-1 w-full text-xs border border-primary rounded bg-background"
+              />
+            )
+          }
+
           return (
-            <span className="text-xs">
-              <span className="text-emerald-600 font-semibold">✓</span>
-              {date ? <> {date}</> : <span className="text-muted-foreground"> рег.</span>}
-            </span>
+            <div
+              className={`text-xs truncate ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
+              onClick={() => {
+                if (!canEdit) return
+                setVatDraft(date)
+                setEditingVatFor(clientId)
+              }}
+              title={hasVat ? (date || 'Регистрирана (без дата)') : 'Не е регистрирана'}
+            >
+              {!hasVat
+                ? <span className="text-dark/20">—</span>
+                : (
+                  <>
+                    <span className="text-emerald-600 font-semibold">✓</span>
+                    {date ? <> {date}</> : <span className="text-muted-foreground"> рег.</span>}
+                  </>
+                )
+              }
+            </div>
           )
         },
         filterFn: (row, _columnId, filterValue) => {
@@ -607,7 +678,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
 
     return cols
-  }, [visibleColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user, selected, globalFilter, allContacts, editingEikFor, eikDraft])
+  }, [visibleColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user, selected, globalFilter, allContacts, editingEikFor, eikDraft, editingVatFor, vatDraft])
 
   const fullColumnOrder = useMemo(
     () => [
