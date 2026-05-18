@@ -153,82 +153,65 @@ export function SubscriptionsPage() {
   const isFiltered = hasFilters && filteredClients.length !== clients.length
 
   return (
-    <div className="p-4 md:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-xl md:text-2xl font-bold text-navy">💶 Абонаменти</h1>
-        {isAdmin && (
-          <Button size="sm" onClick={() => setShowAddCol(true)}>
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Добави колона</span>
-          </Button>
-        )}
-      </div>
-
-      {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div className="bg-card rounded-lg shadow p-4 border-l-4 border-green-500">
-          <p className="text-sm text-dark/50">
-            {isFiltered ? `Хонорари (${filteredClients.length} от ${clients.length})` : 'Общо хонорари'}
-          </p>
-          <p className="text-2xl font-bold text-green-600">
-            {filteredTotalHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
-          </p>
-          {isFiltered && (
-            <p className="text-xs text-dark/40 mt-0.5">
-              Всичко: {totalHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
-            </p>
+    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+      {/* Sticky title bar — както в Клиенти */}
+      <div className="px-3 py-2 md:px-5 md:py-3 flex items-center justify-between border-b border-border bg-card">
+        <h1 className="text-base md:text-lg font-semibold text-foreground">💶 Абонаменти</h1>
+        <div className="flex items-center gap-1.5">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Търсене..."
+              className="h-8 pl-8 pr-3 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-background w-44"
+            />
+          </div>
+          {hasFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
+              <X className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Изчисти</span>
+            </Button>
+          )}
+          {isAdmin && (
+            <Button size="sm" onClick={() => setShowAddCol(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Колона</span>
+            </Button>
           )}
         </div>
-        <div className="bg-card rounded-lg shadow p-4 border-l-4 border-navy">
-          <p className="text-sm text-dark/50">Брой клиенти</p>
-          <p className="text-2xl font-bold text-navy">
-            {isFiltered ? (
-              <>{filteredClients.length} <span className="text-base font-normal text-dark/40">от {clients.length}</span></>
-            ) : clients.length}
-          </p>
-        </div>
       </div>
 
-      {/* Search + clear */}
-      <div className="flex items-center gap-2 mb-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Търсене по клиент..."
-            className="w-full pl-8 pr-3 py-2 text-sm border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy bg-card"
-          />
-        </div>
-        {hasFilters && (
-          <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground gap-1">
-            <X className="h-3.5 w-3.5" /> Изчисти
-          </Button>
-        )}
-        {isFiltered && (
-          <span className="text-sm text-dark/50">{filteredClients.length} резултата</span>
-        )}
-      </div>
-
-      {/* Table */}
-      <div className="bg-card rounded-lg shadow overflow-x-auto">
-        <div className="px-4 py-2 border-b border-light flex items-center justify-between text-sm text-dark/50">
-          <span>
-            {isFiltered
-              ? <>{filteredClients.length} <span className="text-dark/30">от {clients.length}</span> фирми</>
-              : <>{clients.length} фирми</>
-            }
+      {/* Summary strip (компактен под title bar-а) */}
+      <div className="px-3 md:px-5 py-2 border-b border-border bg-card flex flex-wrap items-center gap-4 text-sm">
+        <div>
+          <span className="text-xs text-muted-foreground uppercase tracking-wider mr-2">
+            {isFiltered ? `Филтр. хонорари (${filteredClients.length}/${clients.length})` : 'Общо хонорари'}
           </span>
+          <span className="font-bold text-green-600">
+            {filteredTotalHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
+          </span>
+          {isFiltered && (
+            <span className="text-xs text-muted-foreground ml-2">
+              (всичко: {totalHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €)
+            </span>
+          )}
         </div>
-        <table className="w-full text-sm border-collapse">
+        <div className="ml-auto text-xs text-muted-foreground">
+          {isFiltered ? <>{filteredClients.length} от {clients.length} клиента</> : <>{clients.length} клиента</>}
+        </div>
+      </div>
+
+      {/* Table — full height scrollable */}
+      <div className="flex-1 overflow-auto">
+        <table className="w-full border-collapse">
           <thead className="bg-navy text-white sticky top-0 z-10">
             {/* Main header */}
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-semibold whitespace-nowrap w-10">#</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold whitespace-nowrap">Клиент</th>
+              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-10">#</th>
+              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Клиент</th>
               {tableColumns.map(col => (
-                <th key={col.id} className="px-3 py-2 text-left text-xs font-semibold whitespace-nowrap">
+                <th key={col.id} className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">
                   <div className="flex items-center gap-1">
                     <span>{col.name}</span>
                     {isAdmin && col.staff_department === SUB_MARKER && (
