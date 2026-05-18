@@ -202,13 +202,15 @@ function parseDetails(d: any): ParsedCompany {
   const states: Array<{ date?: string; code?: string }> = Array.isArray(d?.vat?.states) ? d.vat.states : []
   // Сортираме по дата ascending → последния запис е актуалното състояние
   const sortedStates = [...states].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
-  const lastState = sortedStates[sortedStates.length - 1]
-  // D20 = регистрирана; ако има по-нов запис с друг код → отписана
-  const vatActive = lastState?.code === "D20"
+  // Известен код за дерегистрация (D21 е стандартен за отписване от ДДС регистър)
+  const DEREG_CODES = new Set(["D21"])
+  const lastCode = sortedStates[sortedStates.length - 1]?.code
+  // Активна по ДДС: има поне един state и последния НЕ е дерегистрация
+  const vatActive = sortedStates.length > 0 && !DEREG_CODES.has(lastCode ?? "")
   const vat_number = vatActive && eik ? `BG${eik}` : null
-  // Дата на първоначална ДДС регистрация = първия D20 запис
-  const firstD20 = sortedStates.find((s) => s.code === "D20")
-  const vat_registered_at = vatActive && firstD20?.date ? firstD20.date.split("T")[0] : null
+  // Дата на регистрация: първия state (по дата) — обикновено е регистрационна
+  const firstState = sortedStates[0]
+  const vat_registered_at = vatActive && firstState?.date ? firstState.date.split("T")[0] : null
   const address = formatAddress(d?.addresses?.[0] ?? d?.vat?.address) ?? null
   const owner_name = d?.owners?.[0]?.name ?? null
   const managers: string[] = (d?.managers ?? []).map((m: any) => m?.name).filter(Boolean)
