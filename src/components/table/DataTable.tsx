@@ -86,6 +86,33 @@ function resolveClientName(clientId: string, columns: Column[], allCells: CellVa
   return ''
 }
 
+// Българската азбука (без Ы). Използва се за filter dropdown-а на „Фирма" колоната.
+const BG_ALPHABET = 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯ'.split('')
+
+function nameLetterFilter(value: string, filterValue: string): boolean {
+  if (!filterValue) return true
+  // filterValue форматът е "letter|text" (или просто "text" за legacy)
+  let letter = ''
+  let text = filterValue
+  if (filterValue.includes('|')) {
+    const parts = filterValue.split('|')
+    letter = parts[0]
+    text = parts.slice(1).join('|')
+  }
+  const val = String(value ?? '')
+  // Игнорираме leading кавички/тирета — гледаме първата буква
+  const stripped = val.replace(/^[^A-Za-zА-Яа-я0-9]+/, '')
+  if (letter) {
+    if (letter === '__other__') {
+      if (/^[А-Яа-я]/.test(stripped)) return false
+    } else {
+      if (!stripped.toUpperCase().startsWith(letter)) return false
+    }
+  }
+  if (text && !val.toLowerCase().includes(text.toLowerCase())) return false
+  return true
+}
+
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query.trim() || !text) return <>{text}</>
   const q = query.trim()
@@ -367,6 +394,9 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     [allContacts]
   )
 
+  // ID на първата text колона = „Фирма" — за нея ползваме letter+text filter
+  const nameColId = useMemo(() => columns.find(c => c.type === 'text')?.id ?? null, [columns])
+
   const orderedColumns = useMemo(
     () => columnOrder.map(id => columns.find(c => c.id === id)).filter((c): c is Column => !!c),
     [columnOrder, columns]
@@ -517,7 +547,9 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
               if (filterValue === '__empty__') return !cellVal
               return cellVal === filterValue
             }
-          : 'includesString',
+          : col.id === nameColId
+            ? (row, columnId, filterValue) => nameLetterFilter(row.getValue(columnId) as string, filterValue)
+            : 'includesString',
       })),
       {
         id: '_eik',
@@ -715,7 +747,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
 
     return cols
-  }, [visibleColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user, selected, globalFilter, contactsByClientId, editingEikFor, eikDraft, editingVatFor, vatDraft])
+  }, [visibleColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user, selected, globalFilter, contactsByClientId, editingEikFor, eikDraft, editingVatFor, vatDraft, nameColId])
 
   const fullColumnOrder = useMemo(
     () => [
@@ -929,6 +961,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                 {table.getHeaderGroups()[0]?.headers.map(header => {
                   const col = columns.find(c => c.id === header.id)
                   const isDropdown = col?.type === 'dropdown'
+                  const isNameCol = header.id === nameColId
                   const dropdownVals = isDropdown
                     ? [...new Set(filteredByTags.map(row => row[header.id] as string).filter(Boolean))].sort()
                     : []
@@ -945,7 +978,37 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                             <option value="__empty__">(Празно)</option>
                             {dropdownVals.map(v => <option key={v} value={v}>{v}</option>)}
                           </select>
-                        ) : (
+                        ) : isNameCol ? (() => {
+                          const fv = (header.column.getFilterValue() as string) ?? ''
+                          const [letter, text] = fv.includes('|')
+                            ? [fv.split('|')[0], fv.split('|').slice(1).join('|')]
+                            : ['', fv]
+                          const apply = (l: string, t: string) => {
+                            const next = (l || t) ? `${l}|${t}` : ''
+                            header.column.setFilterValue(next || undefined)
+                          }
+                          return (
+                            <div className="flex gap-1">
+                              <select
+                                value={letter}
+                                onChange={e => apply(e.target.value, text)}
+                                className="px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark focus:outline-none"
+                                title="Филтър по първа буква"
+                              >
+                                <option value="">Всички</option>
+                                {BG_ALPHABET.map(l => <option key={l} value={l}>{l}</option>)}
+                                <option value="__other__"># Други</option>
+                              </select>
+                              <input
+                                type="text"
+                                value={text}
+                                onChange={e => apply(letter, e.target.value)}
+                                placeholder="Филтър..."
+                                className="flex-1 min-w-0 px-1 py-0.5 text-xs rounded border-0 bg-white/90 text-dark placeholder-dark/30 focus:outline-none"
+                              />
+                            </div>
+                          )
+                        })() : (
                           <input
                             type="text"
                             value={(header.column.getFilterValue() as string) ?? ''}
