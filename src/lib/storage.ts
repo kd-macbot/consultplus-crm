@@ -656,24 +656,34 @@ export interface EikLookupResult {
   fields: EikLookupFields | null
 }
 
-export async function lookupEikByName(name: string): Promise<EikLookupResult> {
-  // Slug-ът на функцията в Supabase е "swift-task" (auto-генериран), но името й е "fetch-eik".
-  // URL-ът използва slug. verify_jwt=false е настроен, така че supabase.functions.invoke работи нормално.
-  const { data, error } = await supabase.functions.invoke('swift-task', {
-    body: { name },
-  })
-  if (error) throw error
+async function invokeFetchEik(body: object): Promise<EikLookupResult> {
+  const { data, error } = await supabase.functions.invoke('swift-task', { body })
+  if (error) {
+    // FunctionsHttpError носи body-то на отговора в .context (Response). Извличаме реалното съобщение.
+    const ctx = (error as any).context
+    if (ctx && typeof ctx.text === 'function') {
+      try {
+        const text = await ctx.text()
+        const parsed = JSON.parse(text)
+        throw new Error(parsed?.error ?? text ?? error.message)
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message !== error.message) throw parseErr
+      }
+    }
+    throw error
+  }
   if (data?.error) throw new Error(data.error)
   return data as EikLookupResult
 }
 
+export async function lookupEikByName(name: string): Promise<EikLookupResult> {
+  // Slug-ът на функцията в Supabase е "swift-task" (auto-генериран), но името й е "fetch-eik".
+  // URL-ът използва slug. verify_jwt=false е настроен, така че supabase.functions.invoke работи нормално.
+  return invokeFetchEik({ name })
+}
+
 export async function lookupByEik(eik: string): Promise<EikLookupResult> {
-  const { data, error } = await supabase.functions.invoke('swift-task', {
-    body: { eik },
-  })
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
-  return data as EikLookupResult
+  return invokeFetchEik({ eik })
 }
 
 // ==================== PROFILES ====================
