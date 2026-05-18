@@ -278,7 +278,7 @@ export function SubscriptionsPage() {
                 <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums w-10">
                   {i + 1}
                 </td>
-                <td className="px-3 py-1.5 font-medium text-navy whitespace-nowrap">
+                <td className="px-3 py-1.5 font-medium text-foreground whitespace-nowrap">
                   {clientName(client.id)}
                 </td>
                 {tableColumns.map(col => {
@@ -316,7 +316,7 @@ export function SubscriptionsPage() {
                       onClick={() => canEdit && setEditCell({ clientId: client.id, columnId: col.id })}
                     >
                       {col.type === 'number' && cell?.value_number != null
-                        ? <span className="font-medium text-navy">{display} €</span>
+                        ? <span className="font-medium text-foreground">{display} €</span>
                         : display || <span className="text-dark/20">—</span>
                       }
                     </td>
@@ -330,13 +330,13 @@ export function SubscriptionsPage() {
               <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums">
                 {filteredClients.length}
               </td>
-              <td className="px-3 py-1.5 text-navy">
-                Общо {isFiltered && <span className="text-xs font-normal text-dark/40">({filteredClients.length} от {clients.length})</span>}
+              <td className="px-3 py-1.5 text-foreground font-semibold">
+                Общо {isFiltered && <span className="text-xs font-normal text-muted-foreground">({filteredClients.length} от {clients.length})</span>}
               </td>
               {tableColumns.map(col => (
                 <td key={col.id} className="px-3 py-1.5">
                   {col.id === honorarColumn?.id
-                    ? <span className="text-navy">{filteredTotalHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €</span>
+                    ? <span className="text-green-600 font-semibold">{filteredTotalHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €</span>
                     : ''
                   }
                 </td>
