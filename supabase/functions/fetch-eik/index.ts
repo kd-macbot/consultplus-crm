@@ -143,6 +143,23 @@ async function getNomenclature(token: string, nomType: number) {
   return await r.json()
 }
 
+async function fetchData(token: string, eik: string, packetId: number) {
+  const r = await fetch(`${API_BASE}/data/fetch/${packetId}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify([{ ident: eik }]),
+  })
+  if (!r.ok) {
+    const text = await r.text()
+    throw new Error(`regdata fetch ${r.status}: ${text}`)
+  }
+  return await r.json()
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
@@ -153,11 +170,17 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     )
     const token = await getToken(sb)
+    const packetId = parseInt(Deno.env.get("REGDATA_PACKET_ID") || "1", 10)
 
     // Диагностичен режим — върни съдържанието на nomenclature
     if (payload.diagnose) {
       const nomType = typeof payload.diagnose === "number" ? payload.diagnose : 22
       return json({ nomType, items: await getNomenclature(token, nomType) })
+    }
+
+    // Диагностичен режим — върни суровия отговор от data/fetch за даден EIK
+    if (payload.fetchEik) {
+      return json({ raw: await fetchData(token, payload.fetchEik, packetId) })
     }
 
     const { name, subType } = payload
@@ -169,11 +192,23 @@ Deno.serve(async (req) => {
     const active = search.results.filter((r) => r.activity === 1)
     const best = active[0] ?? search.results[0]
 
+    // Ако клиентът поиска и пълните данни — извикваме data/fetch
+    let details: unknown = null
+    if (payload.enrich && best?.identifier) {
+      try {
+        const fetched = await fetchData(token, best.identifier, packetId)
+        details = Array.isArray(fetched) ? fetched[0] : fetched
+      } catch (e) {
+        details = { error: (e as Error).message }
+      }
+    }
+
     return json({
       eik: best?.identifier ?? null,
       caption: best?.caption ?? null,
       total: parseInt(search.totalCount, 10),
       candidates: search.results.slice(0, 5),
+      details,
     })
   } catch (e) {
     return json({ error: (e as Error).message }, 500)
