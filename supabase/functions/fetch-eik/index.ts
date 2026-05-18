@@ -283,7 +283,7 @@ Deno.serve(async (req) => {
         const details = Array.isArray(fetched) ? fetched[0] : fetched
         fields = parseDetails(details)
       } catch {
-        fields = { eik: best.identifier, vat_number: null, address: null, owner_name: null, manager_name: null }
+        fields = { eik: best.identifier, vat_number: null, vat_registered_at: null, address: null, owner_name: null, manager_name: null, public_url: null }
       }
     }
 
