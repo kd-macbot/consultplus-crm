@@ -632,11 +632,20 @@ export async function deleteContact(id: string): Promise<void> {
   if (error) throw error
 }
 
+export interface EikLookupFields {
+  eik: string | null
+  vat_number: string | null
+  address: string | null
+  owner_name: string | null
+  manager_name: string | null
+}
+
 export interface EikLookupResult {
   eik: string | null
   caption: string | null
   total: number
   candidates: Array<{ identifier: string; caption: string; activity: number }>
+  fields: EikLookupFields | null
 }
 
 export async function lookupEikByName(name: string): Promise<EikLookupResult> {

@@ -142,12 +142,29 @@ export function ContactsPage() {
       const res = await lookupEikByName(clientName)
       if (!res.eik) {
         toast.error(`Няма намерен ЕИК за "${clientName}"`)
-      } else if (res.total > 1 && res.candidates.length > 1) {
-        set('eik', res.eik)
-        toast.warning(`Намерени ${res.total} съвпадения — попълнен е първият (${res.caption ?? res.eik}). Проверете.`)
       } else {
-        set('eik', res.eik)
-        toast.success(`ЕИК ${res.eik} — ${res.caption ?? ''}`)
+        // Попълваме само празните полета — не презаписваме това, което потребителят
+        // вече е въвел ръчно. Бутонът „Изтегли" по презумпция е за първоначално запълване.
+        setForm(f => ({
+          ...f,
+          eik: f.eik || res.fields?.eik || res.eik || '',
+          vat_number: f.vat_number || res.fields?.vat_number || '',
+          address: f.address || res.fields?.address || '',
+          owner_name: f.owner_name || res.fields?.owner_name || '',
+          manager_name: f.manager_name || res.fields?.manager_name || '',
+        }))
+        const filled: string[] = []
+        if (res.fields?.eik) filled.push('ЕИК')
+        if (res.fields?.vat_number) filled.push('ДДС')
+        if (res.fields?.address) filled.push('адрес')
+        if (res.fields?.owner_name) filled.push('собственик')
+        if (res.fields?.manager_name) filled.push('управляващ')
+        const note = filled.length ? ` — попълнени: ${filled.join(', ')}` : ''
+        if (res.total > 1 && res.candidates.length > 1) {
+          toast.warning(`${res.caption ?? res.eik} (${res.total} съвпадения${note}). Проверете.`)
+        } else {
+          toast.success(`${res.caption ?? res.eik}${note}`)
+        }
       }
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при заявка към регистъра')

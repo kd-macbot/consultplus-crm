@@ -160,6 +160,53 @@ async function fetchData(token: string, eik: string, packetId: number) {
   return await r.json()
 }
 
+interface RegDataAddress {
+  settlement?: string
+  street?: string
+  streetNumber?: string
+  block?: string
+  entrance?: string
+  floor?: string
+  apartment?: string
+}
+
+function formatAddress(a?: RegDataAddress | null): string | null {
+  if (!a) return null
+  const parts: string[] = []
+  if (a.settlement) parts.push(a.settlement)
+  if (a.street) {
+    const streetPart = [a.street, a.streetNumber].filter(Boolean).join(" ")
+    if (streetPart) parts.push(streetPart)
+  }
+  const extras: string[] = []
+  if (a.block) extras.push(`бл. ${a.block}`)
+  if (a.entrance) extras.push(`вх. ${a.entrance}`)
+  if (a.floor) extras.push(`ет. ${a.floor}`)
+  if (a.apartment) extras.push(`ап. ${a.apartment}`)
+  if (extras.length) parts.push(extras.join(", "))
+  return parts.length ? parts.join(", ") : null
+}
+
+interface ParsedCompany {
+  eik: string | null
+  vat_number: string | null
+  address: string | null
+  owner_name: string | null
+  manager_name: string | null
+}
+
+function parseDetails(d: any): ParsedCompany {
+  const eik: string | null = d?.identifier ?? null
+  const hasVat = Array.isArray(d?.vat?.states) && d.vat.states.length > 0
+  const vat_number = hasVat && eik ? `BG${eik}` : null
+  const address = formatAddress(d?.addresses?.[0] ?? d?.vat?.address) ?? null
+  const owner_name = d?.owners?.[0]?.name ?? null
+  // Често има няколко управители — обединяваме до 3 имена
+  const managers: string[] = (d?.managers ?? []).map((m: any) => m?.name).filter(Boolean)
+  const manager_name = managers.length ? managers.slice(0, 3).join(", ") : null
+  return { eik, vat_number, address, owner_name, manager_name }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
@@ -192,14 +239,16 @@ Deno.serve(async (req) => {
     const active = search.results.filter((r) => r.activity === 1)
     const best = active[0] ?? search.results[0]
 
-    // Ако клиентът поиска и пълните данни — извикваме data/fetch
-    let details: unknown = null
-    if (payload.enrich && best?.identifier) {
+    // По подразбиране теглим и пълните данни от data/fetch — освен ако клиентът
+    // изрично не каже enrich: false.
+    let fields: ParsedCompany | null = null
+    if (best?.identifier && payload.enrich !== false) {
       try {
         const fetched = await fetchData(token, best.identifier, packetId)
-        details = Array.isArray(fetched) ? fetched[0] : fetched
-      } catch (e) {
-        details = { error: (e as Error).message }
+        const details = Array.isArray(fetched) ? fetched[0] : fetched
+        fields = parseDetails(details)
+      } catch {
+        fields = { eik: best.identifier, vat_number: null, address: null, owner_name: null, manager_name: null }
       }
     }
 
@@ -208,7 +257,7 @@ Deno.serve(async (req) => {
       caption: best?.caption ?? null,
       total: parseInt(search.totalCount, 10),
       candidates: search.results.slice(0, 5),
-      details,
+      fields,
     })
   } catch (e) {
     return json({ error: (e as Error).message }, 500)
