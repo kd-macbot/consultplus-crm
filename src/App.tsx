@@ -7,6 +7,7 @@ import { Layout } from './components/layout/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Dashboard } from './pages/Dashboard'
 import { ClientsPage } from './pages/Clients'
+import { WorkSheetPage } from './pages/WorkSheet'
 import { OpportunitiesPage } from './pages/Opportunities'
 import { ContactsPage } from './pages/Contacts'
 import { AdminPage } from './pages/Admin'
@@ -33,6 +34,7 @@ export default function App() {
             >
               <Route path="/" element={<Dashboard />} />
               <Route path="/clients" element={<ClientsPage />} />
+              <Route path="/worksheet" element={<WorkSheetPage />} />
               <Route path="/opportunities" element={<OpportunitiesPage />} />
               <Route path="/contacts" element={<ContactsPage />} />
               <Route path="/staff" element={
