@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getColumns, getCellValues, getClients, addColumn, deleteColumn } from '../lib/storage'
+import { getColumns, getCellValues, getClients, getDropdownOptions, addColumn, deleteColumn } from '../lib/storage'
 import { CellEditor } from '../components/table/CellEditor'
 import { useAuth } from '../lib/auth'
-import type { Column, CellValue, Client, ColumnType } from '../lib/types'
+import type { Column, CellValue, Client, ColumnType, DropdownOption } from '../lib/types'
 import { Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -13,17 +13,50 @@ import { ConfirmDialog } from '@/components/ui/alert-dialog'
 
 const SUB_MARKER = '__sub__'
 
+const STATUS_BADGE: Record<string, string> = {
+  'АКТИВНА': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+  'НУЛЕВО': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+}
+function statusBadgeCls(s: string): string {
+  if (STATUS_BADGE[s]) return STATUS_BADGE[s]
+  const n = s.toLowerCase()
+  if (n.includes('без')) return 'bg-slate-200 text-slate-600 dark:bg-slate-700/40 dark:text-slate-400'
+  return 'bg-muted text-foreground'
+}
+
+type AmountBucket = 'all' | 'zero' | 'low' | 'mid' | 'high'
+const BUCKET_LABEL: Record<AmountBucket, string> = {
+  all: 'Всички',
+  zero: '0 €',
+  low: '< 200 €',
+  mid: '200-500 €',
+  high: '> 500 €',
+}
+function inBucket(amount: number | null | undefined, b: AmountBucket): boolean {
+  const v = amount ?? 0
+  switch (b) {
+    case 'all': return true
+    case 'zero': return v === 0
+    case 'low': return v > 0 && v < 200
+    case 'mid': return v >= 200 && v <= 500
+    case 'high': return v > 500
+  }
+}
+
 export function SubscriptionsPage() {
   const { user } = useAuth()
   const [allClients, setAllClients] = useState<Client[]>([])
   const [allColumns, setAllColumns] = useState<Column[]>([])
   const [allCells, setAllCells] = useState<CellValue[]>([])
+  const [allDropdowns, setAllDropdowns] = useState<DropdownOption[]>([])
   const [loading, setLoading] = useState(true)
   const [editCell, setEditCell] = useState<{ clientId: string; columnId: string } | null>(null)
   const [showAddCol, setShowAddCol] = useState(false)
   const [confirmDeleteCol, setConfirmDeleteCol] = useState<Column | null>(null)
   const [search, setSearch] = useState('')
   const [colFilters, setColFilters] = useState<Record<string, string>>({})
+  const [statusFilter, setStatusFilter] = useState<string[]>([])
+  const [amountBucket, setAmountBucket] = useState<AmountBucket>('all')
 
   const isAdmin = user?.role === 'admin'
   const canEdit = user?.role === 'admin' || user?.role === 'manager'
@@ -33,12 +66,13 @@ export function SubscriptionsPage() {
   async function loadData() {
     setLoading(true)
     try {
-      const [cls, cols, cells] = await Promise.all([
-        getClients(), getColumns(), getCellValues()
+      const [cls, cols, cells, dds] = await Promise.all([
+        getClients(), getColumns(), getCellValues(), getDropdownOptions()
       ])
       setAllClients(cls)
       setAllColumns(cols)
       setAllCells(cells)
+      setAllDropdowns(dds)
     } finally {
       setLoading(false)
     }
@@ -53,7 +87,26 @@ export function SubscriptionsPage() {
 
   const nameColumn = useMemo(() => allColumns.find(c => c.type === 'text'), [allColumns])
   const honorarColumn = useMemo(() => allColumns.find(c => c.name === 'Хонорар'), [allColumns])
+  const statusColumn = useMemo(() => allColumns.find(c => c.name === 'Статус'), [allColumns])
   const subColumns = useMemo(() => allColumns.filter(c => c.staff_department === SUB_MARKER), [allColumns])
+
+  function clientStatus(clientId: string): string {
+    if (!statusColumn) return ''
+    const cell = allCells.find(cv => cv.client_id === clientId && cv.column_id === statusColumn.id)
+    if (!cell?.value_dropdown) return ''
+    return allDropdowns.find(d => d.id === cell.value_dropdown)?.value ?? ''
+  }
+
+  function clientHonorar(clientId: string): number {
+    if (!honorarColumn) return 0
+    const cell = allCells.find(cv => cv.client_id === clientId && cv.column_id === honorarColumn.id)
+    return cell?.value_number ?? 0
+  }
+
+  const statusOptions = useMemo(() => {
+    if (!statusColumn) return [] as string[]
+    return [...new Set(allDropdowns.filter(d => d.column_id === statusColumn.id).map(d => d.value))]
+  }, [allDropdowns, statusColumn])
 
   const tableColumns = useMemo(() => {
     const cols: Column[] = []
@@ -81,11 +134,13 @@ export function SubscriptionsPage() {
     return cell.value_text ?? ''
   }
 
-  const hasFilters = search.trim() !== '' || Object.values(colFilters).some(v => v !== '')
+  const hasFilters = search.trim() !== '' || Object.values(colFilters).some(v => v !== '') || statusFilter.length > 0 || amountBucket !== 'all'
 
   function clearFilters() {
     setSearch('')
     setColFilters({})
+    setStatusFilter([])
+    setAmountBucket('all')
   }
 
   function setColFilter(colId: string, value: string) {
@@ -97,6 +152,17 @@ export function SubscriptionsPage() {
       const name = clientName(client.id)
 
       if (search.trim() && !name.toLowerCase().includes(search.trim().toLowerCase())) return false
+
+      // Статус филтър
+      if (statusFilter.length > 0) {
+        const s = clientStatus(client.id)
+        if (!statusFilter.includes(s)) return false
+      }
+
+      // Bucket филтър по хонорар
+      if (amountBucket !== 'all') {
+        if (!inBucket(clientHonorar(client.id), amountBucket)) return false
+      }
 
       for (const [colId, filterVal] of Object.entries(colFilters)) {
         if (!filterVal) continue
@@ -115,7 +181,7 @@ export function SubscriptionsPage() {
       }
       return true
     })
-  }, [clients, search, colFilters, tableColumns, allCells])
+  }, [clients, search, colFilters, tableColumns, allCells, statusFilter, amountBucket, statusColumn, honorarColumn, allDropdowns])
 
   const totalHonorar = useMemo(() => {
     if (!honorarColumn) return 0
@@ -202,6 +268,43 @@ export function SubscriptionsPage() {
         </div>
       </div>
 
+      {/* Status + Amount filter strip */}
+      {(statusOptions.length > 0 || honorarColumn) && (
+        <div className="px-3 md:px-5 py-2 border-b border-border bg-card flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+          {statusOptions.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground uppercase tracking-wider font-semibold">Статус:</span>
+              {statusOptions.map(s => {
+                const active = statusFilter.includes(s)
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setStatusFilter(prev => active ? prev.filter(x => x !== s) : [...prev, s])}
+                    className={`px-2 py-0.5 rounded-full font-semibold transition ${
+                      active ? statusBadgeCls(s) : 'bg-muted/40 text-muted-foreground hover:bg-muted'
+                    }`}
+                  >{s}</button>
+                )
+              })}
+            </div>
+          )}
+          {honorarColumn && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground uppercase tracking-wider font-semibold">Хонорар:</span>
+              {(['all', 'zero', 'low', 'mid', 'high'] as AmountBucket[]).map(b => (
+                <button
+                  key={b}
+                  onClick={() => setAmountBucket(b)}
+                  className={`px-2 py-0.5 rounded-full font-semibold transition ${
+                    amountBucket === b ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-muted/40 text-muted-foreground hover:bg-muted'
+                  }`}
+                >{BUCKET_LABEL[b]}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Table — full height scrollable */}
       <div className="flex-1 overflow-auto">
         <table className="w-full border-collapse">
@@ -210,6 +313,9 @@ export function SubscriptionsPage() {
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-10">#</th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Клиент</th>
+              {statusColumn && (
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Статус</th>
+              )}
               {tableColumns.map(col => (
                 <th key={col.id} className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">
                   <div className="flex items-center gap-1">
@@ -237,6 +343,7 @@ export function SubscriptionsPage() {
                   className="w-full px-1 py-0.5 text-xs rounded border-0 bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none"
                 />
               </th>
+              {statusColumn && <th className="px-2 py-1" />}
               {tableColumns.map(col => (
                 <th key={col.id + '_f'} className="px-2 py-1">
                   {col.type === 'checkbox' ? (
@@ -265,7 +372,7 @@ export function SubscriptionsPage() {
           <tbody>
             {filteredClients.length === 0 && (
               <tr>
-                <td colSpan={tableColumns.length + 2} className="px-4 py-8 text-center text-dark/40">
+                <td colSpan={tableColumns.length + 2 + (statusColumn ? 1 : 0)} className="px-4 py-8 text-center text-dark/40">
                   {hasFilters ? 'Няма клиенти отговарящи на филтрите' : 'Няма клиенти'}
                 </td>
               </tr>
@@ -281,6 +388,16 @@ export function SubscriptionsPage() {
                 <td className="px-3 py-1.5 font-medium text-foreground whitespace-nowrap">
                   {clientName(client.id)}
                 </td>
+                {statusColumn && (
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                    {(() => {
+                      const s = clientStatus(client.id)
+                      return s ? (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadgeCls(s)}`}>{s}</span>
+                      ) : <span className="text-dark/20">—</span>
+                    })()}
+                  </td>
+                )}
                 {tableColumns.map(col => {
                   const cell = getCell(client.id, col.id)
                   const isEditing = editCell?.clientId === client.id && editCell?.columnId === col.id
@@ -333,6 +450,7 @@ export function SubscriptionsPage() {
               <td className="px-3 py-1.5 text-foreground font-semibold">
                 Общо {isFiltered && <span className="text-xs font-normal text-muted-foreground">({filteredClients.length} от {clients.length})</span>}
               </td>
+              {statusColumn && <td />}
               {tableColumns.map(col => (
                 <td key={col.id} className="px-3 py-1.5">
                   {col.id === honorarColumn?.id
