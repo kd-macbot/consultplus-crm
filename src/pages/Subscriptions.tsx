@@ -3,6 +3,10 @@ import { getColumns, getCellValues, getClients, getDropdownOptions, addColumn, d
 import { CellEditor } from '../components/table/CellEditor'
 import { useAuth } from '../lib/auth'
 import type { Column, CellValue, Client, ColumnType, DropdownOption } from '../lib/types'
+import {
+  buildCellIndex, buildDropdownIndex, cellKey,
+  clientDisplayName, resolveDropdownText, resolveNumber,
+} from '../lib/tableIndices'
 import { Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -78,12 +82,19 @@ export function SubscriptionsPage() {
     }
   }
 
+  // O(1) индекси — изграждат се веднъж при промяна на данните.
+  const cellIdx = useMemo(() => buildCellIndex(allCells), [allCells])
+  const dropdownIdx = useMemo(() => buildDropdownIndex(allDropdowns), [allDropdowns])
+
   const clients = useMemo(() => {
     const sorted = user?.role === 'employee'
       ? allClients.filter(c => c.assigned_to === user.id)
       : [...allClients]
-    return sorted.sort((a, b) => clientName(a.id, allColumns, allCells).localeCompare(clientName(b.id, allColumns, allCells), 'bg'))
-  }, [allClients, allColumns, allCells, user])
+    return sorted.sort((a, b) =>
+      (clientDisplayName(a.id, allColumns, cellIdx) || a.id)
+        .localeCompare(clientDisplayName(b.id, allColumns, cellIdx) || b.id, 'bg')
+    )
+  }, [allClients, allColumns, cellIdx, user])
 
   const nameColumn = useMemo(() => allColumns.find(c => c.type === 'text'), [allColumns])
   const honorarColumn = useMemo(() => allColumns.find(c => c.name === 'Хонорар'), [allColumns])
@@ -91,16 +102,11 @@ export function SubscriptionsPage() {
   const subColumns = useMemo(() => allColumns.filter(c => c.staff_department === SUB_MARKER), [allColumns])
 
   function clientStatus(clientId: string): string {
-    if (!statusColumn) return ''
-    const cell = allCells.find(cv => cv.client_id === clientId && cv.column_id === statusColumn.id)
-    if (!cell?.value_dropdown) return ''
-    return allDropdowns.find(d => d.id === cell.value_dropdown)?.value ?? ''
+    return resolveDropdownText(clientId, statusColumn, cellIdx, dropdownIdx)
   }
 
   function clientHonorar(clientId: string): number {
-    if (!honorarColumn) return 0
-    const cell = allCells.find(cv => cv.client_id === clientId && cv.column_id === honorarColumn.id)
-    return cell?.value_number ?? 0
+    return resolveNumber(clientId, honorarColumn, cellIdx) ?? 0
   }
 
   const statusOptions = useMemo(() => {
@@ -115,15 +121,12 @@ export function SubscriptionsPage() {
     return cols
   }, [honorarColumn, subColumns])
 
-  function clientName(clientId: string, cols = allColumns, cells = allCells): string {
-    const nc = cols.find(c => c.type === 'text')
-    if (!nc) return clientId.slice(0, 8)
-    const cell = cells.find(cv => cv.client_id === clientId && cv.column_id === nc.id)
-    return cell?.value_text || clientId.slice(0, 8)
+  function clientName(clientId: string): string {
+    return clientDisplayName(clientId, allColumns, cellIdx) || clientId.slice(0, 8)
   }
 
   function getCell(clientId: string, columnId: string): CellValue | undefined {
-    return allCells.find(cv => cv.client_id === clientId && cv.column_id === columnId)
+    return cellIdx.get(cellKey(clientId, columnId))
   }
 
   function displayCell(col: Column, cell?: CellValue): string {

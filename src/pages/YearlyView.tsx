@@ -11,6 +11,10 @@ import {
   getArt55EntriesForPeriod, getArt55QuarterStatuses, upsertArt55QuarterStatus,
 } from '../lib/storage'
 import { NOTIFICATION_METHODS, type MonthlyWork, type Client, type Column, type CellValue, type DropdownOption, type Art55Entry, type Art55QuarterStatus } from '../lib/types'
+import {
+  buildCellIndex, buildDropdownIndex,
+  clientDisplayName, resolveDropdownText, resolveNumber,
+} from '../lib/tableIndices'
 
 const MONTH_SHORT = ['Ян', 'Фев', 'Мар', 'Апр', 'Май', 'Юни', 'Юли', 'Авг', 'Сеп', 'Окт', 'Ное', 'Дек']
 const QUARTERS: Array<{ q: number; months: [number, number, number]; label: string }> = [
@@ -25,28 +29,7 @@ function fmt(v: number): string {
   return new Intl.NumberFormat('bg-BG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 }
 
-function clientNameOf(clientId: string, columns: Column[], cells: CellValue[]): string {
-  for (const col of columns) {
-    if (col.type === 'text') {
-      const cell = cells.find(cv => cv.client_id === clientId && cv.column_id === col.id)
-      if (cell?.value_text) return cell.value_text
-    }
-  }
-  return ''
-}
-
-function masterValue(clientId: string, col: Column | undefined, cells: CellValue[], dropdowns: DropdownOption[]): string {
-  if (!col) return ''
-  const cell = cells.find(cv => cv.client_id === clientId && cv.column_id === col.id)
-  if (!cell?.value_dropdown) return ''
-  return dropdowns.find(d => d.id === cell.value_dropdown)?.value ?? ''
-}
-
-function masterNumber(clientId: string, col: Column | undefined, cells: CellValue[]): number | null {
-  if (!col) return null
-  const cell = cells.find(cv => cv.client_id === clientId && cv.column_id === col.id)
-  return cell?.value_number ?? null
-}
+// O(N) helper-ите бяха заменени с tableIndices Map lookup-и в YearlyViewPage.
 
 export function YearlyViewPage() {
   const { user } = useAuth()
@@ -111,6 +94,10 @@ export function YearlyViewPage() {
     setLoading(false)
   }
 
+  // O(1) индекси — изграждат се веднъж при промяна на данните.
+  const cellIdx = useMemo(() => buildCellIndex(cells), [cells])
+  const dropdownIdx = useMemo(() => buildDropdownIndex(dropdowns), [dropdowns])
+
   const advanceCol = useMemo(() => columns.find(c => c.name === 'Авансови вноски'), [columns])
   const art55Col = useMemo(() => columns.find(c => c.name === 'Чл. 55 ЗДДФЛ'), [columns])
   const advMinCol = useMemo(() => columns.find(c => c.name === 'Аванс. мин. годишна сума'), [columns])
@@ -121,9 +108,9 @@ export function YearlyViewPage() {
     const visible = user?.role === 'employee' ? clients.filter(c => c.assigned_to === user.id) : clients
     return visible
       .map(c => {
-        const profile = masterValue(c.id, advanceCol, cells, dropdowns)
+        const profile = resolveDropdownText(c.id, advanceCol, cellIdx, dropdownIdx)
         if (profile !== 'Месечни' && profile !== 'Тримесечни') return null
-        const minYearly = masterNumber(c.id, advMinCol, cells)
+        const minYearly = resolveNumber(c.id, advMinCol, cellIdx)
         const months = new Map<number, number | null>()
         let total = 0
         for (let m = 1; m <= 12; m++) {
@@ -131,11 +118,11 @@ export function YearlyViewPage() {
           months.set(m, amt)
           if (amt) total += amt
         }
-        return { client: c, name: clientNameOf(c.id, columns, cells), profile, minYearly, months, total } as AdvanceRow
+        return { client: c, name: clientDisplayName(c.id, columns, cellIdx), profile, minYearly, months, total } as AdvanceRow
       })
       .filter((r): r is AdvanceRow => r !== null)
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cells, dropdowns, advanceCol, advMinCol, monthlyByClient, user])
+  }, [clients, columns, cellIdx, dropdownIdx, advanceCol, advMinCol, monthlyByClient, user])
 
   type Art55Row = {
     client: Client; name: string
@@ -147,7 +134,7 @@ export function YearlyViewPage() {
     const visible = user?.role === 'employee' ? clients.filter(c => c.assigned_to === user.id) : clients
     return visible
       .map(c => {
-        const applies = masterValue(c.id, art55Col, cells, dropdowns)
+        const applies = resolveDropdownText(c.id, art55Col, cellIdx, dropdownIdx)
         if (applies !== 'ДА') return null
         const byMonth: Map<number, Art55Entry[]> = art55ByClientMonth.get(c.id) ?? new Map()
         const quarters = new Map<number, Art55Entry[]>()
@@ -163,11 +150,11 @@ export function YearlyViewPage() {
           quarters.set(q, entries)
           statuses.set(q, art55Statuses.get(c.id)?.get(q))
         })
-        return { client: c, name: clientNameOf(c.id, columns, cells), quarters, statuses, totalGross, totalTax } as Art55Row
+        return { client: c, name: clientDisplayName(c.id, columns, cellIdx), quarters, statuses, totalGross, totalTax } as Art55Row
       })
       .filter((r): r is Art55Row => r !== null)
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cells, dropdowns, art55Col, art55ByClientMonth, art55Statuses, user])
+  }, [clients, columns, cellIdx, dropdownIdx, art55Col, art55ByClientMonth, art55Statuses, user])
 
   async function patchArt55Status(clientId: string, quarter: number, patch: Partial<Art55QuarterStatus>) {
     // Auto-set declared_at when marking declared
@@ -209,11 +196,11 @@ export function YearlyViewPage() {
           }
         }
         if (!anyValue) return null
-        return { client: c, name: clientNameOf(c.id, columns, cells), months, totalPay, totalRefund, net: totalPay - totalRefund } as VatRow
+        return { client: c, name: clientDisplayName(c.id, columns, cellIdx), months, totalPay, totalRefund, net: totalPay - totalRefund } as VatRow
       })
       .filter((r): r is VatRow => r !== null)
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cells, monthlyByClient, user])
+  }, [clients, columns, cellIdx, monthlyByClient, user])
 
   async function patchResult(clientId: string, month: number, amount: number | null) {
     await ensureMonthlyRows([clientId], year, month, user?.id)

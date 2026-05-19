@@ -10,6 +10,10 @@ import {
   getArt55EntriesForPeriod, addArt55Entry, updateArt55Entry, deleteArt55Entry,
 } from '../lib/storage'
 import { NOTIFICATION_METHODS, ART55_INCOME_TYPES, type MonthlyWork, type Client, type Column, type CellValue, type DropdownOption, type Art55Entry } from '../lib/types'
+import {
+  buildCellIndex, buildDropdownIndex, clientDisplayName,
+  resolveDropdownText,
+} from '../lib/tableIndices'
 
 const MONTH_NAMES = [
   'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни',
@@ -21,22 +25,7 @@ function formatCurrency(v: number | null): string {
   return new Intl.NumberFormat('bg-BG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 }
 
-function clientNameOf(clientId: string, columns: Column[], cells: CellValue[]): string {
-  for (const col of columns) {
-    if (col.type === 'text') {
-      const cell = cells.find(cv => cv.client_id === clientId && cv.column_id === col.id)
-      if (cell?.value_text) return cell.value_text
-    }
-  }
-  return ''
-}
-
-function clientStatusOf(clientId: string, statusCol: Column | undefined, cells: CellValue[], dropdowns: DropdownOption[]): string {
-  if (!statusCol) return ''
-  const cell = cells.find(cv => cv.client_id === clientId && cv.column_id === statusCol.id)
-  if (!cell?.value_dropdown) return ''
-  return dropdowns.find(d => d.id === cell.value_dropdown)?.value ?? ''
-}
+// O(N) helper-ите бяха заменени с tableIndices Map lookup-и (виж по-долу).
 
 const STATUS_BADGE: Record<string, string> = {
   'АКТИВНА': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
@@ -81,12 +70,7 @@ function art55Deadline(applies: string, month: number): string | null {
   return `до ${lastDay}.${String(month).padStart(2, '0')}`
 }
 
-function masterValue(clientId: string, col: Column | undefined, cells: CellValue[], dropdowns: DropdownOption[]): string {
-  if (!col) return ''
-  const cell = cells.find(cv => cv.client_id === clientId && cv.column_id === col.id)
-  if (!cell?.value_dropdown) return ''
-  return dropdowns.find(d => d.id === cell.value_dropdown)?.value ?? ''
-}
+// masterValue беше O(N) — заменен с resolveDropdownText от tableIndices.
 
 export function WorkSheetPage() {
   const { user } = useAuth()
@@ -124,16 +108,12 @@ export function WorkSheetPage() {
 
       // 2. Уверяваме се, че всеки активен клиент има ред за избрания месец.
       // „Без дейност" / „Без ДДС" се пропускат — те не участват в работата.
+      // Build O(1) индекси локално (state-ът още не е обновен).
       const statusColLocal = cols.find(c => c.name === 'Статус')
+      const localCellIdx = buildCellIndex(cvs)
+      const localDropdownIdx = buildDropdownIndex(dds)
       const activeIds = cls
-        .filter(c => {
-          if (!statusColLocal) return true
-          const cell = cvs.find(cv => cv.client_id === c.id && cv.column_id === statusColLocal.id)
-          const status = cell?.value_dropdown
-            ? dds.find(d => d.id === cell.value_dropdown)?.value ?? ''
-            : ''
-          return !isHiddenStatus(status)
-        })
+        .filter(c => !isHiddenStatus(resolveDropdownText(c.id, statusColLocal, localCellIdx, localDropdownIdx)))
         .map(c => c.id)
       const created = await ensureMonthlyRows(activeIds, year, month, user?.id)
       if (created > 0) toast.info(`Създадени ${created} нови реда за ${MONTH_NAMES[month - 1]} ${year}`)
@@ -157,6 +137,10 @@ export function WorkSheetPage() {
     setLoading(false)
   }
 
+  // O(1) индекси — изграждат се веднъж при промяна на данните и се ползват в render-а.
+  const cellIdx = useMemo(() => buildCellIndex(cells), [cells])
+  const dropdownIdx = useMemo(() => buildDropdownIndex(dropdowns), [dropdowns])
+
   const statusCol = useMemo(() => columns.find(c => c.name === 'Статус'), [columns])
   const advanceCol = useMemo(() => columns.find(c => c.name === 'Авансови вноски'), [columns])
   const art55Col = useMemo(() => columns.find(c => c.name === 'Чл. 55 ЗДДФЛ'), [columns])
@@ -178,15 +162,15 @@ export function WorkSheetPage() {
     return visible
       .map(c => ({
         client: c,
-        name: clientNameOf(c.id, columns, cells),
-        status: clientStatusOf(c.id, statusCol, cells, dropdowns),
-        advance: masterValue(c.id, advanceCol, cells, dropdowns),
-        art55: masterValue(c.id, art55Col, cells, dropdowns),
+        name: clientDisplayName(c.id, columns, cellIdx),
+        status: resolveDropdownText(c.id, statusCol, cellIdx, dropdownIdx),
+        advance: resolveDropdownText(c.id, advanceCol, cellIdx, dropdownIdx),
+        art55: resolveDropdownText(c.id, art55Col, cellIdx, dropdownIdx),
         work: rows.get(c.id),
       }))
       .filter(r => !isHiddenStatus(r.status))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cells, dropdowns, statusCol, advanceCol, art55Col, rows, user])
+  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, rows, user])
 
   const filteredRows = useMemo(() => {
     const s = search.trim().toLowerCase()
