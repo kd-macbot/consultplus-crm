@@ -183,7 +183,7 @@ export function ExpensesPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="px-5 pb-4">
-            <p className="text-2xl font-bold text-navy">{formatCurrency(totalSalaries)}</p>
+            <p className="text-2xl font-bold text-foreground">{formatCurrency(totalSalaries)}</p>
             {totalMonthly > 0 && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 {Math.round((totalSalaries / totalMonthly) * 100)}% от общото
@@ -212,7 +212,7 @@ export function ExpensesPage() {
           <button
             onClick={() => { setActiveTab('salaries'); setFilterCategory('all') }}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
-              activeTab === 'salaries' ? 'border-navy text-navy' : 'border-transparent text-muted-foreground hover:text-foreground'
+              activeTab === 'salaries' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             Заплати
@@ -228,7 +228,7 @@ export function ExpensesPage() {
           <button
             onClick={() => { setActiveTab('other'); setFilterCategory('all') }}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'other' ? 'border-navy text-navy' : 'border-transparent text-muted-foreground hover:text-foreground'
+              activeTab === 'other' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             Други разходи
