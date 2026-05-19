@@ -175,6 +175,32 @@ export interface Opportunity {
   deleted: boolean
 }
 
+export const NOTIFICATION_METHODS = ['Вайбър', 'Слак', 'Имейл', 'Телефон', 'Друго'] as const
+
+export interface MonthlyWork {
+  id: string
+  client_id: string
+  year: number
+  month: number
+
+  priority_vat: boolean
+  result_amount: number | null
+  submitted_at: string | null
+  notification_method: string | null
+  npa_inconsistencies: string | null
+
+  vat_accounted: boolean
+  amortization_done: boolean
+  bank_done: boolean
+  salaries_done: boolean
+
+  notes: string | null
+
+  created_at: string
+  created_by: string | null
+  updated_at: string
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory

@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork } from './types'
 
 // ==================== AUDIT LOG ====================
 
@@ -926,4 +926,80 @@ export async function convertOpportunityToClient(
   })
 
   return { clientId: client.id }
+}
+
+// ==================== MONTHLY WORK ====================
+
+export async function getMonthlyWork(year: number, month: number): Promise<MonthlyWork[]> {
+  const { data, error } = await supabase
+    .from('crm_monthly_work')
+    .select('*')
+    .eq('year', year)
+    .eq('month', month)
+  if (error) throw error
+  return (data ?? []) as MonthlyWork[]
+}
+
+/**
+ * Уверява се, че за всеки от подадените client_ids има ред за дадения месец.
+ * Връща броя на новосъздадените редове. Безопасна да се вика многократно
+ * (ползва UNIQUE constraint client_id+year+month).
+ */
+export async function ensureMonthlyRows(
+  clientIds: string[],
+  year: number,
+  month: number,
+  createdBy?: string,
+): Promise<number> {
+  if (clientIds.length === 0) return 0
+  // Намираме съществуващите за този месец
+  const { data: existing, error: existingErr } = await supabase
+    .from('crm_monthly_work')
+    .select('client_id')
+    .eq('year', year)
+    .eq('month', month)
+    .in('client_id', clientIds)
+  if (existingErr) throw existingErr
+
+  const existingSet = new Set((existing ?? []).map(r => r.client_id))
+  const missing = clientIds.filter(id => !existingSet.has(id))
+  if (missing.length === 0) return 0
+
+  const rows = missing.map(client_id => ({
+    client_id,
+    year,
+    month,
+    created_by: createdBy ?? null,
+  }))
+  const { error: insErr } = await supabase.from('crm_monthly_work').insert(rows)
+  if (insErr) throw insErr
+  return missing.length
+}
+
+export async function updateMonthlyWork(id: string, patch: Partial<MonthlyWork>): Promise<void> {
+  const { error } = await supabase
+    .from('crm_monthly_work')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * Upsert по (client_id, year, month) — полезно за редове, които току що са
+ * създадени, но id-то не е известно (напр. след ensureMonthlyRows + редакция).
+ */
+export async function upsertMonthlyWorkByKey(
+  clientId: string,
+  year: number,
+  month: number,
+  patch: Partial<MonthlyWork>,
+  createdBy?: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_monthly_work')
+    .upsert(
+      { client_id: clientId, year, month, created_by: createdBy ?? null, ...patch, updated_at: new Date().toISOString() },
+      { onConflict: 'client_id,year,month' },
+    )
+  if (error) throw error
 }
