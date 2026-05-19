@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
-  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck,
+  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
   { to: '/clients', label: 'Клиенти', icon: Users, roles: ['admin', 'manager', 'employee'] },
   { to: '/worksheet', label: 'Работен лист', icon: ClipboardCheck, roles: ['admin', 'manager', 'employee'] },
+  { to: '/yearly', label: 'Годишен изглед', icon: CalendarRange, roles: ['admin', 'manager', 'employee'] },
   { to: '/opportunities', label: 'Възможности', icon: Target, roles: ['admin', 'manager', 'employee'] },
   { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
   { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },

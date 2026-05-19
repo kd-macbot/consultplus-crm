@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, Search, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, Loader2, X, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
 import {
   getClients, getColumns, getCellValues, getDropdownOptions,
   getMonthlyWork, ensureMonthlyRows, upsertMonthlyWorkByKey,
+  getArt55EntriesForPeriod, addArt55Entry, updateArt55Entry, deleteArt55Entry,
 } from '../lib/storage'
-import { NOTIFICATION_METHODS, type MonthlyWork, type Client, type Column, type CellValue, type DropdownOption } from '../lib/types'
+import { NOTIFICATION_METHODS, ART55_INCOME_TYPES, type MonthlyWork, type Client, type Column, type CellValue, type DropdownOption, type Art55Entry } from '../lib/types'
 
 const MONTH_NAMES = [
   'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни',
@@ -88,10 +89,12 @@ export function WorkSheetPage() {
   const [cells, setCells] = useState<CellValue[]>([])
   const [dropdowns, setDropdowns] = useState<DropdownOption[]>([])
   const [rows, setRows] = useState<Map<string, MonthlyWork>>(new Map())
+  const [art55Entries, setArt55Entries] = useState<Map<string, Art55Entry[]>>(new Map())  // key = client_id
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])  // празно = всички
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
+  const [art55ModalFor, setArt55ModalFor] = useState<{ client: Client; name: string } | null>(null)
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'employee'
 
@@ -115,8 +118,18 @@ export function WorkSheetPage() {
       if (created > 0) toast.info(`Създадени ${created} нови реда за ${MONTH_NAMES[month - 1]} ${year}`)
 
       // 3. Зареждаме редовете за избрания месец
-      const work = await getMonthlyWork(year, month)
+      const [work, art55] = await Promise.all([
+        getMonthlyWork(year, month),
+        getArt55EntriesForPeriod(year, [month]),
+      ])
       setRows(new Map(work.map(w => [w.client_id, w])))
+      const byClient = new Map<string, Art55Entry[]>()
+      art55.forEach(e => {
+        const arr = byClient.get(e.client_id) ?? []
+        arr.push(e)
+        byClient.set(e.client_id, arr)
+      })
+      setArt55Entries(byClient)
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при зареждане')
     }
@@ -168,15 +181,15 @@ export function WorkSheetPage() {
       if (r.work?.submitted_at) submitted++
       if (advanceRelevance(r.advance, month) === 'due') {
         advDue++
-        if (r.work?.advance_payment_done) advDone++
+        if ((r.work?.advance_payment_amount ?? 0) > 0) advDone++
       }
       if (art55Relevance(r.art55, month) === 'due') {
         art55Due++
-        if (r.work?.art55_declared) art55Done++
+        if ((art55Entries.get(r.client.id)?.length ?? 0) > 0) art55Done++
       }
     })
     return { totalResult, submitted, advDue, advDone, art55Due, art55Done, total: filteredRows.length }
-  }, [filteredRows, month])
+  }, [filteredRows, month, art55Entries])
 
   function changeMonth(delta: number) {
     let m = month + delta
@@ -366,21 +379,18 @@ export function WorkSheetPage() {
                         className="w-40"
                       />
                     </td>
-                    <PeriodicCell
+                    <AdvanceAmountCell
                       relevance={advanceRelevance(row.advance, month)}
                       deadline={advanceDeadline(row.advance, month)}
-                      checked={!!w?.advance_payment_done}
+                      amount={w?.advance_payment_amount ?? null}
                       disabled={!canEdit}
-                      onChange={v => patchRow(row.client.id, { advance_payment_done: v })}
-                      accent="amber"
+                      onChange={v => patchRow(row.client.id, { advance_payment_amount: v })}
                     />
-                    <PeriodicCell
+                    <Art55SummaryCell
                       relevance={art55Relevance(row.art55, month)}
                       deadline={art55Deadline(row.art55, month)}
-                      checked={!!w?.art55_declared}
-                      disabled={!canEdit}
-                      onChange={v => patchRow(row.client.id, { art55_declared: v })}
-                      accent="indigo"
+                      entries={art55Entries.get(row.client.id) ?? []}
+                      onOpen={() => setArt55ModalFor({ client: row.client, name: row.name })}
                     />
                     {(['vat_accounted', 'amortization_done', 'bank_done', 'salaries_done'] as const).map(field => (
                       <td key={field} className="px-2 py-1.5 text-center">
@@ -406,42 +416,253 @@ export function WorkSheetPage() {
           </table>
         )}
       </div>
+
+      {art55ModalFor && (
+        <Art55Modal
+          client={art55ModalFor.client}
+          clientName={art55ModalFor.name}
+          year={year}
+          month={month}
+          entries={art55Entries.get(art55ModalFor.client.id) ?? []}
+          disabled={!canEdit}
+          onClose={() => setArt55ModalFor(null)}
+          onChanged={async () => {
+            const fresh = await getArt55EntriesForPeriod(year, [month])
+            const byClient = new Map<string, Art55Entry[]>()
+            fresh.forEach(e => {
+              const arr = byClient.get(e.client_id) ?? []
+              arr.push(e)
+              byClient.set(e.client_id, arr)
+            })
+            setArt55Entries(byClient)
+          }}
+          createdBy={user?.id}
+        />
+      )}
     </div>
   )
 }
 
-function PeriodicCell({ relevance, deadline, checked, disabled, onChange, accent }: {
+function AdvanceAmountCell({ relevance, deadline, amount, disabled, onChange }: {
   relevance: Relevance
   deadline: string | null
-  checked: boolean
+  amount: number | null
   disabled?: boolean
-  onChange: (v: boolean) => void
-  accent: 'amber' | 'indigo'
+  onChange: (v: number | null) => void
+}) {
+  const [draft, setDraft] = useState(amount?.toString() ?? '')
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => { setDraft(amount?.toString() ?? '') }, [amount])
+
+  if (relevance === 'na') {
+    return <td className="px-2 py-1.5 text-center text-muted-foreground/30 text-xs">—</td>
+  }
+  function commit() {
+    const v = draft.trim()
+    if (v === '' && amount == null) return
+    if (v === '') { onChange(null); return }
+    const num = parseFloat(v.replace(',', '.'))
+    if (isNaN(num)) { setDraft(amount?.toString() ?? ''); return }
+    if (num === amount) return
+    onChange(num)
+  }
+  const isDue = relevance === 'due'
+  const isPaid = (amount ?? 0) > 0
+  const ringCls = isDue && !isPaid
+    ? 'bg-amber-50 dark:bg-amber-900/20 ring-1 ring-amber-300 dark:ring-amber-700/50'
+    : isPaid
+      ? 'bg-emerald-50 dark:bg-emerald-900/20'
+      : 'bg-muted/20'
+  return (
+    <td className="px-1 py-1 text-center">
+      <div className={`rounded px-1 py-0.5 inline-flex flex-col items-center gap-0.5 ${ringCls}`}>
+        <input ref={ref} disabled={disabled}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === 'Enter') ref.current?.blur(); if (e.key === 'Escape') { setDraft(amount?.toString() ?? ''); ref.current?.blur() } }}
+          placeholder={isDue ? '0' : '—'}
+          className="h-6 px-1 text-xs text-right border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-20 tabular-nums"
+        />
+        {isDue && !isPaid && deadline && (
+          <span className="text-[9px] font-semibold leading-none text-amber-700 dark:text-amber-300">{deadline}</span>
+        )}
+      </div>
+    </td>
+  )
+}
+
+function Art55SummaryCell({ relevance, deadline, entries, onOpen }: {
+  relevance: Relevance
+  deadline: string | null
+  entries: Art55Entry[]
+  onOpen: () => void
 }) {
   if (relevance === 'na') {
     return <td className="px-2 py-1.5 text-center text-muted-foreground/30 text-xs">—</td>
   }
+  const sumGross = entries.reduce((s, e) => s + (e.gross_amount ?? 0), 0)
+  const sumTax = entries.reduce((s, e) => s + (e.tax_amount ?? 0), 0)
   const isDue = relevance === 'due'
-  const ringCls = isDue
-    ? (accent === 'amber'
-        ? 'bg-amber-50 dark:bg-amber-900/20 ring-1 ring-amber-300 dark:ring-amber-700/50'
-        : 'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-300 dark:ring-indigo-700/50')
-    : 'bg-muted/30'
-  const accentCls = accent === 'amber' ? 'accent-amber-500' : 'accent-indigo-600'
+  const has = entries.length > 0
+  const ringCls = isDue && !has
+    ? 'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-300 dark:ring-indigo-700/50'
+    : has
+      ? 'bg-emerald-50 dark:bg-emerald-900/20'
+      : 'bg-muted/20'
   return (
     <td className="px-1 py-1 text-center">
-      <div className={`rounded px-1 py-0.5 inline-flex flex-col items-center gap-0.5 ${ringCls}`}>
-        <input type="checkbox" disabled={disabled}
-          checked={checked}
-          onChange={e => onChange(e.target.checked)}
-          className={`h-4 w-4 cursor-pointer ${accentCls}`} />
-        {isDue && deadline && (
-          <span className={`text-[9px] font-semibold leading-none ${accent === 'amber' ? 'text-amber-700 dark:text-amber-300' : 'text-indigo-700 dark:text-indigo-300'}`}>
-            {deadline}
-          </span>
+      <button
+        onClick={onOpen}
+        className={`rounded px-2 py-1 inline-flex flex-col items-center gap-0.5 hover:brightness-95 transition ${ringCls} min-w-[80px]`}
+        title={has ? `${entries.length} запис${entries.length === 1 ? '' : 'а'} — брутно ${formatCurrency(sumGross)}, данък ${formatCurrency(sumTax)}` : 'Добави запис'}
+      >
+        {has ? (
+          <>
+            <span className="text-[10px] font-semibold tabular-nums text-foreground">{formatCurrency(sumTax)}</span>
+            <span className="text-[9px] text-muted-foreground">{entries.length} зап.</span>
+          </>
+        ) : (
+          <>
+            <Plus className="h-3 w-3 text-muted-foreground" />
+            {isDue && deadline && (
+              <span className="text-[9px] font-semibold leading-none text-indigo-700 dark:text-indigo-300">{deadline}</span>
+            )}
+          </>
         )}
-      </div>
+      </button>
     </td>
+  )
+}
+
+function Art55Modal({ client, clientName, year, month, entries, disabled, onClose, onChanged, createdBy }: {
+  client: Client
+  clientName: string
+  year: number
+  month: number
+  entries: Art55Entry[]
+  disabled?: boolean
+  onClose: () => void
+  onChanged: () => Promise<void>
+  createdBy?: string
+}) {
+  const [saving, setSaving] = useState(false)
+  async function withSave(fn: () => Promise<void>) {
+    setSaving(true)
+    try { await fn(); await onChanged() } catch (e: any) { toast.error(e.message ?? 'Грешка') }
+    setSaving(false)
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="bg-card border border-border rounded-lg shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Чл. 55 записи</h2>
+            <p className="text-xs text-muted-foreground">{clientName} • {MONTH_NAMES[month - 1]} {year}</p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1"><X className="h-4 w-4" /></button>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4">
+          {entries.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">Няма записи за този месец.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs uppercase tracking-wider text-muted-foreground border-b border-border">
+                  <th className="text-left py-2">Тип доход</th>
+                  <th className="text-right py-2">Брутна сума €</th>
+                  <th className="text-right py-2">Данък €</th>
+                  <th className="w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map(e => (
+                  <Art55EntryRow key={e.id} entry={e} disabled={disabled || saving}
+                    onUpdate={p => withSave(() => updateArt55Entry(e.id, p))}
+                    onDelete={() => withSave(() => deleteArt55Entry(e.id))}
+                  />
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-border font-semibold text-foreground">
+                  <td className="py-2">Общо</td>
+                  <td className="text-right py-2 tabular-nums">{formatCurrency(entries.reduce((s, e) => s + e.gross_amount, 0))}</td>
+                  <td className="text-right py-2 tabular-nums">{formatCurrency(entries.reduce((s, e) => s + e.tax_amount, 0))}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+
+        <div className="px-4 py-3 border-t border-border flex items-center justify-between">
+          <Button
+            variant="outline" size="sm" disabled={disabled || saving}
+            onClick={() => withSave(() => addArt55Entry({ client_id: client.id, year, month, createdBy }).then(() => {}))}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Добави запис
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>Затвори</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Art55EntryRow({ entry, disabled, onUpdate, onDelete }: {
+  entry: Art55Entry
+  disabled?: boolean
+  onUpdate: (p: Partial<Art55Entry>) => Promise<void>
+  onDelete: () => Promise<void>
+}) {
+  const [gross, setGross] = useState(entry.gross_amount.toString())
+  const [tax, setTax] = useState(entry.tax_amount.toString())
+  useEffect(() => { setGross(entry.gross_amount.toString()); setTax(entry.tax_amount.toString()) }, [entry.gross_amount, entry.tax_amount])
+
+  function commitNum(field: 'gross_amount' | 'tax_amount', raw: string) {
+    const v = parseFloat(raw.replace(',', '.'))
+    const safe = isNaN(v) ? 0 : v
+    if (safe === entry[field]) return
+    void onUpdate({ [field]: safe } as Partial<Art55Entry>)
+  }
+
+  return (
+    <tr className="border-b border-border/40 last:border-0">
+      <td className="py-1.5 pr-2">
+        <select disabled={disabled}
+          value={entry.income_type ?? ''}
+          onChange={e => onUpdate({ income_type: e.target.value || null })}
+          className="h-7 px-1 text-sm border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-32"
+        >
+          <option value="">—</option>
+          {ART55_INCOME_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </td>
+      <td className="py-1.5 pr-2 text-right">
+        <input disabled={disabled} value={gross}
+          onChange={e => setGross(e.target.value)}
+          onBlur={() => commitNum('gross_amount', gross)}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+          className="h-7 px-1 text-sm text-right border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-28 tabular-nums"
+        />
+      </td>
+      <td className="py-1.5 pr-2 text-right">
+        <input disabled={disabled} value={tax}
+          onChange={e => setTax(e.target.value)}
+          onBlur={() => commitNum('tax_amount', tax)}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+          className="h-7 px-1 text-sm text-right border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-28 tabular-nums"
+        />
+      </td>
+      <td className="py-1.5 text-right">
+        <button disabled={disabled} onClick={onDelete}
+          className="text-muted-foreground hover:text-destructive p-1 disabled:opacity-40"
+          title="Изтрий запис">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </td>
+    </tr>
   )
 }
 
