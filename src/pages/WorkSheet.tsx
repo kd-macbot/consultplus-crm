@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, Search, Loader2, AlertTriangle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
@@ -40,6 +40,41 @@ function clientStatusOf(clientId: string, statusCol: Column | undefined, cells: 
 const STATUS_BADGE: Record<string, string> = {
   'АКТИВНА': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
   'НУЛЕВО': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+}
+
+type Relevance = 'due' | 'optional' | 'na'
+
+/** Авансова вноска: relevance за дадения месец според профила на клиента */
+function advanceRelevance(profile: string, month: number): Relevance {
+  if (profile === 'Месечни') return 'due'
+  if (profile === 'Тримесечни') return [4, 7, 10].includes(month) ? 'due' : 'optional'
+  return 'na'
+}
+
+/** Чл. 55 ЗДДФЛ: подава се тримесечно (срок: края на месеца след тримесечието) */
+function art55Relevance(applies: string, month: number): Relevance {
+  if (applies !== 'ДА') return 'na'
+  return [1, 4, 7, 10].includes(month) ? 'due' : 'optional'
+}
+
+function advanceDeadline(profile: string, month: number): string | null {
+  if (profile === 'Месечни') return `до 15.${String(month).padStart(2, '0')}`
+  if (profile === 'Тримесечни' && [4, 7, 10].includes(month)) return `до 15.${String(month).padStart(2, '0')}`
+  return null
+}
+
+function art55Deadline(applies: string, month: number): string | null {
+  if (applies !== 'ДА') return null
+  if (![1, 4, 7, 10].includes(month)) return null
+  const lastDay = new Date(2024, month, 0).getDate()
+  return `до ${lastDay}.${String(month).padStart(2, '0')}`
+}
+
+function masterValue(clientId: string, col: Column | undefined, cells: CellValue[], dropdowns: DropdownOption[]): string {
+  if (!col) return ''
+  const cell = cells.find(cv => cv.client_id === clientId && cv.column_id === col.id)
+  if (!cell?.value_dropdown) return ''
+  return dropdowns.find(d => d.id === cell.value_dropdown)?.value ?? ''
 }
 
 export function WorkSheetPage() {
@@ -89,6 +124,8 @@ export function WorkSheetPage() {
   }
 
   const statusCol = useMemo(() => columns.find(c => c.name === 'Статус'), [columns])
+  const advanceCol = useMemo(() => columns.find(c => c.name === 'Авансови вноски'), [columns])
+  const art55Col = useMemo(() => columns.find(c => c.name === 'Чл. 55 ЗДДФЛ'), [columns])
 
   // Списък със стойности на статуса (за филтър)
   const statusOptions = useMemo(() => {
@@ -97,7 +134,7 @@ export function WorkSheetPage() {
   }, [dropdowns, statusCol])
 
   // Подготвени клиенти за render: name, status, monthly row
-  type Row = { client: Client; name: string; status: string; work: MonthlyWork | undefined }
+  type Row = { client: Client; name: string; status: string; advance: string; art55: string; work: MonthlyWork | undefined }
   const tableRows: Row[] = useMemo(() => {
     const visible = user?.role === 'employee'
       ? clients.filter(c => c.assigned_to === user.id)
@@ -107,10 +144,12 @@ export function WorkSheetPage() {
         client: c,
         name: clientNameOf(c.id, columns, cells),
         status: clientStatusOf(c.id, statusCol, cells, dropdowns),
+        advance: masterValue(c.id, advanceCol, cells, dropdowns),
+        art55: masterValue(c.id, art55Col, cells, dropdowns),
         work: rows.get(c.id),
       }))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cells, dropdowns, statusCol, rows, user])
+  }, [clients, columns, cells, dropdowns, statusCol, advanceCol, art55Col, rows, user])
 
   const filteredRows = useMemo(() => {
     const s = search.trim().toLowerCase()
@@ -123,17 +162,21 @@ export function WorkSheetPage() {
 
   const stats = useMemo(() => {
     let totalResult = 0
-    let submitted = 0, vat = 0, amor = 0, bank = 0, sal = 0
+    let submitted = 0, advDue = 0, advDone = 0, art55Due = 0, art55Done = 0
     filteredRows.forEach(r => {
       if (r.work?.result_amount) totalResult += r.work.result_amount
       if (r.work?.submitted_at) submitted++
-      if (r.work?.vat_accounted) vat++
-      if (r.work?.amortization_done) amor++
-      if (r.work?.bank_done) bank++
-      if (r.work?.salaries_done) sal++
+      if (advanceRelevance(r.advance, month) === 'due') {
+        advDue++
+        if (r.work?.advance_payment_done) advDone++
+      }
+      if (art55Relevance(r.art55, month) === 'due') {
+        art55Due++
+        if (r.work?.art55_declared) art55Done++
+      }
     })
-    return { totalResult, submitted, vat, amor, bank, sal, total: filteredRows.length }
-  }, [filteredRows])
+    return { totalResult, submitted, advDue, advDone, art55Due, art55Done, total: filteredRows.length }
+  }, [filteredRows, month])
 
   function changeMonth(delta: number) {
     let m = month + delta
@@ -228,6 +271,12 @@ export function WorkSheetPage() {
           <span><strong className="text-foreground">{stats.total}</strong> клиента</span>
           <span>Резултат: <strong className="text-green-600">{formatCurrency(stats.totalResult)} €</strong></span>
           <span>Подадени: <strong className="text-foreground">{stats.submitted}/{stats.total}</strong></span>
+          {stats.advDue > 0 && (
+            <span title="Авансови вноски — дължими този месец">Аванс: <strong className={stats.advDone === stats.advDue ? 'text-emerald-600' : 'text-amber-600'}>{stats.advDone}/{stats.advDue}</strong></span>
+          )}
+          {stats.art55Due > 0 && (
+            <span title="Чл. 55 декларации — дължими този месец">Чл. 55: <strong className={stats.art55Done === stats.art55Due ? 'text-emerald-600' : 'text-indigo-600'}>{stats.art55Done}/{stats.art55Due}</strong></span>
+          )}
         </div>
       </div>
 
@@ -241,7 +290,7 @@ export function WorkSheetPage() {
         ) : filteredRows.length === 0 ? (
           <div className="p-10 text-center text-muted-foreground">Няма съвпадения</div>
         ) : (
-          <table className="w-full border-collapse min-w-[1400px]">
+          <table className="w-full border-collapse min-w-[1600px]">
             <thead className="bg-navy text-white sticky top-0 z-10">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-10">#</th>
@@ -252,6 +301,8 @@ export function WorkSheetPage() {
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Подадено на</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Уведомени</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Несъотв. НАП</th>
+                <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="Авансова вноска корпоративен данък">Аванс. вн.</th>
+                <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="Декларация чл. 55 ЗДДФЛ">Чл. 55</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">ДДС осчет</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Амор</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Банка</th>
@@ -315,6 +366,22 @@ export function WorkSheetPage() {
                         className="w-40"
                       />
                     </td>
+                    <PeriodicCell
+                      relevance={advanceRelevance(row.advance, month)}
+                      deadline={advanceDeadline(row.advance, month)}
+                      checked={!!w?.advance_payment_done}
+                      disabled={!canEdit}
+                      onChange={v => patchRow(row.client.id, { advance_payment_done: v })}
+                      accent="amber"
+                    />
+                    <PeriodicCell
+                      relevance={art55Relevance(row.art55, month)}
+                      deadline={art55Deadline(row.art55, month)}
+                      checked={!!w?.art55_declared}
+                      disabled={!canEdit}
+                      onChange={v => patchRow(row.client.id, { art55_declared: v })}
+                      accent="indigo"
+                    />
                     {(['vat_accounted', 'amortization_done', 'bank_done', 'salaries_done'] as const).map(field => (
                       <td key={field} className="px-2 py-1.5 text-center">
                         <input type="checkbox" disabled={!canEdit}
@@ -340,6 +407,41 @@ export function WorkSheetPage() {
         )}
       </div>
     </div>
+  )
+}
+
+function PeriodicCell({ relevance, deadline, checked, disabled, onChange, accent }: {
+  relevance: Relevance
+  deadline: string | null
+  checked: boolean
+  disabled?: boolean
+  onChange: (v: boolean) => void
+  accent: 'amber' | 'indigo'
+}) {
+  if (relevance === 'na') {
+    return <td className="px-2 py-1.5 text-center text-muted-foreground/30 text-xs">—</td>
+  }
+  const isDue = relevance === 'due'
+  const ringCls = isDue
+    ? (accent === 'amber'
+        ? 'bg-amber-50 dark:bg-amber-900/20 ring-1 ring-amber-300 dark:ring-amber-700/50'
+        : 'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-300 dark:ring-indigo-700/50')
+    : 'bg-muted/30'
+  const accentCls = accent === 'amber' ? 'accent-amber-500' : 'accent-indigo-600'
+  return (
+    <td className="px-1 py-1 text-center">
+      <div className={`rounded px-1 py-0.5 inline-flex flex-col items-center gap-0.5 ${ringCls}`}>
+        <input type="checkbox" disabled={disabled}
+          checked={checked}
+          onChange={e => onChange(e.target.checked)}
+          className={`h-4 w-4 cursor-pointer ${accentCls}`} />
+        {isDue && deadline && (
+          <span className={`text-[9px] font-semibold leading-none ${accent === 'amber' ? 'text-amber-700 dark:text-amber-300' : 'text-indigo-700 dark:text-indigo-300'}`}>
+            {deadline}
+          </span>
+        )}
+      </div>
+    </td>
   )
 }
 

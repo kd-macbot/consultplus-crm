@@ -193,6 +193,8 @@ export interface MonthlyWork {
   amortization_done: boolean
   bank_done: boolean
   salaries_done: boolean
+  advance_payment_done: boolean
+  art55_declared: boolean
 
   notes: string | null
 
