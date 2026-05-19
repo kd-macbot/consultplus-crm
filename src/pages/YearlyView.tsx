@@ -8,9 +8,9 @@ import { useAuth } from '../lib/auth'
 import {
   getClients, getColumns, getCellValues, getDropdownOptions,
   getMonthlyWork, upsertMonthlyWorkByKey, ensureMonthlyRows,
-  getArt55EntriesForPeriod,
+  getArt55EntriesForPeriod, getArt55QuarterStatuses, upsertArt55QuarterStatus,
 } from '../lib/storage'
-import { type MonthlyWork, type Client, type Column, type CellValue, type DropdownOption, type Art55Entry } from '../lib/types'
+import { NOTIFICATION_METHODS, type MonthlyWork, type Client, type Column, type CellValue, type DropdownOption, type Art55Entry, type Art55QuarterStatus } from '../lib/types'
 
 const MONTH_SHORT = ['Ян', 'Фев', 'Мар', 'Апр', 'Май', 'Юни', 'Юли', 'Авг', 'Сеп', 'Окт', 'Ное', 'Дек']
 const QUARTERS: Array<{ q: number; months: [number, number, number]; label: string }> = [
@@ -59,6 +59,7 @@ export function YearlyViewPage() {
   const [dropdowns, setDropdowns] = useState<DropdownOption[]>([])
   const [monthlyByClient, setMonthlyByClient] = useState<Map<string, Map<number, MonthlyWork>>>(new Map())
   const [art55ByClientMonth, setArt55ByClientMonth] = useState<Map<string, Map<number, Art55Entry[]>>>(new Map())
+  const [art55Statuses, setArt55Statuses] = useState<Map<string, Map<number, Art55QuarterStatus>>>(new Map())
   const [loading, setLoading] = useState(true)
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'employee'
@@ -90,7 +91,16 @@ export function YearlyViewPage() {
       })
       setMonthlyByClient(mwMap)
 
-      const art55 = await getArt55EntriesForPeriod(year, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+      const [art55, statuses] = await Promise.all([
+        getArt55EntriesForPeriod(year, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+        getArt55QuarterStatuses(year),
+      ])
+      const statusMap = new Map<string, Map<number, Art55QuarterStatus>>()
+      statuses.forEach(s => {
+        if (!statusMap.has(s.client_id)) statusMap.set(s.client_id, new Map())
+        statusMap.get(s.client_id)!.set(s.quarter, s)
+      })
+      setArt55Statuses(statusMap)
       const a55Map = new Map<string, Map<number, Art55Entry[]>>()
       art55.forEach(e => {
         if (!a55Map.has(e.client_id)) a55Map.set(e.client_id, new Map())
@@ -132,7 +142,12 @@ export function YearlyViewPage() {
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
   }, [clients, columns, cells, dropdowns, advanceCol, advMinCol, monthlyByClient, user])
 
-  type Art55Row = { client: Client; name: string; quarters: Map<number, Art55Entry[]>; totalGross: number; totalTax: number }
+  type Art55Row = {
+    client: Client; name: string
+    quarters: Map<number, Art55Entry[]>
+    statuses: Map<number, Art55QuarterStatus | undefined>
+    totalGross: number; totalTax: number
+  }
   const art55Rows = useMemo(() => {
     const visible = user?.role === 'employee' ? clients.filter(c => c.assigned_to === user.id) : clients
     return visible
@@ -141,6 +156,7 @@ export function YearlyViewPage() {
         if (applies !== 'ДА') return null
         const byMonth: Map<number, Art55Entry[]> = art55ByClientMonth.get(c.id) ?? new Map()
         const quarters = new Map<number, Art55Entry[]>()
+        const statuses = new Map<number, Art55QuarterStatus | undefined>()
         let totalGross = 0, totalTax = 0
         QUARTERS.forEach(({ q, months }) => {
           const entries: Art55Entry[] = []
@@ -150,12 +166,35 @@ export function YearlyViewPage() {
             monthEntries.forEach(e => { totalGross += e.gross_amount; totalTax += e.tax_amount })
           })
           quarters.set(q, entries)
+          statuses.set(q, art55Statuses.get(c.id)?.get(q))
         })
-        return { client: c, name: clientNameOf(c.id, columns, cells), quarters, totalGross, totalTax } as Art55Row
+        return { client: c, name: clientNameOf(c.id, columns, cells), quarters, statuses, totalGross, totalTax } as Art55Row
       })
       .filter((r): r is Art55Row => r !== null)
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cells, dropdowns, art55Col, art55ByClientMonth, user])
+  }, [clients, columns, cells, dropdowns, art55Col, art55ByClientMonth, art55Statuses, user])
+
+  async function patchArt55Status(clientId: string, quarter: number, patch: Partial<Art55QuarterStatus>) {
+    // Auto-set declared_at when marking declared
+    const final: Partial<Art55QuarterStatus> = { ...patch }
+    if (patch.declared === true) final.declared_at = final.declared_at ?? new Date().toISOString().slice(0, 10)
+    if (patch.declared === false) final.declared_at = null
+
+    setArt55Statuses(prev => {
+      const next = new Map(prev)
+      const inner = new Map(next.get(clientId) ?? new Map())
+      const existing = inner.get(quarter)
+      inner.set(quarter, { ...(existing ?? { client_id: clientId, year, quarter, declared: false } as Art55QuarterStatus), ...final })
+      next.set(clientId, inner)
+      return next
+    })
+    try {
+      await upsertArt55QuarterStatus(clientId, year, quarter, final)
+    } catch (err: any) {
+      toast.error(err.message ?? 'Грешка при запис')
+      await loadAll()
+    }
+  }
 
   type VatRow = { client: Client; name: string; months: Map<number, number | null>; totalPay: number; totalRefund: number; net: number }
   const vatRows = useMemo(() => {
@@ -254,7 +293,7 @@ export function YearlyViewPage() {
         ) : tab === 'advance' ? (
           <AdvanceTable rows={advanceRows} year={year} canEdit={canEdit} onPatch={patchAmount} />
         ) : tab === 'art55' ? (
-          <Art55Table rows={art55Rows} year={year} />
+          <Art55Table rows={art55Rows} year={year} canEdit={canEdit} onPatchStatus={patchArt55Status} />
         ) : (
           <VatTable rows={vatRows} year={year} canEdit={canEdit} onPatch={patchResult} />
         )}
@@ -338,20 +377,27 @@ function AdvanceTable({ rows, year, canEdit, onPatch }: {
   )
 }
 
-function Art55Table({ rows, year }: {
-  rows: { client: Client; name: string; quarters: Map<number, Art55Entry[]>; totalGross: number; totalTax: number }[]
+function Art55Table({ rows, year, canEdit, onPatchStatus }: {
+  rows: {
+    client: Client; name: string
+    quarters: Map<number, Art55Entry[]>
+    statuses: Map<number, Art55QuarterStatus | undefined>
+    totalGross: number; totalTax: number
+  }[]
   year: number
+  canEdit: boolean
+  onPatchStatus: (clientId: string, quarter: number, patch: Partial<Art55QuarterStatus>) => Promise<void>
 }) {
   if (rows.length === 0) {
     return <div className="p-8 text-center text-muted-foreground">Няма клиенти с „Чл. 55 ЗДДФЛ = ДА". Записите се добавят от Работен лист (кликни на Чл. 55 клетката).</div>
   }
   return (
-    <table className="w-full border-collapse min-w-[1100px] text-sm">
+    <table className="w-full border-collapse min-w-[1500px] text-sm">
       <thead className="bg-navy text-white sticky top-0 z-10">
         <tr>
           <th rowSpan={2} className="px-3 py-2 text-left text-xs uppercase tracking-wider whitespace-nowrap sticky left-0 bg-navy z-20 border-r border-navy-light">Фирма</th>
           {QUARTERS.map(q => (
-            <th key={q.q} colSpan={3} className="px-2 py-2 text-center text-xs uppercase tracking-wider whitespace-nowrap border-r border-navy-light">{q.label}</th>
+            <th key={q.q} colSpan={4} className="px-2 py-2 text-center text-xs uppercase tracking-wider whitespace-nowrap border-r border-navy-light">{q.label}</th>
           ))}
           <th rowSpan={2} className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap bg-emerald-700">Общо данък</th>
         </tr>
@@ -360,7 +406,8 @@ function Art55Table({ rows, year }: {
             <Fragment key={q.q}>
               <th className="px-2 py-1 text-right text-[10px] uppercase">Бруто</th>
               <th className="px-2 py-1 text-right text-[10px] uppercase">Данък</th>
-              <th className="px-2 py-1 text-center text-[10px] uppercase border-r border-navy-light">N</th>
+              <th className="px-2 py-1 text-center text-[10px] uppercase">N</th>
+              <th className="px-2 py-1 text-center text-[10px] uppercase border-r border-navy-light">Декл./Плат.</th>
             </Fragment>
           ))}
         </tr>
@@ -375,12 +422,22 @@ function Art55Table({ rows, year }: {
                 const entries = r.quarters.get(q.q) ?? []
                 const gross = entries.reduce((s, e) => s + e.gross_amount, 0)
                 const tax = entries.reduce((s, e) => s + e.tax_amount, 0)
+                const status = r.statuses.get(q.q)
+                const hasEntries = entries.length > 0
                 return (
                   <Fragment key={q.q}>
                     <td className="px-2 py-1 text-right tabular-nums text-muted-foreground">{fmt(gross)}</td>
                     <td className="px-2 py-1 text-right tabular-nums font-semibold">{fmt(tax)}</td>
-                    <td className="px-2 py-1 text-center text-xs text-muted-foreground border-r border-border">
+                    <td className="px-2 py-1 text-center text-xs text-muted-foreground">
                       {entries.length > 0 ? entries.length : '—'}
+                    </td>
+                    <td className="px-2 py-1 border-r border-border">
+                      <Art55StatusCell
+                        status={status}
+                        hasEntries={hasEntries}
+                        disabled={!canEdit}
+                        onPatch={p => onPatchStatus(r.client.id, q.q, p)}
+                      />
                     </td>
                   </Fragment>
                 )
@@ -394,16 +451,27 @@ function Art55Table({ rows, year }: {
         <tr className="font-semibold border-t-2 border-border">
           <td className="px-3 py-2 sticky left-0 bg-muted/50 z-10 border-r border-border">ОБЩО</td>
           {QUARTERS.map(q => {
-            let g = 0, t = 0, n = 0
+            let g = 0, t = 0, n = 0, declared = 0, withEntries = 0
             rows.forEach(r => {
               const entries = r.quarters.get(q.q) ?? []
               entries.forEach(e => { g += e.gross_amount; t += e.tax_amount; n++ })
+              if (entries.length > 0) {
+                withEntries++
+                if (r.statuses.get(q.q)?.declared) declared++
+              }
             })
             return (
               <Fragment key={q.q}>
                 <td className="px-2 py-2 text-right tabular-nums">{fmt(g)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{fmt(t)}</td>
-                <td className="px-2 py-2 text-center text-xs border-r border-border">{n}</td>
+                <td className="px-2 py-2 text-center text-xs">{n}</td>
+                <td className="px-2 py-2 text-center text-xs border-r border-border">
+                  {withEntries > 0 && (
+                    <span className={declared === withEntries ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-600'}>
+                      {declared}/{withEntries}
+                    </span>
+                  )}
+                </td>
               </Fragment>
             )
           })}
@@ -411,6 +479,42 @@ function Art55Table({ rows, year }: {
         </tr>
       </tfoot>
     </table>
+  )
+}
+
+function Art55StatusCell({ status, hasEntries, disabled, onPatch }: {
+  status: Art55QuarterStatus | undefined
+  hasEntries: boolean
+  disabled?: boolean
+  onPatch: (patch: Partial<Art55QuarterStatus>) => Promise<void>
+}) {
+  const declared = status?.declared ?? false
+  const method = status?.notification_method ?? ''
+  if (!hasEntries && !declared && !method) {
+    return <div className="text-center text-muted-foreground/30 text-xs">—</div>
+  }
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <label className={`inline-flex items-center gap-1 text-[10px] cursor-pointer ${declared ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-muted-foreground'}`}>
+        <input
+          type="checkbox" disabled={disabled}
+          checked={declared}
+          onChange={e => onPatch({ declared: e.target.checked })}
+          className="h-3 w-3 cursor-pointer accent-emerald-600"
+        />
+        {declared ? 'ОК' : 'декл.'}
+      </label>
+      <select
+        disabled={disabled}
+        value={method}
+        onChange={e => onPatch({ notification_method: e.target.value || null })}
+        className="h-5 text-[10px] px-0.5 border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-16"
+        title="Платеж — уведомени"
+      >
+        <option value=""></option>
+        {NOTIFICATION_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+      </select>
+    </div>
   )
 }
 
