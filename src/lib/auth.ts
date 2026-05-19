@@ -1,15 +1,6 @@
 import { createContext, useContext } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import type { Profile, Role } from './types'
-
-// Isolated client for admin user creation — persistSession: false ensures the
-// admin's own session is never replaced when signing up a new account.
-const _tempClient = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-  { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
-)
 
 export interface AuthState {
   user: Profile | null
@@ -43,19 +34,23 @@ export async function adminCreateUser(
   full_name: string,
   role: Role
 ): Promise<{ error?: string; userId?: string }> {
-  const { data, error } = await _tempClient.auth.signUp({ email, password })
-  if (error) return { error: error.message }
+  // Викаме Edge Function-а вместо локален auth.signUp() — той използва
+  // admin API (service role), маркира имейла като confirmed и не праща
+  // никакъв имейл. Така заобикаляме email rate limit-а на Supabase free tier.
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) return { error: 'Не сте логнат' }
 
-  const userId = data.user?.id
-  if (!userId) return { error: 'Не може да се създаде акаунт. Проверете дали имейлът вече съществува.' }
-
-  // Insert (or overwrite trigger-created) profile with the correct name and role
-  const { error: profileError } = await supabase
-    .from('profiles')
-    .upsert({ id: userId, email, full_name, role, is_active: true })
-  if (profileError) return { error: profileError.message }
-
-  return { userId }
+  try {
+    const { data, error } = await supabase.functions.invoke('admin-create-user', {
+      body: { email, password, full_name, role },
+    })
+    if (error) return { error: error.message }
+    if (data?.error) return { error: data.error }
+    if (!data?.userId) return { error: 'Неочакван отговор от сървъра' }
+    return { userId: data.userId }
+  } catch (err) {
+    return { error: (err as Error).message ?? 'Грешка при създаване на потребител' }
+  }
 }
 
 export async function signOut() {
