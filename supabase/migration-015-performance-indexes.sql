@@ -28,27 +28,14 @@ CREATE INDEX IF NOT EXISTS idx_clients_assigned
 CREATE INDEX IF NOT EXISTS idx_clients_not_deleted
   ON crm_clients(id) WHERE deleted = false;
 
--- =========================================================
--- crm_contacts
--- =========================================================
-CREATE INDEX IF NOT EXISTS idx_contacts_client
-  ON crm_contacts(client_id);
-
--- =========================================================
--- crm_expenses
--- =========================================================
-CREATE INDEX IF NOT EXISTS idx_expenses_client
-  ON crm_expenses(client_id);
-
-CREATE INDEX IF NOT EXISTS idx_expenses_date
-  ON crm_expenses(expense_date DESC);
+-- Бележка: crm_contacts.client_id е UNIQUE → има автоматичен индекс.
+-- crm_expenses няма client_id (линк е към staff_id, не клиент) — индекси по
+-- date/category/staff/created_by вече се добавиха в Migration 004.
 
 -- =========================================================
 -- crm_audit_log — рядко пишеме, често четем по дата/потребител
+-- (idx_audit_created вече съществува от Migration 003)
 -- =========================================================
-CREATE INDEX IF NOT EXISTS idx_audit_created
-  ON crm_audit_log(created_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_audit_user_created
   ON crm_audit_log(user_id, created_at DESC);
 
@@ -63,10 +50,9 @@ CREATE INDEX IF NOT EXISTS idx_dropdown_col
 
 -- =========================================================
 -- crm_client_tags — many-to-many lookup
+-- PK е (client_id, tag_id) → има автоматичен индекс по client_id; добавяме
+-- само reverse lookup по tag_id.
 -- =========================================================
-CREATE INDEX IF NOT EXISTS idx_ctags_client
-  ON crm_client_tags(client_id);
-
 CREATE INDEX IF NOT EXISTS idx_ctags_tag
   ON crm_client_tags(tag_id);
 
@@ -81,7 +67,5 @@ CREATE INDEX IF NOT EXISTS idx_staff_department
 -- =========================================================
 ANALYZE crm_cell_values;
 ANALYZE crm_clients;
-ANALYZE crm_contacts;
-ANALYZE crm_expenses;
 ANALYZE crm_audit_log;
 ANALYZE crm_dropdown_options;
