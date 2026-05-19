@@ -177,6 +177,35 @@ export interface Opportunity {
 
 export const NOTIFICATION_METHODS = ['Вайбър', 'Слак', 'Имейл', 'Телефон', 'Друго'] as const
 
+export const ART55_INCOME_TYPES = ['дивидент', 'наем', 'лихва', 'хонорар', 'друго'] as const
+
+export interface Art55Entry {
+  id: string
+  client_id: string
+  year: number
+  month: number
+  gross_amount: number
+  tax_amount: number
+  income_type: string | null
+  position: number
+  created_at: string
+  created_by: string | null
+  updated_at: string
+}
+
+export interface Art55QuarterStatus {
+  id: string
+  client_id: string
+  year: number
+  quarter: number
+  declared: boolean
+  notification_method: string | null
+  declared_at: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface MonthlyWork {
   id: string
   client_id: string
@@ -193,8 +222,7 @@ export interface MonthlyWork {
   amortization_done: boolean
   bank_done: boolean
   salaries_done: boolean
-  advance_payment_done: boolean
-  art55_declared: boolean
+  advance_payment_amount: number | null
 
   notes: string | null
 

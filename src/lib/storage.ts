@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus } from './types'
 
 // ==================== AUDIT LOG ====================
 
@@ -1000,6 +1000,90 @@ export async function upsertMonthlyWorkByKey(
     .upsert(
       { client_id: clientId, year, month, created_by: createdBy ?? null, ...patch, updated_at: new Date().toISOString() },
       { onConflict: 'client_id,year,month' },
+    )
+  if (error) throw error
+}
+
+// ==================== ART. 55 ENTRIES ====================
+
+export async function getArt55Entries(clientId?: string, year?: number, month?: number): Promise<Art55Entry[]> {
+  let q = supabase.from('crm_art55_entries').select('*').order('position')
+  if (clientId) q = q.eq('client_id', clientId)
+  if (year != null) q = q.eq('year', year)
+  if (month != null) q = q.eq('month', month)
+  const { data, error } = await q
+  if (error) throw error
+  return (data ?? []) as Art55Entry[]
+}
+
+export async function getArt55EntriesForPeriod(year: number, months: number[]): Promise<Art55Entry[]> {
+  const { data, error } = await supabase
+    .from('crm_art55_entries')
+    .select('*')
+    .eq('year', year)
+    .in('month', months)
+    .order('position')
+  if (error) throw error
+  return (data ?? []) as Art55Entry[]
+}
+
+export async function addArt55Entry(row: {
+  client_id: string; year: number; month: number;
+  gross_amount?: number; tax_amount?: number; income_type?: string | null;
+  createdBy?: string;
+}): Promise<Art55Entry> {
+  const { data: existing } = await supabase
+    .from('crm_art55_entries')
+    .select('position')
+    .eq('client_id', row.client_id).eq('year', row.year).eq('month', row.month)
+    .order('position', { ascending: false }).limit(1)
+  const pos = (existing?.[0]?.position ?? -1) + 1
+
+  const { data, error } = await supabase
+    .from('crm_art55_entries')
+    .insert([{
+      client_id: row.client_id, year: row.year, month: row.month,
+      gross_amount: row.gross_amount ?? 0,
+      tax_amount: row.tax_amount ?? 0,
+      income_type: row.income_type ?? null,
+      position: pos,
+      created_by: row.createdBy ?? null,
+    }])
+    .select().single()
+  if (error) throw error
+  return data as Art55Entry
+}
+
+export async function updateArt55Entry(id: string, patch: Partial<Art55Entry>): Promise<void> {
+  const { error } = await supabase
+    .from('crm_art55_entries')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteArt55Entry(id: string): Promise<void> {
+  const { error } = await supabase.from('crm_art55_entries').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ==================== ART. 55 QUARTERLY STATUS ====================
+
+export async function getArt55QuarterStatuses(year: number): Promise<Art55QuarterStatus[]> {
+  const { data, error } = await supabase
+    .from('crm_art55_quarter_status').select('*').eq('year', year)
+  if (error) throw error
+  return (data ?? []) as Art55QuarterStatus[]
+}
+
+export async function upsertArt55QuarterStatus(
+  clientId: string, year: number, quarter: number, patch: Partial<Art55QuarterStatus>,
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_art55_quarter_status')
+    .upsert(
+      { client_id: clientId, year, quarter, ...patch, updated_at: new Date().toISOString() },
+      { onConflict: 'client_id,year,quarter' },
     )
   if (error) throw error
 }
