@@ -930,6 +930,15 @@ export async function convertOpportunityToClient(
 
 // ==================== MONTHLY WORK ====================
 
+export async function getMonthlyWorkForYear(year: number): Promise<MonthlyWork[]> {
+  const { data, error } = await supabase
+    .from('crm_monthly_work')
+    .select('*')
+    .eq('year', year)
+  if (error) throw error
+  return (data ?? []) as MonthlyWork[]
+}
+
 export async function getMonthlyWork(year: number, month: number): Promise<MonthlyWork[]> {
   const { data, error } = await supabase
     .from('crm_monthly_work')

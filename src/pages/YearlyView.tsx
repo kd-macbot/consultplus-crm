@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
 import {
   getClients, getColumns, getCellValues, getDropdownOptions,
-  getMonthlyWork, upsertMonthlyWorkByKey, ensureMonthlyRows,
+  getMonthlyWorkForYear, upsertMonthlyWorkByKey, ensureMonthlyRows,
   getArt55EntriesForPeriod, getArt55QuarterStatuses, upsertArt55QuarterStatus,
 } from '../lib/storage'
 import { NOTIFICATION_METHODS, type MonthlyWork, type Client, type Column, type CellValue, type DropdownOption, type Art55Entry, type Art55QuarterStatus } from '../lib/types'
@@ -77,17 +77,12 @@ export function YearlyViewPage() {
       setCells(cvs)
       setDropdowns(dds)
 
-      // Зареждаме ВСИЧКИ месеци от годината (12 заявки на 1 batch)
-      const allMonthly = await Promise.all(
-        Array.from({ length: 12 }, (_, i) => getMonthlyWork(year, i + 1))
-      )
+      // Зареждаме ВСИЧКИ редове за годината с ЕДНА заявка (WHERE year = X)
+      const allRows = await getMonthlyWorkForYear(year)
       const mwMap = new Map<string, Map<number, MonthlyWork>>()
-      allMonthly.forEach((rows, idx) => {
-        const m = idx + 1
-        rows.forEach(r => {
-          if (!mwMap.has(r.client_id)) mwMap.set(r.client_id, new Map())
-          mwMap.get(r.client_id)!.set(m, r)
-        })
+      allRows.forEach(r => {
+        if (!mwMap.has(r.client_id)) mwMap.set(r.client_id, new Map())
+        mwMap.get(r.client_id)!.set(r.month, r)
       })
       setMonthlyByClient(mwMap)
 
