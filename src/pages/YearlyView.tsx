@@ -50,7 +50,7 @@ function masterNumber(clientId: string, col: Column | undefined, cells: CellValu
 
 export function YearlyViewPage() {
   const { user } = useAuth()
-  const [tab, setTab] = useState<'advance' | 'art55'>('advance')
+  const [tab, setTab] = useState<'advance' | 'art55' | 'vat'>('advance')
   const [year, setYear] = useState(new Date().getFullYear())
 
   const [clients, setClients] = useState<Client[]>([])
@@ -157,6 +157,48 @@ export function YearlyViewPage() {
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
   }, [clients, columns, cells, dropdowns, art55Col, art55ByClientMonth, user])
 
+  type VatRow = { client: Client; name: string; months: Map<number, number | null>; totalPay: number; totalRefund: number; net: number }
+  const vatRows = useMemo(() => {
+    const visible = user?.role === 'employee' ? clients.filter(c => c.assigned_to === user.id) : clients
+    return visible
+      .map(c => {
+        const months = new Map<number, number | null>()
+        let totalPay = 0, totalRefund = 0
+        let anyValue = false
+        for (let m = 1; m <= 12; m++) {
+          const v = monthlyByClient.get(c.id)?.get(m)?.result_amount ?? null
+          months.set(m, v)
+          if (v != null) {
+            anyValue = true
+            if (v > 0) totalPay += v
+            else totalRefund += -v
+          }
+        }
+        if (!anyValue) return null
+        return { client: c, name: clientNameOf(c.id, columns, cells), months, totalPay, totalRefund, net: totalPay - totalRefund } as VatRow
+      })
+      .filter((r): r is VatRow => r !== null)
+      .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
+  }, [clients, columns, cells, monthlyByClient, user])
+
+  async function patchResult(clientId: string, month: number, amount: number | null) {
+    await ensureMonthlyRows([clientId], year, month, user?.id)
+    setMonthlyByClient(prev => {
+      const next = new Map(prev)
+      const inner = new Map(next.get(clientId) ?? new Map())
+      const existing = inner.get(month)
+      inner.set(month, { ...(existing ?? { client_id: clientId, year, month } as MonthlyWork), result_amount: amount })
+      next.set(clientId, inner)
+      return next
+    })
+    try {
+      await upsertMonthlyWorkByKey(clientId, year, month, { result_amount: amount }, user?.id)
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при запис')
+      await loadAll()
+    }
+  }
+
   async function patchAmount(clientId: string, month: number, amount: number | null) {
     // Ensure row exists
     await ensureMonthlyRows([clientId], year, month, user?.id)
@@ -198,6 +240,10 @@ export function YearlyViewPage() {
             className={`px-3 py-1.5 text-sm rounded transition ${tab === 'art55' ? 'bg-card shadow-sm text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}>
             Чл. 55 ЗДДФЛ
           </button>
+          <button onClick={() => setTab('vat')}
+            className={`px-3 py-1.5 text-sm rounded transition ${tab === 'vat' ? 'bg-card shadow-sm text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}>
+            ДДС
+          </button>
         </div>
       </div>
 
@@ -207,8 +253,10 @@ export function YearlyViewPage() {
           <div className="p-6 text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Зареждане...</div>
         ) : tab === 'advance' ? (
           <AdvanceTable rows={advanceRows} year={year} canEdit={canEdit} onPatch={patchAmount} />
-        ) : (
+        ) : tab === 'art55' ? (
           <Art55Table rows={art55Rows} year={year} />
+        ) : (
+          <VatTable rows={vatRows} year={year} canEdit={canEdit} onPatch={patchResult} />
         )}
       </div>
     </div>
@@ -363,6 +411,134 @@ function Art55Table({ rows, year }: {
         </tr>
       </tfoot>
     </table>
+  )
+}
+
+function VatTable({ rows, year, canEdit, onPatch }: {
+  rows: { client: Client; name: string; months: Map<number, number | null>; totalPay: number; totalRefund: number; net: number }[]
+  year: number
+  canEdit: boolean
+  onPatch: (clientId: string, month: number, amount: number | null) => Promise<void>
+}) {
+  if (rows.length === 0) {
+    return <div className="p-8 text-center text-muted-foreground">Няма ДДС резултати за {year}. Попълни „Резултат €" в Работен лист.</div>
+  }
+  const totals = useMemoVat(rows)
+  return (
+    <table className="w-full border-collapse min-w-[1400px] text-sm">
+      <thead className="bg-navy text-white sticky top-0 z-10">
+        <tr>
+          <th className="px-3 py-2 text-left text-xs uppercase tracking-wider whitespace-nowrap sticky left-0 bg-navy z-20">Фирма</th>
+          {MONTH_SHORT.map((_, i) => (
+            <th key={i} className="px-2 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap">{year}-{String(i + 1).padStart(2, '0')}</th>
+          ))}
+          <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap bg-emerald-700" title="Сума на месеците за внасяне">За внасяне</th>
+          <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap bg-rose-700" title="Сума на месеците за възстановяване">За възстан.</th>
+          <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap">Нето</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => {
+          const evenBg = i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
+          return (
+            <tr key={r.client.id} className={`border-b border-light/50 hover:bg-gold/5 ${evenBg}`}>
+              <td className={`px-3 py-1 font-medium whitespace-nowrap sticky left-0 z-10 ${evenBg}`}>{r.name}</td>
+              {MONTH_SHORT.map((_, m) => {
+                const month = m + 1
+                const v = r.months.get(month) ?? null
+                return (
+                  <td key={m} className="px-1 py-0.5 text-right">
+                    <VatCell value={v} disabled={!canEdit} onSave={x => onPatch(r.client.id, month, x)} />
+                  </td>
+                )
+              })}
+              <td className="px-3 py-1 text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">{fmt(r.totalPay)}</td>
+              <td className="px-3 py-1 text-right tabular-nums font-semibold text-rose-600 dark:text-rose-400">{fmt(r.totalRefund)}</td>
+              <td className={`px-3 py-1 text-right tabular-nums font-semibold ${r.net >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {r.net === 0 ? '—' : (r.net > 0 ? fmt(r.net) : `-${fmt(-r.net)}`)}
+              </td>
+            </tr>
+          )
+        })}
+      </tbody>
+      <tfoot className="bg-muted/50">
+        <tr className="font-semibold border-t-2 border-border">
+          <td className="px-3 py-2 sticky left-0 bg-muted/50 z-10">ОБЩО</td>
+          {MONTH_SHORT.map((_, m) => {
+            const t = totals.months.get(m + 1) ?? { pay: 0, refund: 0 }
+            const net = t.pay - t.refund
+            return (
+              <td key={m} className={`px-2 py-2 text-right tabular-nums ${net > 0 ? 'text-emerald-700 dark:text-emerald-400' : net < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'}`}>
+                {net === 0 ? '' : net > 0 ? fmt(net) : `-${fmt(-net)}`}
+              </td>
+            )
+          })}
+          <td className="px-3 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{fmt(totals.totalPay)}</td>
+          <td className="px-3 py-2 text-right tabular-nums text-rose-600 dark:text-rose-400">{fmt(totals.totalRefund)}</td>
+          <td className={`px-3 py-2 text-right tabular-nums ${totals.totalPay - totals.totalRefund >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+            {(() => { const n = totals.totalPay - totals.totalRefund; return n === 0 ? '—' : n > 0 ? fmt(n) : `-${fmt(-n)}` })()}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  )
+}
+
+function useMemoVat(rows: { months: Map<number, number | null>; totalPay: number; totalRefund: number }[]) {
+  return useMemo(() => {
+    const months = new Map<number, { pay: number; refund: number }>()
+    let totalPay = 0, totalRefund = 0
+    rows.forEach(r => {
+      r.months.forEach((v, m) => {
+        if (v == null) return
+        const acc = months.get(m) ?? { pay: 0, refund: 0 }
+        if (v > 0) acc.pay += v
+        else acc.refund += -v
+        months.set(m, acc)
+      })
+      totalPay += r.totalPay
+      totalRefund += r.totalRefund
+    })
+    return { months, totalPay, totalRefund }
+  }, [rows])
+}
+
+function VatCell({ value, disabled, onSave }: { value: number | null; disabled?: boolean; onSave: (v: number | null) => void }) {
+  const [draft, setDraft] = useState(value?.toString() ?? '')
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => { setDraft(value?.toString() ?? '') }, [value])
+  function commit() {
+    const v = draft.trim()
+    if (v === '' && value == null) return
+    if (v === '') { onSave(null); return }
+    const num = parseFloat(v.replace(',', '.'))
+    if (isNaN(num)) { setDraft(value?.toString() ?? ''); return }
+    if (num === value) return
+    onSave(num)
+  }
+  const cls = value == null || value === 0
+    ? 'border-transparent bg-transparent text-muted-foreground/60'
+    : value > 0
+      ? 'border-emerald-300 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300 font-semibold'
+      : 'border-rose-300 dark:border-rose-700/60 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 font-semibold'
+  const displayDraft = (() => {
+    if (draft === '' || value == null) return draft
+    const n = parseFloat(draft.replace(',', '.'))
+    if (isNaN(n)) return draft
+    return n < 0 ? `-${(-n).toString()}` : draft
+  })()
+  return (
+    <input
+      ref={ref}
+      disabled={disabled}
+      value={displayDraft}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') ref.current?.blur(); if (e.key === 'Escape') { setDraft(value?.toString() ?? ''); ref.current?.blur() } }}
+      placeholder="—"
+      title="+ за внасяне, − за възстановяване"
+      className={`h-7 px-1.5 text-xs text-right border rounded tabular-nums w-20 transition hover:border-border focus:border-primary focus:bg-card ${cls}`}
+    />
   )
 }
 
