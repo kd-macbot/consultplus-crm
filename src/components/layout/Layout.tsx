@@ -11,11 +11,11 @@ import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[] }
-type NavSection = { title: string; items: NavItem[] }
+type NavSection = { title: string | null; items: NavItem[] }
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: 'Преглед',
+    title: null,  // Табло — без заглавие, висне самостоятелно отгоре
     items: [
       { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
     ],
@@ -120,10 +120,12 @@ export function Layout() {
             const visibleItems = section.items.filter(item => user && item.roles.includes(user.role))
             if (visibleItems.length === 0) return null
             return (
-              <div key={section.title} className={secIdx > 0 ? 'mt-4' : ''}>
-                <p className="px-3 py-1 text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-1">
-                  {section.title}
-                </p>
+              <div key={section.title ?? `s${secIdx}`} className={secIdx > 0 ? 'mt-2' : ''}>
+                {section.title && (
+                  <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold text-white/30 uppercase tracking-widest">
+                    {section.title}
+                  </p>
+                )}
                 {visibleItems.map(item => {
                   const Icon = item.icon
                   return (
@@ -133,7 +135,7 @@ export function Layout() {
                       end={item.to === '/'}
                       onClick={() => setSidebarOpen(false)}
                       className={({ isActive }) => cn(
-                        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 group',
+                        'flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-all duration-150 group',
                         isActive
                           ? 'bg-white/15 text-white font-medium'
                           : 'text-white/60 hover:bg-white/8 hover:text-white'
