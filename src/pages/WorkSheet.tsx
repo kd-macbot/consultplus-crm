@@ -43,6 +43,16 @@ const STATUS_BADGE: Record<string, string> = {
   'НУЛЕВО': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
 }
 
+/**
+ * „Без дейност" и „Без ДДС" клиенти нямат месечна работа → не се показват в
+ * Работен лист и не са опция във филтъра. Сравнението е case-insensitive,
+ * за да хване „БЕЗ ДЕЙНОСТ", „Без дейност" и т.н.
+ */
+function isHiddenStatus(s: string): boolean {
+  const norm = s.toLowerCase().trim()
+  return norm.includes('без дейност') || norm.includes('без ддс')
+}
+
 type Relevance = 'due' | 'optional' | 'na'
 
 /** Авансова вноска: relevance за дадения месец според профила на клиента */
@@ -112,9 +122,20 @@ export function WorkSheetPage() {
       setCells(cvs)
       setDropdowns(dds)
 
-      // 2. Уверяваме се, че всеки клиент има ред за избрания месец
-      const ids = cls.map(c => c.id)
-      const created = await ensureMonthlyRows(ids, year, month, user?.id)
+      // 2. Уверяваме се, че всеки активен клиент има ред за избрания месец.
+      // „Без дейност" / „Без ДДС" се пропускат — те не участват в работата.
+      const statusColLocal = cols.find(c => c.name === 'Статус')
+      const activeIds = cls
+        .filter(c => {
+          if (!statusColLocal) return true
+          const cell = cvs.find(cv => cv.client_id === c.id && cv.column_id === statusColLocal.id)
+          const status = cell?.value_dropdown
+            ? dds.find(d => d.id === cell.value_dropdown)?.value ?? ''
+            : ''
+          return !isHiddenStatus(status)
+        })
+        .map(c => c.id)
+      const created = await ensureMonthlyRows(activeIds, year, month, user?.id)
       if (created > 0) toast.info(`Създадени ${created} нови реда за ${MONTH_NAMES[month - 1]} ${year}`)
 
       // 3. Зареждаме редовете за избрания месец
@@ -140,10 +161,12 @@ export function WorkSheetPage() {
   const advanceCol = useMemo(() => columns.find(c => c.name === 'Авансови вноски'), [columns])
   const art55Col = useMemo(() => columns.find(c => c.name === 'Чл. 55 ЗДДФЛ'), [columns])
 
-  // Списък със стойности на статуса (за филтър)
+  // Списък със стойности на статуса (за филтър). „Без дейност" и „Без ДДС"
+  // не се показват — тези клиенти изобщо не участват в Работен лист.
   const statusOptions = useMemo(() => {
     if (!statusCol) return [] as string[]
     return [...new Set(dropdowns.filter(d => d.column_id === statusCol.id).map(d => d.value))]
+      .filter(v => !isHiddenStatus(v))
   }, [dropdowns, statusCol])
 
   // Подготвени клиенти за render: name, status, monthly row
@@ -161,6 +184,7 @@ export function WorkSheetPage() {
         art55: masterValue(c.id, art55Col, cells, dropdowns),
         work: rows.get(c.id),
       }))
+      .filter(r => !isHiddenStatus(r.status))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
   }, [clients, columns, cells, dropdowns, statusCol, advanceCol, art55Col, rows, user])
 
