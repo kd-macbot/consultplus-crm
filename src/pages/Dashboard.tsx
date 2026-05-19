@@ -129,7 +129,7 @@ export function Dashboard() {
                 <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent className="px-5 pb-4">
-                <p className="text-3xl font-bold text-navy">{stats.total}</p>
+                <p className="text-3xl font-bold text-foreground">{stats.total}</p>
               </CardContent>
             </Card>
             <Card>
@@ -147,14 +147,14 @@ export function Dashboard() {
                 <BookUser className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent className="px-5 pb-4">
-                <p className="text-3xl font-bold text-navy">{stats.contactsCount}</p>
+                <p className="text-3xl font-bold text-foreground">{stats.contactsCount}</p>
               </CardContent>
             </Card>
           </div>
 
           <Card>
             <CardHeader className="px-5 pt-5 pb-3">
-              <CardTitle className="text-base font-semibold text-navy">Клиенти по статус</CardTitle>
+              <CardTitle className="text-base font-semibold text-foreground">Клиенти по статус</CardTitle>
             </CardHeader>
             <CardContent className="px-5 pb-5">
               <div className="space-y-3">
@@ -184,7 +184,7 @@ export function Dashboard() {
                 <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent className="px-5 pb-4">
-                <p className="text-3xl font-bold text-navy">{stats.total}</p>
+                <p className="text-3xl font-bold text-foreground">{stats.total}</p>
               </CardContent>
             </Card>
             <Card>
@@ -202,7 +202,7 @@ export function Dashboard() {
                 <BookUser className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent className="px-5 pb-4">
-                <p className="text-3xl font-bold text-navy">{stats.contactsCount}</p>
+                <p className="text-3xl font-bold text-foreground">{stats.contactsCount}</p>
               </CardContent>
             </Card>
             <Card>
@@ -257,7 +257,7 @@ export function Dashboard() {
             {/* Clients by status */}
             <Card>
               <CardHeader className="px-5 pt-5 pb-3">
-                <CardTitle className="text-base font-semibold text-navy">Клиенти по статус</CardTitle>
+                <CardTitle className="text-base font-semibold text-foreground">Клиенти по статус</CardTitle>
               </CardHeader>
               <CardContent className="px-5 pb-5">
                 <div className="space-y-3">
@@ -277,7 +277,7 @@ export function Dashboard() {
             {/* Honorar by status */}
             <Card>
               <CardHeader className="px-5 pt-5 pb-3">
-                <CardTitle className="text-base font-semibold text-navy">Хонорар по статус</CardTitle>
+                <CardTitle className="text-base font-semibold text-foreground">Хонорар по статус</CardTitle>
               </CardHeader>
               <CardContent className="px-5 pb-5">
                 <div className="space-y-3">
@@ -298,7 +298,7 @@ export function Dashboard() {
           {/* Honorar by accountant */}
           <Card>
             <CardHeader className="px-5 pt-5 pb-3">
-              <CardTitle className="text-base font-semibold text-navy">Хонорар по счетоводител</CardTitle>
+              <CardTitle className="text-base font-semibold text-foreground">Хонорар по счетоводител</CardTitle>
             </CardHeader>
             <CardContent className="px-5 pb-5">
               <div className="space-y-3">

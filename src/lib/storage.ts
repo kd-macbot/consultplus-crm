@@ -918,5 +918,12 @@ export async function convertOpportunityToClient(
     stage: 'Печеливш',
   })
 
+  // 6. Audit log
+  await logAudit(userId, userName ?? '', 'convert_opportunity', 'opportunity', opp.id, {
+    client_name: opp.name,
+    new_value: client.id,
+    metadata: { eik: opp.eik },
+  })
+
   return { clientId: client.id }
 }
