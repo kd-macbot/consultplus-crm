@@ -10,18 +10,41 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 
-const NAV_ITEMS = [
-  { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
-  { to: '/clients', label: 'Клиенти', icon: Users, roles: ['admin', 'manager', 'employee'] },
-  { to: '/worksheet', label: 'Работен лист', icon: ClipboardCheck, roles: ['admin', 'manager', 'employee'] },
-  { to: '/yearly', label: 'Годишен изглед', icon: CalendarRange, roles: ['admin', 'manager', 'employee'] },
-  { to: '/opportunities', label: 'Възможности', icon: Target, roles: ['admin', 'manager', 'employee'] },
-  { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
-  { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },
-  { to: '/expenses', label: 'Разходи', icon: Wallet, roles: ['admin'] },
-  { to: '/subscriptions', label: 'Абонаменти', icon: CreditCard, roles: ['admin'] },
-  { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin'] },
-  { to: '/admin', label: 'Настройки', icon: Settings, roles: ['admin', 'manager'] },
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[] }
+type NavSection = { title: string; items: NavItem[] }
+
+const NAV_SECTIONS: NavSection[] = [
+  {
+    title: 'Преглед',
+    items: [
+      { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
+    ],
+  },
+  {
+    title: 'Ежедневна работа',
+    items: [
+      { to: '/clients', label: 'Клиенти', icon: Users, roles: ['admin', 'manager', 'employee'] },
+      { to: '/worksheet', label: 'Работен лист', icon: ClipboardCheck, roles: ['admin', 'manager', 'employee'] },
+      { to: '/yearly', label: 'Годишен изглед', icon: CalendarRange, roles: ['admin', 'manager', 'employee'] },
+      { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
+    ],
+  },
+  {
+    title: 'Бизнес',
+    items: [
+      { to: '/opportunities', label: 'Възможности', icon: Target, roles: ['admin', 'manager', 'employee'] },
+      { to: '/subscriptions', label: 'Абонаменти', icon: CreditCard, roles: ['admin'] },
+      { to: '/expenses', label: 'Разходи', icon: Wallet, roles: ['admin'] },
+    ],
+  },
+  {
+    title: 'Администрация',
+    items: [
+      { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },
+      { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin'] },
+      { to: '/admin', label: 'Настройки', icon: Settings, roles: ['admin', 'manager'] },
+    ],
+  },
 ]
 
 const roleLabel: Record<string, string> = {
@@ -93,32 +116,40 @@ export function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          <p className="px-3 py-1 text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-1">
-            Меню
-          </p>
-          {NAV_ITEMS.filter(item => user && item.roles.includes(user.role)).map(item => {
-            const Icon = item.icon
+          {NAV_SECTIONS.map((section, secIdx) => {
+            const visibleItems = section.items.filter(item => user && item.roles.includes(user.role))
+            if (visibleItems.length === 0) return null
             return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                onClick={() => setSidebarOpen(false)}
-                className={({ isActive }) => cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 group',
-                  isActive
-                    ? 'bg-white/15 text-white font-medium'
-                    : 'text-white/60 hover:bg-white/8 hover:text-white'
-                )}
-              >
-                {({ isActive }) => (
-                  <>
-                    <Icon className={cn('h-4 w-4 shrink-0 transition-colors', isActive ? 'text-white' : 'text-white/50 group-hover:text-white/80')} />
-                    <span className="flex-1">{item.label}</span>
-                    {isActive && <ChevronRight className="h-3 w-3 text-white/40" />}
-                  </>
-                )}
-              </NavLink>
+              <div key={section.title} className={secIdx > 0 ? 'mt-4' : ''}>
+                <p className="px-3 py-1 text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-1">
+                  {section.title}
+                </p>
+                {visibleItems.map(item => {
+                  const Icon = item.icon
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.to === '/'}
+                      onClick={() => setSidebarOpen(false)}
+                      className={({ isActive }) => cn(
+                        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 group',
+                        isActive
+                          ? 'bg-white/15 text-white font-medium'
+                          : 'text-white/60 hover:bg-white/8 hover:text-white'
+                      )}
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <Icon className={cn('h-4 w-4 shrink-0 transition-colors', isActive ? 'text-white' : 'text-white/50 group-hover:text-white/80')} />
+                          <span className="flex-1">{item.label}</span>
+                          {isActive && <ChevronRight className="h-3 w-3 text-white/40" />}
+                        </>
+                      )}
+                    </NavLink>
+                  )
+                })}
+              </div>
             )
           })}
         </nav>

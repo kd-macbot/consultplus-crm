@@ -50,7 +50,7 @@ function masterNumber(clientId: string, col: Column | undefined, cells: CellValu
 
 export function YearlyViewPage() {
   const { user } = useAuth()
-  const [tab, setTab] = useState<'advance' | 'art55' | 'vat'>('advance')
+  const [tab, setTab] = useState<'advance' | 'art55' | 'vat'>('vat')
   const [year, setYear] = useState(new Date().getFullYear())
 
   const [clients, setClients] = useState<Client[]>([])
@@ -271,6 +271,10 @@ export function YearlyViewPage() {
           </div>
         </div>
         <div className="flex bg-muted rounded-md p-0.5">
+          <button onClick={() => setTab('vat')}
+            className={`px-3 py-1.5 text-sm rounded transition ${tab === 'vat' ? 'bg-card shadow-sm text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}>
+            ДДС
+          </button>
           <button onClick={() => setTab('advance')}
             className={`px-3 py-1.5 text-sm rounded transition ${tab === 'advance' ? 'bg-card shadow-sm text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}>
             Авансови вноски
@@ -278,10 +282,6 @@ export function YearlyViewPage() {
           <button onClick={() => setTab('art55')}
             className={`px-3 py-1.5 text-sm rounded transition ${tab === 'art55' ? 'bg-card shadow-sm text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}>
             Чл. 55 ЗДДФЛ
-          </button>
-          <button onClick={() => setTab('vat')}
-            className={`px-3 py-1.5 text-sm rounded transition ${tab === 'vat' ? 'bg-card shadow-sm text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}>
-            ДДС
           </button>
         </div>
       </div>
