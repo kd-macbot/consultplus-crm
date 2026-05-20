@@ -519,12 +519,21 @@ function VatTable({ rows, year, canEdit, onPatch }: {
   canEdit: boolean
   onPatch: (clientId: string, month: number, amount: number | null) => Promise<void>
 }) {
-  // Маркирани месеци за бърза сума (могат да са непоредни).
-  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set())
-  const hasSelection = selectedMonths.size > 0
+  // Режим „Сумирай": избираш клетки от ЕДИН ред (един клиент) и виждаш сумата
+  // само за него. Изборът се ограничава до един клиент — клик в друг ред
+  // започва нов избор.
+  const [sumMode, setSumMode] = useState(false)
+  const [selClient, setSelClient] = useState<string | null>(null)
+  const [selMonths, setSelMonths] = useState<Set<number>>(new Set())
 
-  function toggleMonth(month: number) {
-    setSelectedMonths(prev => {
+  function clickCell(clientId: string, month: number) {
+    if (selClient !== clientId) {
+      // Нов клиент → започваме нов избор само с този месец.
+      setSelClient(clientId)
+      setSelMonths(new Set([month]))
+      return
+    }
+    setSelMonths(prev => {
       const next = new Set(prev)
       if (next.has(month)) next.delete(month)
       else next.add(month)
@@ -532,57 +541,51 @@ function VatTable({ rows, year, canEdit, onPatch }: {
     })
   }
 
+  function clearSel() { setSelClient(null); setSelMonths(new Set()) }
+
   if (rows.length === 0) {
     return <div className="p-8 text-center text-muted-foreground">Няма ДДС резултати за {year}. Попълни „Резултат €" в Работен лист.</div>
   }
   const totals = useMemoVat(rows)
 
-  // Сума на маркираните месеци (нето) — общо за всички видими редове.
-  const selectedNet = (() => {
-    if (!hasSelection) return 0
-    let s = 0
-    rows.forEach(r => selectedMonths.forEach(m => { s += r.months.get(m) ?? 0 }))
-    return s
-  })()
-  const selectedLabel = [...selectedMonths].sort((a, b) => a - b).map(m => MONTH_SHORT[m - 1]).join(' + ')
+  const selRow = selClient ? rows.find(r => r.client.id === selClient) : null
+  const selNet = selRow ? [...selMonths].reduce((s, m) => s + (selRow.months.get(m) ?? 0), 0) : 0
+  const selLabel = [...selMonths].sort((a, b) => a - b).map(m => MONTH_SHORT[m - 1]).join(' + ')
 
   return (
     <>
-      {hasSelection && (
-        <div className="px-3 md:px-5 py-2 bg-sky-50 dark:bg-sky-950/40 border-b border-sky-200 dark:border-sky-800 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-          <span className="text-xs uppercase tracking-wider text-sky-700 dark:text-sky-300 font-semibold">Маркирани:</span>
-          <span className="font-medium text-foreground">{selectedLabel}</span>
-          <span className="ml-auto">
-            Обща сума:&nbsp;
-            <strong className={selectedNet >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
-              {selectedNet === 0 ? '0,00' : selectedNet > 0 ? fmt(selectedNet) : `-${fmt(-selectedNet)}`} €
-            </strong>
-            <span className="text-xs text-muted-foreground ml-1">{selectedNet >= 0 ? '(за внасяне)' : '(за възстановяване)'}</span>
-          </span>
-          <button onClick={() => setSelectedMonths(new Set())} className="text-xs text-sky-700 dark:text-sky-300 hover:underline">
-            изчисти
-          </button>
-        </div>
-      )}
+      {/* Toolbar */}
+      <div className="px-3 md:px-5 py-2 border-b border-border bg-card flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <button
+          onClick={() => { setSumMode(m => !m); clearSel() }}
+          className={`px-3 py-1 rounded-md text-xs font-semibold transition ${sumMode ? 'bg-sky-600 text-white' : 'bg-muted text-foreground hover:bg-muted/70'}`}>
+          🧮 Сумирай месеци {sumMode ? '(вкл.)' : ''}
+        </button>
+        {sumMode && !selClient && (
+          <span className="text-xs text-muted-foreground">Кликни клетки от един ред, за да ги събереш</span>
+        )}
+        {sumMode && selRow && (
+          <>
+            <span className="font-medium text-foreground">{selRow.name}</span>
+            <span className="text-muted-foreground">{selLabel || '—'}</span>
+            <span className="ml-auto">
+              Сума:&nbsp;
+              <strong className={selNet >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                {selNet === 0 ? '0,00' : selNet > 0 ? fmt(selNet) : `-${fmt(-selNet)}`} €
+              </strong>
+              <span className="text-xs text-muted-foreground ml-1">{selNet >= 0 ? '(за внасяне)' : '(за възстановяване)'}</span>
+            </span>
+            <button onClick={clearSel} className="text-xs text-sky-700 dark:text-sky-300 hover:underline">изчисти</button>
+          </>
+        )}
+      </div>
       <table className="w-full border-collapse min-w-[1400px] text-sm">
         <thead className="bg-navy text-white sticky top-0 z-10">
           <tr>
             <th className="px-3 py-2 text-left text-xs uppercase tracking-wider whitespace-nowrap sticky left-0 bg-navy z-20">Фирма</th>
-            {MONTH_SHORT.map((_, i) => {
-              const month = i + 1
-              const sel = selectedMonths.has(month)
-              return (
-                <th key={i}
-                  onClick={() => toggleMonth(month)}
-                  title="Кликни за маркиране"
-                  className={`px-2 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap cursor-pointer select-none transition ${sel ? 'bg-sky-600' : 'hover:bg-navy-light'}`}>
-                  {sel ? '☑ ' : ''}{year}-{String(month).padStart(2, '0')}
-                </th>
-              )
-            })}
-            {hasSelection && (
-              <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap bg-sky-700">Избрани Σ</th>
-            )}
+            {MONTH_SHORT.map((_, i) => (
+              <th key={i} className="px-2 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap">{year}-{String(i + 1).padStart(2, '0')}</th>
+            ))}
             <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap bg-emerald-700" title="Сума на месеците за внасяне">За внасяне</th>
             <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap bg-rose-700" title="Сума на месеците за възстановяване">За възстан.</th>
             <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap">Нето</th>
@@ -591,25 +594,43 @@ function VatTable({ rows, year, canEdit, onPatch }: {
         <tbody>
           {rows.map((r, i) => {
             const evenBg = i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
-            const selNet = hasSelection ? [...selectedMonths].reduce((s, m) => s + (r.months.get(m) ?? 0), 0) : 0
+            const isSelRow = sumMode && selClient === r.client.id
+            const rowSelNet = isSelRow ? [...selMonths].reduce((s, m) => s + (r.months.get(m) ?? 0), 0) : 0
             return (
-              <tr key={r.client.id} className={`border-b border-light/50 hover:bg-gold/5 ${evenBg}`}>
-                <td className={`px-3 py-1 font-medium whitespace-nowrap sticky left-0 z-10 ${evenBg}`}>{r.name}</td>
+              <tr key={r.client.id} className={`border-b border-light/50 hover:bg-gold/5 ${evenBg} ${isSelRow ? 'ring-1 ring-sky-400' : ''}`}>
+                <td className={`px-3 py-1 font-medium whitespace-nowrap sticky left-0 z-10 ${evenBg}`}>
+                  {r.name}
+                  {isSelRow && selMonths.size > 0 && (
+                    <span className={`ml-2 text-xs font-bold ${rowSelNet >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      Σ {rowSelNet > 0 ? fmt(rowSelNet) : rowSelNet < 0 ? `-${fmt(-rowSelNet)}` : '0,00'} €
+                    </span>
+                  )}
+                </td>
                 {MONTH_SHORT.map((_, m) => {
                   const month = m + 1
                   const v = r.months.get(month) ?? null
-                  const sel = selectedMonths.has(month)
+                  const cellSel = isSelRow && selMonths.has(month)
+                  if (sumMode) {
+                    // В режим Сумирай клетките са кликваеми (не се редактират).
+                    const cls = v == null || v === 0
+                      ? 'text-muted-foreground/50'
+                      : v > 0 ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-rose-700 dark:text-rose-300 font-semibold'
+                    return (
+                      <td key={m} className="px-1 py-0.5 text-right">
+                        <button
+                          onClick={() => clickCell(r.client.id, month)}
+                          className={`w-20 h-7 px-1.5 text-xs text-right tabular-nums rounded transition ${cellSel ? 'bg-sky-200 dark:bg-sky-800/60 ring-1 ring-sky-500' : 'hover:bg-sky-50 dark:hover:bg-sky-900/20'} ${cls}`}>
+                          {v == null ? '—' : v > 0 ? fmt(v) : `-${fmt(-v)}`}
+                        </button>
+                      </td>
+                    )
+                  }
                   return (
-                    <td key={m} className={`px-1 py-0.5 text-right ${sel ? 'bg-sky-50 dark:bg-sky-900/20' : ''}`}>
+                    <td key={m} className="px-1 py-0.5 text-right">
                       <VatCell value={v} disabled={!canEdit} onSave={x => onPatch(r.client.id, month, x)} />
                     </td>
                   )
                 })}
-                {hasSelection && (
-                  <td className={`px-3 py-1 text-right tabular-nums font-semibold bg-sky-50 dark:bg-sky-900/20 ${selNet >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                    {selNet === 0 ? '—' : selNet > 0 ? fmt(selNet) : `-${fmt(-selNet)}`}
-                  </td>
-                )}
                 <td className="px-3 py-1 text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">{fmt(r.totalPay)}</td>
                 <td className="px-3 py-1 text-right tabular-nums font-semibold text-rose-600 dark:text-rose-400">{fmt(r.totalRefund)}</td>
                 <td className={`px-3 py-1 text-right tabular-nums font-semibold ${r.net >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
@@ -625,18 +646,12 @@ function VatTable({ rows, year, canEdit, onPatch }: {
             {MONTH_SHORT.map((_, m) => {
               const t = totals.months.get(m + 1) ?? { pay: 0, refund: 0 }
               const net = t.pay - t.refund
-              const sel = selectedMonths.has(m + 1)
               return (
-                <td key={m} className={`px-2 py-2 text-right tabular-nums ${sel ? 'bg-sky-100 dark:bg-sky-900/30' : ''} ${net > 0 ? 'text-emerald-700 dark:text-emerald-400' : net < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'}`}>
+                <td key={m} className={`px-2 py-2 text-right tabular-nums ${net > 0 ? 'text-emerald-700 dark:text-emerald-400' : net < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'}`}>
                   {net === 0 ? '' : net > 0 ? fmt(net) : `-${fmt(-net)}`}
                 </td>
               )
             })}
-            {hasSelection && (
-              <td className={`px-3 py-2 text-right tabular-nums bg-sky-100 dark:bg-sky-900/30 ${selectedNet >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                {selectedNet === 0 ? '—' : selectedNet > 0 ? fmt(selectedNet) : `-${fmt(-selectedNet)}`}
-              </td>
-            )}
             <td className="px-3 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{fmt(totals.totalPay)}</td>
             <td className="px-3 py-2 text-right tabular-nums text-rose-600 dark:text-rose-400">{fmt(totals.totalRefund)}</td>
             <td className={`px-3 py-2 text-right tabular-nums ${totals.totalPay - totals.totalRefund >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
