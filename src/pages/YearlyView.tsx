@@ -519,67 +519,133 @@ function VatTable({ rows, year, canEdit, onPatch }: {
   canEdit: boolean
   onPatch: (clientId: string, month: number, amount: number | null) => Promise<void>
 }) {
+  // Маркирани месеци за бърза сума (могат да са непоредни).
+  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set())
+  const hasSelection = selectedMonths.size > 0
+
+  function toggleMonth(month: number) {
+    setSelectedMonths(prev => {
+      const next = new Set(prev)
+      if (next.has(month)) next.delete(month)
+      else next.add(month)
+      return next
+    })
+  }
+
   if (rows.length === 0) {
     return <div className="p-8 text-center text-muted-foreground">Няма ДДС резултати за {year}. Попълни „Резултат €" в Работен лист.</div>
   }
   const totals = useMemoVat(rows)
+
+  // Сума на маркираните месеци (нето) — общо за всички видими редове.
+  const selectedNet = (() => {
+    if (!hasSelection) return 0
+    let s = 0
+    rows.forEach(r => selectedMonths.forEach(m => { s += r.months.get(m) ?? 0 }))
+    return s
+  })()
+  const selectedLabel = [...selectedMonths].sort((a, b) => a - b).map(m => MONTH_SHORT[m - 1]).join(' + ')
+
   return (
-    <table className="w-full border-collapse min-w-[1400px] text-sm">
-      <thead className="bg-navy text-white sticky top-0 z-10">
-        <tr>
-          <th className="px-3 py-2 text-left text-xs uppercase tracking-wider whitespace-nowrap sticky left-0 bg-navy z-20">Фирма</th>
-          {MONTH_SHORT.map((_, i) => (
-            <th key={i} className="px-2 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap">{year}-{String(i + 1).padStart(2, '0')}</th>
-          ))}
-          <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap bg-emerald-700" title="Сума на месеците за внасяне">За внасяне</th>
-          <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap bg-rose-700" title="Сума на месеците за възстановяване">За възстан.</th>
-          <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap">Нето</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r, i) => {
-          const evenBg = i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
-          return (
-            <tr key={r.client.id} className={`border-b border-light/50 hover:bg-gold/5 ${evenBg}`}>
-              <td className={`px-3 py-1 font-medium whitespace-nowrap sticky left-0 z-10 ${evenBg}`}>{r.name}</td>
-              {MONTH_SHORT.map((_, m) => {
-                const month = m + 1
-                const v = r.months.get(month) ?? null
-                return (
-                  <td key={m} className="px-1 py-0.5 text-right">
-                    <VatCell value={v} disabled={!canEdit} onSave={x => onPatch(r.client.id, month, x)} />
-                  </td>
-                )
-              })}
-              <td className="px-3 py-1 text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">{fmt(r.totalPay)}</td>
-              <td className="px-3 py-1 text-right tabular-nums font-semibold text-rose-600 dark:text-rose-400">{fmt(r.totalRefund)}</td>
-              <td className={`px-3 py-1 text-right tabular-nums font-semibold ${r.net >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                {r.net === 0 ? '—' : (r.net > 0 ? fmt(r.net) : `-${fmt(-r.net)}`)}
-              </td>
-            </tr>
-          )
-        })}
-      </tbody>
-      <tfoot className="bg-muted/50">
-        <tr className="font-semibold border-t-2 border-border">
-          <td className="px-3 py-2 sticky left-0 bg-muted/50 z-10">ОБЩО</td>
-          {MONTH_SHORT.map((_, m) => {
-            const t = totals.months.get(m + 1) ?? { pay: 0, refund: 0 }
-            const net = t.pay - t.refund
+    <>
+      {hasSelection && (
+        <div className="px-3 md:px-5 py-2 bg-sky-50 dark:bg-sky-950/40 border-b border-sky-200 dark:border-sky-800 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <span className="text-xs uppercase tracking-wider text-sky-700 dark:text-sky-300 font-semibold">Маркирани:</span>
+          <span className="font-medium text-foreground">{selectedLabel}</span>
+          <span className="ml-auto">
+            Обща сума:&nbsp;
+            <strong className={selectedNet >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+              {selectedNet === 0 ? '0,00' : selectedNet > 0 ? fmt(selectedNet) : `-${fmt(-selectedNet)}`} €
+            </strong>
+            <span className="text-xs text-muted-foreground ml-1">{selectedNet >= 0 ? '(за внасяне)' : '(за възстановяване)'}</span>
+          </span>
+          <button onClick={() => setSelectedMonths(new Set())} className="text-xs text-sky-700 dark:text-sky-300 hover:underline">
+            изчисти
+          </button>
+        </div>
+      )}
+      <table className="w-full border-collapse min-w-[1400px] text-sm">
+        <thead className="bg-navy text-white sticky top-0 z-10">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs uppercase tracking-wider whitespace-nowrap sticky left-0 bg-navy z-20">Фирма</th>
+            {MONTH_SHORT.map((_, i) => {
+              const month = i + 1
+              const sel = selectedMonths.has(month)
+              return (
+                <th key={i}
+                  onClick={() => toggleMonth(month)}
+                  title="Кликни за маркиране"
+                  className={`px-2 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap cursor-pointer select-none transition ${sel ? 'bg-sky-600' : 'hover:bg-navy-light'}`}>
+                  {sel ? '☑ ' : ''}{year}-{String(month).padStart(2, '0')}
+                </th>
+              )
+            })}
+            {hasSelection && (
+              <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap bg-sky-700">Избрани Σ</th>
+            )}
+            <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap bg-emerald-700" title="Сума на месеците за внасяне">За внасяне</th>
+            <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap bg-rose-700" title="Сума на месеците за възстановяване">За възстан.</th>
+            <th className="px-3 py-2 text-right text-xs uppercase tracking-wider whitespace-nowrap">Нето</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const evenBg = i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
+            const selNet = hasSelection ? [...selectedMonths].reduce((s, m) => s + (r.months.get(m) ?? 0), 0) : 0
             return (
-              <td key={m} className={`px-2 py-2 text-right tabular-nums ${net > 0 ? 'text-emerald-700 dark:text-emerald-400' : net < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'}`}>
-                {net === 0 ? '' : net > 0 ? fmt(net) : `-${fmt(-net)}`}
-              </td>
+              <tr key={r.client.id} className={`border-b border-light/50 hover:bg-gold/5 ${evenBg}`}>
+                <td className={`px-3 py-1 font-medium whitespace-nowrap sticky left-0 z-10 ${evenBg}`}>{r.name}</td>
+                {MONTH_SHORT.map((_, m) => {
+                  const month = m + 1
+                  const v = r.months.get(month) ?? null
+                  const sel = selectedMonths.has(month)
+                  return (
+                    <td key={m} className={`px-1 py-0.5 text-right ${sel ? 'bg-sky-50 dark:bg-sky-900/20' : ''}`}>
+                      <VatCell value={v} disabled={!canEdit} onSave={x => onPatch(r.client.id, month, x)} />
+                    </td>
+                  )
+                })}
+                {hasSelection && (
+                  <td className={`px-3 py-1 text-right tabular-nums font-semibold bg-sky-50 dark:bg-sky-900/20 ${selNet >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    {selNet === 0 ? '—' : selNet > 0 ? fmt(selNet) : `-${fmt(-selNet)}`}
+                  </td>
+                )}
+                <td className="px-3 py-1 text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">{fmt(r.totalPay)}</td>
+                <td className="px-3 py-1 text-right tabular-nums font-semibold text-rose-600 dark:text-rose-400">{fmt(r.totalRefund)}</td>
+                <td className={`px-3 py-1 text-right tabular-nums font-semibold ${r.net >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                  {r.net === 0 ? '—' : (r.net > 0 ? fmt(r.net) : `-${fmt(-r.net)}`)}
+                </td>
+              </tr>
             )
           })}
-          <td className="px-3 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{fmt(totals.totalPay)}</td>
-          <td className="px-3 py-2 text-right tabular-nums text-rose-600 dark:text-rose-400">{fmt(totals.totalRefund)}</td>
-          <td className={`px-3 py-2 text-right tabular-nums ${totals.totalPay - totals.totalRefund >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-            {(() => { const n = totals.totalPay - totals.totalRefund; return n === 0 ? '—' : n > 0 ? fmt(n) : `-${fmt(-n)}` })()}
-          </td>
-        </tr>
-      </tfoot>
-    </table>
+        </tbody>
+        <tfoot className="bg-muted/50">
+          <tr className="font-semibold border-t-2 border-border">
+            <td className="px-3 py-2 sticky left-0 bg-muted/50 z-10">ОБЩО</td>
+            {MONTH_SHORT.map((_, m) => {
+              const t = totals.months.get(m + 1) ?? { pay: 0, refund: 0 }
+              const net = t.pay - t.refund
+              const sel = selectedMonths.has(m + 1)
+              return (
+                <td key={m} className={`px-2 py-2 text-right tabular-nums ${sel ? 'bg-sky-100 dark:bg-sky-900/30' : ''} ${net > 0 ? 'text-emerald-700 dark:text-emerald-400' : net < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'}`}>
+                  {net === 0 ? '' : net > 0 ? fmt(net) : `-${fmt(-net)}`}
+                </td>
+              )
+            })}
+            {hasSelection && (
+              <td className={`px-3 py-2 text-right tabular-nums bg-sky-100 dark:bg-sky-900/30 ${selectedNet >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {selectedNet === 0 ? '—' : selectedNet > 0 ? fmt(selectedNet) : `-${fmt(-selectedNet)}`}
+              </td>
+            )}
+            <td className="px-3 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{fmt(totals.totalPay)}</td>
+            <td className="px-3 py-2 text-right tabular-nums text-rose-600 dark:text-rose-400">{fmt(totals.totalRefund)}</td>
+            <td className={`px-3 py-2 text-right tabular-nums ${totals.totalPay - totals.totalRefund >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+              {(() => { const n = totals.totalPay - totals.totalRefund; return n === 0 ? '—' : n > 0 ? fmt(n) : `-${fmt(-n)}` })()}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </>
   )
 }
 
