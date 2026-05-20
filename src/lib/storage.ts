@@ -1042,6 +1042,22 @@ export async function ensureMonthlyRows(
   return missing.length
 }
 
+// ОСС суми за избрани месеци (за сбор на тримесечие в Работния лист).
+export async function getOssAmounts(
+  year: number,
+  months: number[],
+): Promise<{ client_id: string; month: number; oss_amount: number | null }[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_monthly_work')
+      .select('client_id, month, oss_amount')
+      .eq('year', year)
+      .in('month', months)
+    if (error) throw error
+    return (data ?? []) as { client_id: string; month: number; oss_amount: number | null }[]
+  })
+}
+
 export async function updateMonthlyWork(id: string, patch: Partial<MonthlyWork>): Promise<void> {
   const { error } = await supabase
     .from('crm_monthly_work')

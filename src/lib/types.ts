@@ -227,6 +227,7 @@ export interface MonthlyWork {
   statistika_done: boolean
   intrastat_done: boolean
   siddo_done: boolean
+  oss_amount: number | null
 
   notes: string | null
 
