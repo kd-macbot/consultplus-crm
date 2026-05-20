@@ -9,3 +9,12 @@ export function statusBadgeClass(s: string): string {
   if (s.toLowerCase().includes('без')) return 'bg-slate-200 text-slate-600 dark:bg-slate-700/40 dark:text-slate-400'
   return 'bg-muted text-foreground'
 }
+
+/**
+ * „Без дейност" и „Без ДДС" клиенти нямат месечна работа → не участват в
+ * Работен лист и в месечните статистики. Case-insensitive.
+ */
+export function isHiddenStatus(s: string): boolean {
+  const norm = s.toLowerCase().trim()
+  return norm.includes('без дейност') || norm.includes('без ддс')
+}

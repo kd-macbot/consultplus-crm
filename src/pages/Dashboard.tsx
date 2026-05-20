@@ -1,14 +1,17 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../lib/auth'
-import { getExpenses } from '../lib/storage'
+import { getExpenses, getMonthlyWork } from '../lib/storage'
 import { useClients, useColumns, useCellValues, useDropdownOptions } from '../lib/queries'
 import { supabase } from '../lib/supabase'
 import type { Column, Expense } from '../lib/types'
-import { buildCellIndex, buildDropdownIndex, cellKey } from '../lib/tableIndices'
-import { Users, Euro, CheckCircle2, TrendingUp, TrendingDown, Wallet, BookUser } from 'lucide-react'
+import { buildCellIndex, buildDropdownIndex, cellKey, resolveDropdownText } from '../lib/tableIndices'
+import { isHiddenStatus } from '../lib/statusBadge'
+import { Users, Euro, CheckCircle2, TrendingUp, TrendingDown, Wallet, BookUser, ChevronLeft, ChevronRight, ClipboardCheck, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn, formatCurrency } from '@/lib/utils'
+
+const MONTH_NAMES = ['Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни', 'Юли', 'Август', 'Септември', 'Октомври', 'Ноември', 'Декември']
 
 export function Dashboard() {
   const { user } = useAuth()
@@ -34,7 +37,58 @@ export function Dashboard() {
     enabled: isAdmin,
   })
 
+  const now = new Date()
+  const [wsYear, setWsYear] = useState(now.getFullYear())
+  const [wsMonth, setWsMonth] = useState(now.getMonth() + 1)
+  const monthlyWorkQ = useQuery({
+    queryKey: ['monthlyWork', wsYear, wsMonth],
+    queryFn: () => getMonthlyWork(wsYear, wsMonth),
+  })
+
+  function shiftMonth(delta: number) {
+    let m = wsMonth + delta
+    let y = wsYear
+    if (m < 1) { m = 12; y-- }
+    if (m > 12) { m = 1; y++ }
+    setWsMonth(m)
+    setWsYear(y)
+  }
+
   const loading = clientsQ.isLoading || columnsQ.isLoading || cellsQ.isLoading || dropdownsQ.isLoading
+
+  // Месечни статистики от Работния лист. Служителите виждат само своите клиенти.
+  const wsStats = useMemo(() => {
+    const clients = clientsQ.data ?? []
+    const columns = columnsQ.data ?? []
+    const cells = cellsQ.data ?? []
+    const dropdowns = dropdownsQ.data ?? []
+    const work = monthlyWorkQ.data ?? []
+
+    const cellIdx = buildCellIndex(cells)
+    const dropdownIdx = buildDropdownIndex(dropdowns)
+    const statusCol = columns.find((c: Column) => c.name === 'Статус')
+    const workByClient = new Map(work.map(w => [w.client_id, w]))
+
+    const visible = user?.role === 'employee'
+      ? clients.filter(c => c.assigned_to === user.id)
+      : clients
+    const active = visible.filter(c => !isHiddenStatus(resolveDropdownText(c.id, statusCol, cellIdx, dropdownIdx)))
+
+    let submitted = 0, notified = 0, vat = 0, amort = 0, bank = 0, salaries = 0, npa = 0, resultSum = 0
+    for (const c of active) {
+      const w = workByClient.get(c.id)
+      if (!w) continue
+      if (w.submitted_at) submitted++
+      if (w.notification_method) notified++
+      if (w.vat_accounted) vat++
+      if (w.amortization_done) amort++
+      if (w.bank_done) bank++
+      if (w.salaries_done) salaries++
+      if (w.npa_inconsistencies && w.npa_inconsistencies.trim()) npa++
+      if (typeof w.result_amount === 'number') resultSum += w.result_amount
+    }
+    return { total: active.length, submitted, notified, vat, amort, bank, salaries, npa, resultSum }
+  }, [clientsQ.data, columnsQ.data, cellsQ.data, dropdownsQ.data, monthlyWorkQ.data, user])
 
   const stats = useMemo(() => {
     const clients = clientsQ.data ?? []
@@ -112,6 +166,77 @@ export function Dashboard() {
         </h1>
         <p className="text-sm text-muted-foreground mt-1">{user ? roleLabel[user.role] : ''}</p>
       </div>
+
+      {/* Работен лист — месечен напредък (всички роли) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between px-5 pt-5 pb-3">
+          <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
+            <ClipboardCheck className="h-4 w-4 text-navy" />
+            Работен лист
+            {user?.role === 'employee' && <span className="text-xs font-normal text-muted-foreground">(моите клиенти)</span>}
+          </CardTitle>
+          <div className="flex items-center gap-1">
+            <button onClick={() => shiftMonth(-1)} aria-label="Предходен месец"
+              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="text-sm font-medium text-foreground min-w-[130px] text-center">{MONTH_NAMES[wsMonth - 1]} {wsYear}</span>
+            <button onClick={() => shiftMonth(1)} aria-label="Следващ месец"
+              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          {monthlyWorkQ.isLoading ? (
+            <p className="text-sm text-muted-foreground">Зареждане...</p>
+          ) : wsStats.total === 0 ? (
+            <p className="text-sm text-muted-foreground">Няма активни клиенти за този месец.</p>
+          ) : (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Подадени</p>
+                  <p className="text-2xl font-bold text-foreground tabular-nums">
+                    {wsStats.submitted}<span className="text-base text-muted-foreground font-normal"> / {wsStats.total}</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Уведомени</p>
+                  <p className="text-2xl font-bold text-foreground tabular-nums">
+                    {wsStats.notified}<span className="text-base text-muted-foreground font-normal"> / {wsStats.total}</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">ДДС осчетоводено</p>
+                  <p className="text-2xl font-bold text-foreground tabular-nums">
+                    {wsStats.vat}<span className="text-base text-muted-foreground font-normal"> / {wsStats.total}</span>
+                  </p>
+                </div>
+                {wsStats.npa > 0 && (
+                  <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span className="text-sm font-medium">{wsStats.npa} с несъответствия НАП</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2.5">
+                <WsProgress label="Подадени" done={wsStats.submitted} total={wsStats.total} />
+                <WsProgress label="Уведомени" done={wsStats.notified} total={wsStats.total} />
+                <WsProgress label="ДДС осчетоводено" done={wsStats.vat} total={wsStats.total} />
+                <WsProgress label="Амортизации" done={wsStats.amort} total={wsStats.total} />
+                <WsProgress label="Банка" done={wsStats.bank} total={wsStats.total} />
+                <WsProgress label="Заплати" done={wsStats.salaries} total={wsStats.total} />
+              </div>
+
+              <div className="text-sm text-muted-foreground">
+                Сумарен резултат за месеца: <span className="font-semibold text-foreground">{formatCurrency(wsStats.resultSum)}</span>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Restricted view — manager & employee */}
       {isRestricted && (
@@ -317,6 +442,19 @@ export function Dashboard() {
           </Card>
         </>
       )}
+    </div>
+  )
+}
+
+function WsProgress({ label, done, total }: { label: string; done: number; total: number }) {
+  const pct = total > 0 ? (done / total) * 100 : 0
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-36 text-sm text-muted-foreground truncate">{label}</div>
+      <div className="flex-1 bg-muted rounded-full h-2.5 overflow-hidden">
+        <div className="h-full bg-navy rounded-full transition-all" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="w-16 text-sm text-right font-semibold tabular-nums">{done}/{total}</div>
     </div>
   )
 }

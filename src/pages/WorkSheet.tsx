@@ -15,7 +15,7 @@ import {
   buildCellIndex, buildDropdownIndex, clientDisplayName,
   resolveDropdownText, cellKey,
 } from '../lib/tableIndices'
-import { statusBadgeClass } from '../lib/statusBadge'
+import { statusBadgeClass, isHiddenStatus } from '../lib/statusBadge'
 import { useRealtime } from '../lib/useRealtime'
 
 const MONTH_NAMES = [
@@ -30,15 +30,6 @@ function formatCurrency(v: number | null): string {
 
 // O(N) helper-ите бяха заменени с tableIndices Map lookup-и (виж по-долу).
 
-/**
- * „Без дейност" и „Без ДДС" клиенти нямат месечна работа → не се показват в
- * Работен лист и не са опция във филтъра. Сравнението е case-insensitive,
- * за да хване „БЕЗ ДЕЙНОСТ", „Без дейност" и т.н.
- */
-function isHiddenStatus(s: string): boolean {
-  const norm = s.toLowerCase().trim()
-  return norm.includes('без дейност') || norm.includes('без ддс')
-}
 
 type Relevance = 'due' | 'optional' | 'na'
 
