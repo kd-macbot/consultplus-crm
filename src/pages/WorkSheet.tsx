@@ -14,6 +14,7 @@ import {
   buildCellIndex, buildDropdownIndex, clientDisplayName,
   resolveDropdownText,
 } from '../lib/tableIndices'
+import { useRealtime } from '../lib/useRealtime'
 
 const MONTH_NAMES = [
   'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни',
@@ -94,8 +95,21 @@ export function WorkSheetPage() {
 
   useEffect(() => { void loadAll() }, [year, month])
 
-  async function loadAll() {
-    setLoading(true)
+  // Кога потребителят последно е редактирал — за да не презаписваме полето
+  // изпод ръцете му при realtime презареждане.
+  const lastEditRef = useRef(0)
+
+  // Realtime — промени от колеги се отразяват тихо (без спинър), след кратко
+  // изчакване и само ако в момента не се редактира активно.
+  useRealtime({
+    channel: 'worksheet',
+    tables: ['crm_monthly_work', 'crm_art55_entries', 'crm_cell_values', 'crm_clients'],
+    onChange: () => loadAll(true),
+    shouldDefer: () => Date.now() - lastEditRef.current < 3000,
+  })
+
+  async function loadAll(silent = false) {
+    if (!silent) setLoading(true)
     try {
       // 1. Базови данни (само първия път или ако се променят клиенти)
       const [cls, cols, cvs, dds] = await Promise.all([
@@ -132,9 +146,9 @@ export function WorkSheetPage() {
       })
       setArt55Entries(byClient)
     } catch (e: any) {
-      toast.error(e.message ?? 'Грешка при зареждане')
+      if (!silent) toast.error(e.message ?? 'Грешка при зареждане')
     }
-    setLoading(false)
+    if (!silent) setLoading(false)
   }
 
   // O(1) индекси — изграждат се веднъж при промяна на данните и се ползват в render-а.
@@ -209,6 +223,7 @@ export function WorkSheetPage() {
   }
 
   async function patchRow(clientId: string, patch: Partial<MonthlyWork>) {
+    lastEditRef.current = Date.now()
     // Оптимистичен update
     setRows(prev => {
       const next = new Map(prev)
