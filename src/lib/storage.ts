@@ -1,6 +1,26 @@
 import { supabase } from './supabase'
 import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus } from './types'
 
+/**
+ * Retry helper за четящи заявки — повтаря при временни мрежови грешки с
+ * exponential backoff. Решава „понякога не зарежда и иска рефреш": при
+ * кратък мрежов проблем заявката се повтаря автоматично вместо да остави
+ * празен екран.
+ */
+export async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 300): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      if (attempt === retries) break
+      await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, attempt)))
+    }
+  }
+  throw lastErr
+}
+
 // ==================== AUDIT LOG ====================
 
 export async function logAudit(
@@ -59,21 +79,23 @@ export async function getAuditLog(
 // ==================== COLUMNS ====================
 
 export async function getColumns(): Promise<Column[]> {
-  const { data, error } = await supabase
-    .from('crm_columns')
-    .select('*')
-    .order('position')
-  if (error) throw error
-  return (data ?? []).map(c => ({
-    id: c.id,
-    name: c.name,
-    type: c.type as ColumnType,
-    position: c.position,
-    is_required: c.is_required,
-    created_by: c.created_by,
-    created_at: c.created_at,
-    staff_department: c.staff_department,
-  }))
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_columns')
+      .select('*')
+      .order('position')
+    if (error) throw error
+    return (data ?? []).map(c => ({
+      id: c.id,
+      name: c.name,
+      type: c.type as ColumnType,
+      position: c.position,
+      is_required: c.is_required,
+      created_by: c.created_by,
+      created_at: c.created_at,
+      staff_department: c.staff_department,
+    }))
+  })
 }
 
 // --- Staff ---
@@ -252,11 +274,13 @@ export async function deleteColumn(
 // ==================== DROPDOWN OPTIONS ====================
 
 export async function getDropdownOptions(columnId?: string): Promise<DropdownOption[]> {
-  let query = supabase.from('crm_dropdown_options').select('*').order('position')
-  if (columnId) query = query.eq('column_id', columnId)
-  const { data, error } = await query
-  if (error) throw error
-  return data ?? []
+  return withRetry(async () => {
+    let query = supabase.from('crm_dropdown_options').select('*').order('position')
+    if (columnId) query = query.eq('column_id', columnId)
+    const { data, error } = await query
+    if (error) throw error
+    return data ?? []
+  })
 }
 
 export async function addDropdownOption(
@@ -309,13 +333,15 @@ export async function deleteDropdownOption(
 // ==================== CLIENTS ====================
 
 export async function getClients(): Promise<Client[]> {
-  const { data, error } = await supabase
-    .from('crm_clients')
-    .select('*')
-    .eq('deleted', false)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return data ?? []
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_clients')
+      .select('*')
+      .eq('deleted', false)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return data ?? []
+  })
 }
 
 export async function addClient(
@@ -360,24 +386,26 @@ export async function softDeleteClient(
 // ==================== CELL VALUES ====================
 
 export async function getCellValues(clientId?: string): Promise<CellValue[]> {
-  if (clientId) {
-    const { data, error } = await supabase.from('crm_cell_values').select('*').eq('client_id', clientId)
-    if (error) throw error
-    return data ?? []
-  }
-  const { count } = await supabase
-    .from('crm_cell_values')
-    .select('*', { count: 'exact', head: true })
-  const total = count ?? 0
-  if (total === 0) return []
-  const PAGE = 1000
-  const pages = Math.ceil(total / PAGE)
-  const results = await Promise.all(
-    Array.from({ length: pages }, (_, i) =>
-      supabase.from('crm_cell_values').select('*').range(i * PAGE, (i + 1) * PAGE - 1)
+  return withRetry(async () => {
+    if (clientId) {
+      const { data, error } = await supabase.from('crm_cell_values').select('*').eq('client_id', clientId)
+      if (error) throw error
+      return data ?? []
+    }
+    const { count } = await supabase
+      .from('crm_cell_values')
+      .select('*', { count: 'exact', head: true })
+    const total = count ?? 0
+    if (total === 0) return []
+    const PAGE = 1000
+    const pages = Math.ceil(total / PAGE)
+    const results = await Promise.all(
+      Array.from({ length: pages }, (_, i) =>
+        supabase.from('crm_cell_values').select('*').range(i * PAGE, (i + 1) * PAGE - 1)
+      )
     )
-  )
-  return results.flatMap(r => r.data ?? []) as CellValue[]
+    return results.flatMap(r => r.data ?? []) as CellValue[]
+  })
 }
 
 export async function setCellValue(
@@ -512,12 +540,14 @@ export async function getClientTags(): Promise<ClientTag[]> {
 // ==================== EXPENSES ====================
 
 export async function getExpenses(): Promise<Expense[]> {
-  const { data, error } = await supabase
-    .from('crm_expenses')
-    .select('*')
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data ?? []) as Expense[]
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_expenses')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []) as Expense[]
+  })
 }
 
 export async function addExpense(
@@ -615,6 +645,10 @@ export async function getClientNames(): Promise<{ id: string; name: string }[]> 
 }
 
 export async function getContactsWithClients(): Promise<ContactWithClient[]> {
+  return withRetry(() => _getContactsWithClients())
+}
+
+async function _getContactsWithClients(): Promise<ContactWithClient[]> {
   const { data, error } = await supabase
     .from('crm_contacts')
     .select('*, crm_clients(id, created_at)')
@@ -838,13 +872,15 @@ export async function clearAll() {
 // ==================== OPPORTUNITIES ====================
 
 export async function getOpportunities(): Promise<Opportunity[]> {
-  const { data, error } = await supabase
-    .from('crm_opportunities')
-    .select('*')
-    .eq('deleted', false)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data ?? []) as Opportunity[]
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_opportunities')
+      .select('*')
+      .eq('deleted', false)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []) as Opportunity[]
+  })
 }
 
 export async function addOpportunity(
@@ -931,22 +967,26 @@ export async function convertOpportunityToClient(
 // ==================== MONTHLY WORK ====================
 
 export async function getMonthlyWorkForYear(year: number): Promise<MonthlyWork[]> {
-  const { data, error } = await supabase
-    .from('crm_monthly_work')
-    .select('*')
-    .eq('year', year)
-  if (error) throw error
-  return (data ?? []) as MonthlyWork[]
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_monthly_work')
+      .select('*')
+      .eq('year', year)
+    if (error) throw error
+    return (data ?? []) as MonthlyWork[]
+  })
 }
 
 export async function getMonthlyWork(year: number, month: number): Promise<MonthlyWork[]> {
-  const { data, error } = await supabase
-    .from('crm_monthly_work')
-    .select('*')
-    .eq('year', year)
-    .eq('month', month)
-  if (error) throw error
-  return (data ?? []) as MonthlyWork[]
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_monthly_work')
+      .select('*')
+      .eq('year', year)
+      .eq('month', month)
+    if (error) throw error
+    return (data ?? []) as MonthlyWork[]
+  })
 }
 
 /**
@@ -1026,14 +1066,16 @@ export async function getArt55Entries(clientId?: string, year?: number, month?: 
 }
 
 export async function getArt55EntriesForPeriod(year: number, months: number[]): Promise<Art55Entry[]> {
-  const { data, error } = await supabase
-    .from('crm_art55_entries')
-    .select('*')
-    .eq('year', year)
-    .in('month', months)
-    .order('position')
-  if (error) throw error
-  return (data ?? []) as Art55Entry[]
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_art55_entries')
+      .select('*')
+      .eq('year', year)
+      .in('month', months)
+      .order('position')
+    if (error) throw error
+    return (data ?? []) as Art55Entry[]
+  })
 }
 
 export async function addArt55Entry(row: {
@@ -1079,10 +1121,12 @@ export async function deleteArt55Entry(id: string): Promise<void> {
 // ==================== ART. 55 QUARTERLY STATUS ====================
 
 export async function getArt55QuarterStatuses(year: number): Promise<Art55QuarterStatus[]> {
-  const { data, error } = await supabase
-    .from('crm_art55_quarter_status').select('*').eq('year', year)
-  if (error) throw error
-  return (data ?? []) as Art55QuarterStatus[]
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_art55_quarter_status').select('*').eq('year', year)
+    if (error) throw error
+    return (data ?? []) as Art55QuarterStatus[]
+  })
 }
 
 export async function upsertArt55QuarterStatus(
