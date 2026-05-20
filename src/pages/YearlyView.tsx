@@ -15,6 +15,7 @@ import {
   buildCellIndex, buildDropdownIndex,
   clientDisplayName, resolveDropdownText, resolveNumber,
 } from '../lib/tableIndices'
+import { useRealtime } from '../lib/useRealtime'
 
 const MONTH_SHORT = ['Ян', 'Фев', 'Мар', 'Апр', 'Май', 'Юни', 'Юли', 'Авг', 'Сеп', 'Окт', 'Ное', 'Дек']
 const QUARTERS: Array<{ q: number; months: [number, number, number]; label: string }> = [
@@ -49,8 +50,17 @@ export function YearlyViewPage() {
 
   useEffect(() => { void loadAll() }, [year])
 
-  async function loadAll() {
-    setLoading(true)
+  const lastEditRef = useRef(0)
+
+  useRealtime({
+    channel: 'yearly',
+    tables: ['crm_monthly_work', 'crm_art55_entries', 'crm_art55_quarter_status', 'crm_cell_values', 'crm_clients'],
+    onChange: () => loadAll(true),
+    shouldDefer: () => Date.now() - lastEditRef.current < 3000,
+  })
+
+  async function loadAll(silent = false) {
+    if (!silent) setLoading(true)
     try {
       const [cls, cols, cvs, dds] = await Promise.all([
         getClients(), getColumns(), getCellValues(), getDropdownOptions(),
@@ -89,9 +99,9 @@ export function YearlyViewPage() {
       })
       setArt55ByClientMonth(a55Map)
     } catch (err: any) {
-      toast.error(err.message ?? 'Грешка при зареждане')
+      if (!silent) toast.error(err.message ?? 'Грешка при зареждане')
     }
-    setLoading(false)
+    if (!silent) setLoading(false)
   }
 
   // O(1) индекси — изграждат се веднъж при промяна на данните.
@@ -157,6 +167,7 @@ export function YearlyViewPage() {
   }, [clients, columns, cellIdx, dropdownIdx, art55Col, art55ByClientMonth, art55Statuses, user])
 
   async function patchArt55Status(clientId: string, quarter: number, patch: Partial<Art55QuarterStatus>) {
+    lastEditRef.current = Date.now()
     // Auto-set declared_at when marking declared
     const final: Partial<Art55QuarterStatus> = { ...patch }
     if (patch.declared === true) final.declared_at = final.declared_at ?? new Date().toISOString().slice(0, 10)
@@ -203,6 +214,7 @@ export function YearlyViewPage() {
   }, [clients, columns, cellIdx, monthlyByClient, user])
 
   async function patchResult(clientId: string, month: number, amount: number | null) {
+    lastEditRef.current = Date.now()
     await ensureMonthlyRows([clientId], year, month, user?.id)
     setMonthlyByClient(prev => {
       const next = new Map(prev)
@@ -221,6 +233,7 @@ export function YearlyViewPage() {
   }
 
   async function patchAmount(clientId: string, month: number, amount: number | null) {
+    lastEditRef.current = Date.now()
     // Ensure row exists
     await ensureMonthlyRows([clientId], year, month, user?.id)
     setMonthlyByClient(prev => {
