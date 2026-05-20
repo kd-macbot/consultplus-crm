@@ -223,6 +223,10 @@ export interface MonthlyWork {
   bank_done: boolean
   salaries_done: boolean
   advance_payment_amount: number | null
+  akciz_done: boolean
+  statistika_done: boolean
+  intrastat_done: boolean
+  siddo_done: boolean
 
   notes: string | null
 

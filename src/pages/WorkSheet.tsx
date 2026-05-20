@@ -156,6 +156,11 @@ export function WorkSheetPage() {
   const advanceCol = useMemo(() => columns.find(c => c.name === 'Авансови вноски'), [columns])
   const art55Col = useMemo(() => columns.find(c => c.name === 'Чл. 55 ЗДДФЛ'), [columns])
   const accountantCol = useMemo(() => columns.find(c => c.name === 'Счетоводител'), [columns])
+  // Master ДА/НЕ флагове → месечни чекбоксове
+  const akcizCol = useMemo(() => columns.find(c => c.name === 'АКЦИЗ'), [columns])
+  const statistikaCol = useMemo(() => columns.find(c => c.name === 'СТАТИСТИКА'), [columns])
+  const intrastatCol = useMemo(() => columns.find(c => c.name === 'Интрастат'), [columns])
+  const siddoCol = useMemo(() => columns.find(c => c.name === 'СИДДО'), [columns])
 
   // Счетоводителят може да е staff-свързана колона (value_text) или dropdown.
   function accountantOf(clientId: string): string {
@@ -176,7 +181,12 @@ export function WorkSheetPage() {
   }, [dropdowns, statusCol])
 
   // Подготвени клиенти за render: name, status, monthly row
-  type Row = { client: Client; name: string; status: string; accountant: string; advance: string; art55: string; work: MonthlyWork | undefined }
+  type Row = {
+    client: Client; name: string; status: string; accountant: string
+    advance: string; art55: string
+    akciz: string; statistika: string; intrastat: string; siddo: string
+    work: MonthlyWork | undefined
+  }
   const tableRows: Row[] = useMemo(() => {
     const visible = user?.role === 'employee'
       ? clients.filter(c => c.assigned_to === user.id)
@@ -189,11 +199,15 @@ export function WorkSheetPage() {
         accountant: accountantOf(c.id),
         advance: resolveDropdownText(c.id, advanceCol, cellIdx, dropdownIdx),
         art55: resolveDropdownText(c.id, art55Col, cellIdx, dropdownIdx),
+        akciz: resolveDropdownText(c.id, akcizCol, cellIdx, dropdownIdx),
+        statistika: resolveDropdownText(c.id, statistikaCol, cellIdx, dropdownIdx),
+        intrastat: resolveDropdownText(c.id, intrastatCol, cellIdx, dropdownIdx),
+        siddo: resolveDropdownText(c.id, siddoCol, cellIdx, dropdownIdx),
         work: rows.get(c.id),
       }))
       .filter(r => !isHiddenStatus(r.status))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, rows, user])
+  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, akcizCol, statistikaCol, intrastatCol, siddoCol, rows, user])
 
   // Списък със счетоводители за филтъра (само присъстващите в таблицата).
   const accountantOptions = useMemo(() => {
@@ -360,13 +374,12 @@ export function WorkSheetPage() {
         ) : filteredRows.length === 0 ? (
           <div className="p-10 text-center text-muted-foreground">Няма съвпадения</div>
         ) : (
-          <table className="w-full border-collapse min-w-[1600px]">
+          <table className="w-full border-collapse min-w-[1900px]">
             <thead className="bg-navy text-white sticky top-0 z-10">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-10">#</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap sticky left-0 bg-navy z-20">Фирма</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Статус</th>
-                <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="Приоритетно подаване на ДДС">Приор. ДДС</th>
                 <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider whitespace-nowrap">Резултат €</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Подадено на</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Уведомени</th>
@@ -377,6 +390,10 @@ export function WorkSheetPage() {
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Амор</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Банка</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Заплати</th>
+                <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">АКЦИЗ</th>
+                <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Статист.</th>
+                <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Интрастат</th>
+                <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">СИДДО</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Бележки</th>
               </tr>
             </thead>
@@ -398,12 +415,6 @@ export function WorkSheetPage() {
                           {row.status}
                         </span>
                       )}
-                    </td>
-                    <td className="px-2 py-1.5 text-center">
-                      <input type="checkbox" disabled={!canEdit}
-                        checked={!!w?.priority_vat}
-                        onChange={e => patchRow(row.client.id, { priority_vat: e.target.checked })}
-                        className="h-4 w-4 cursor-pointer accent-amber-500" />
                     </td>
                     <td className="px-2 py-0.5 text-right">
                       <NumberCell
@@ -457,6 +468,14 @@ export function WorkSheetPage() {
                           className="h-4 w-4 cursor-pointer accent-emerald-600" />
                       </td>
                     ))}
+                    <MasterFlagCell flag={row.akciz} checked={!!w?.akciz_done} disabled={!canEdit}
+                      onChange={v => patchRow(row.client.id, { akciz_done: v })} />
+                    <MasterFlagCell flag={row.statistika} checked={!!w?.statistika_done} disabled={!canEdit}
+                      onChange={v => patchRow(row.client.id, { statistika_done: v })} />
+                    <MasterFlagCell flag={row.intrastat} checked={!!w?.intrastat_done} disabled={!canEdit}
+                      onChange={v => patchRow(row.client.id, { intrastat_done: v })} />
+                    <MasterFlagCell flag={row.siddo} checked={!!w?.siddo_done} disabled={!canEdit}
+                      onChange={v => patchRow(row.client.id, { siddo_done: v })} />
                     <td className="px-2 py-0.5">
                       <TextCell
                         value={w?.notes ?? ''}
@@ -497,6 +516,27 @@ export function WorkSheetPage() {
         />
       )}
     </div>
+  )
+}
+
+// Месечна отметка за master ДА/НЕ флаг. Ако клиентът е „ДА" → чекбокс;
+// иначе пише „не" (сиво) и не е редактируем.
+function MasterFlagCell({ flag, checked, disabled, onChange }: {
+  flag: string
+  checked: boolean
+  disabled?: boolean
+  onChange: (v: boolean) => void
+}) {
+  if (flag !== 'ДА') {
+    return <td className="px-2 py-1.5 text-center text-[10px] text-muted-foreground/50">не</td>
+  }
+  return (
+    <td className="px-2 py-1.5 text-center">
+      <input type="checkbox" disabled={disabled}
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        className="h-4 w-4 cursor-pointer accent-emerald-600" />
+    </td>
   )
 }
 
