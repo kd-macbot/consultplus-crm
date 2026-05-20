@@ -1072,16 +1072,6 @@ export async function upsertMonthlyWorkByKey(
 
 // ==================== ART. 55 ENTRIES ====================
 
-export async function getArt55Entries(clientId?: string, year?: number, month?: number): Promise<Art55Entry[]> {
-  let q = supabase.from('crm_art55_entries').select('*').order('position')
-  if (clientId) q = q.eq('client_id', clientId)
-  if (year != null) q = q.eq('year', year)
-  if (month != null) q = q.eq('month', month)
-  const { data, error } = await q
-  if (error) throw error
-  return (data ?? []) as Art55Entry[]
-}
-
 export async function getArt55EntriesForPeriod(year: number, months: number[]): Promise<Art55Entry[]> {
   return withRetry(async () => {
     const { data, error } = await supabase

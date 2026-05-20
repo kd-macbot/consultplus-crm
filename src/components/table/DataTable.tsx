@@ -34,6 +34,7 @@ import {
   getAllContacts, upsertContact, buildContactPayload,
 } from '../../lib/storage'
 import { useAuth } from '../../lib/auth'
+import { buildCellIndex, buildDropdownIndex, cellKey, clientDisplayName } from '../../lib/tableIndices'
 import { toast } from 'sonner'
 import { CellEditor } from './CellEditor'
 import { TagEditor } from '../tags/TagEditor'
@@ -58,7 +59,7 @@ interface Props {
   onRefresh: () => void
 }
 
-function getCellDisplay(col: Column, cell: CellValue | undefined, dropdowns: DropdownOption[]): string {
+function getCellDisplay(col: Column, cell: CellValue | undefined, dropdownIdx: Map<string, DropdownOption>): string {
   if (!cell) return ''
   if (col.type === 'number') {
     if (cell.value_number == null) return ''
@@ -67,23 +68,11 @@ function getCellDisplay(col: Column, cell: CellValue | undefined, dropdowns: Dro
   }
   if (col.type === 'dropdown') {
     if (col.staff_department) return cell.value_text ?? ''
-    const opt = dropdowns.find(d => d.id === cell.value_dropdown)
-    return opt?.value ?? ''
+    return dropdownIdx.get(cell.value_dropdown ?? '')?.value ?? ''
   }
   if (col.type === 'checkbox') return cell.value_bool ? '✓' : ''
   if (col.type === 'date') return cell.value_date ?? ''
   return cell.value_text ?? ''
-}
-
-function resolveClientName(clientId: string, columns: Column[], allCells: CellValue[]): string {
-  const clientCells = allCells.filter(cv => cv.client_id === clientId)
-  for (const col of columns) {
-    if (col.type === 'text') {
-      const cell = clientCells.find(cv => cv.column_id === col.id)
-      if (cell?.value_text) return cell.value_text
-    }
-  }
-  return ''
 }
 
 // Българската азбука (без Ы). Използва се за filter dropdown-а на „Фирма" колоната.
@@ -418,18 +407,30 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     { id: '_tags', name: 'Тагове' },
   ]
 
+  // O(1) индекси — изграждат се веднъж при промяна на данните.
+  const cellIdx = useMemo(() => buildCellIndex(allCells), [allCells])
+  const dropdownIdx = useMemo(() => buildDropdownIndex(allDropdowns), [allDropdowns])
+  const tagsByClient = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const ct of allClientTags) {
+      const arr = m.get(ct.client_id) ?? []
+      arr.push(ct.tag_id)
+      m.set(ct.client_id, arr)
+    }
+    return m
+  }, [allClientTags])
+
   const data: ClientRow[] = useMemo(() => {
     const rows = clients.map(client => {
       const row: ClientRow = {
         clientId: client.id,
-        clientName: resolveClientName(client.id, columns, allCells),
+        clientName: clientDisplayName(client.id, columns, cellIdx),
         assignedTo: client.assigned_to,
-        tagIds: allClientTags.filter(ct => ct.client_id === client.id).map(ct => ct.tag_id),
+        tagIds: tagsByClient.get(client.id) ?? [],
       }
-      const clientCells = allCells.filter(cv => cv.client_id === client.id)
       for (const col of columns) {
-        const cell = clientCells.find(cv => cv.column_id === col.id)
-        row[col.id] = getCellDisplay(col, cell, allDropdowns)
+        const cell = cellIdx.get(cellKey(client.id, col.id))
+        row[col.id] = getCellDisplay(col, cell, dropdownIdx)
       }
       return row
     })
@@ -442,7 +443,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       if (!hasB) return 1
       return a.clientName.localeCompare(b.clientName, 'bg')
     })
-  }, [clients, columns, allCells, allDropdowns, allClientTags])
+  }, [clients, columns, cellIdx, dropdownIdx, tagsByClient])
 
   const filteredByTags = useMemo(() => {
     if (tagFilter.length === 0) return data
@@ -509,8 +510,8 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           const isEditing = editCell?.clientId === clientId && editCell?.columnId === col.id
 
           if (isEditing && canEdit) {
-            const cellData = allCells.find(cv => cv.client_id === clientId && cv.column_id === col.id)
-            const oldDisplay = getCellDisplay(col, cellData, allDropdowns)
+            const cellData = cellIdx.get(cellKey(clientId, col.id))
+            const oldDisplay = getCellDisplay(col, cellData, dropdownIdx)
             return (
               <CellEditor
                 column={col}

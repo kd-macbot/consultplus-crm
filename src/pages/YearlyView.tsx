@@ -562,10 +562,12 @@ function VatTable({ rows, year, canEdit, onPatch }: {
 
   function clearSel() { setSelClient(null); setSelMonths(new Set()) }
 
+  // ВАЖНО: всички hooks преди ранния return (rules of hooks).
+  const totals = useMemoVat(rows)
+
   if (rows.length === 0) {
     return <div className="p-8 text-center text-muted-foreground">Няма ДДС резултати за {year}. Попълни „Резултат €" в Работен лист.</div>
   }
-  const totals = useMemoVat(rows)
 
   const selRow = selClient ? rows.find(r => r.client.id === selClient) : null
   const selNet = selRow ? [...selMonths].reduce((s, m) => s + (selRow.months.get(m) ?? 0), 0) : 0

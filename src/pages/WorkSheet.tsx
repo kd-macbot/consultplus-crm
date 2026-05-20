@@ -14,6 +14,7 @@ import {
   buildCellIndex, buildDropdownIndex, clientDisplayName,
   resolveDropdownText, cellKey,
 } from '../lib/tableIndices'
+import { statusBadgeClass } from '../lib/statusBadge'
 import { useRealtime } from '../lib/useRealtime'
 
 const MONTH_NAMES = [
@@ -27,11 +28,6 @@ function formatCurrency(v: number | null): string {
 }
 
 // O(N) helper-ите бяха заменени с tableIndices Map lookup-и (виж по-долу).
-
-const STATUS_BADGE: Record<string, string> = {
-  'АКТИВНА': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-  'НУЛЕВО': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-}
 
 /**
  * „Без дейност" и „Без ДДС" клиенти нямат месечна работа → не се показват в
@@ -309,7 +305,7 @@ export function WorkSheetPage() {
               key={s}
               onClick={() => setStatusFilter(prev => active ? prev.filter(x => x !== s) : [...prev, s])}
               className={`px-2 py-0.5 rounded-full font-semibold transition ${
-                active ? (STATUS_BADGE[s] ?? 'bg-muted text-foreground') : 'bg-muted/40 text-muted-foreground hover:bg-muted'
+                active ? statusBadgeClass(s) : 'bg-muted/40 text-muted-foreground hover:bg-muted'
               }`}
             >
               {s}
@@ -398,7 +394,7 @@ export function WorkSheetPage() {
                     </td>
                     <td className="px-3 py-1.5">
                       {row.status && (
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[row.status] ?? 'bg-muted text-foreground'}`}>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadgeClass(row.status)}`}>
                           {row.status}
                         </span>
                       )}
