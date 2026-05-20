@@ -2,16 +2,23 @@ import { supabase } from './supabase'
 import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus } from './types'
 
 /**
- * Retry helper за четящи заявки — повтаря при временни мрежови грешки с
- * exponential backoff. Решава „понякога не зарежда и иска рефреш": при
- * кратък мрежов проблем заявката се повтаря автоматично вместо да остави
- * празен екран.
+ * Retry helper за четящи заявки с TIMEOUT — решава „понякога не зарежда и
+ * иска рефреш". Две защити:
+ *  1. timeout — ако заявката зависне (мрежова връзка станала stale, напр.
+ *     след връщане от заспал таб), се прекъсва след timeoutMs и се повтаря с
+ *     нова заявка, вместо да виси безкрай.
+ *  2. retry — повтаря при грешка/timeout с exponential backoff.
  */
-export async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 300): Promise<T> {
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  baseDelay = 300,
+  timeoutMs = 12000,
+): Promise<T> {
   let lastErr: unknown
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return await fn()
+      return await withTimeout(fn(), timeoutMs)
     } catch (err) {
       lastErr = err
       if (attempt === retries) break
@@ -19,6 +26,16 @@ export async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay 
     }
   }
   throw lastErr
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Заявката изтече (timeout)')), ms)
+    p.then(
+      v => { clearTimeout(timer); resolve(v) },
+      e => { clearTimeout(timer); reject(e) },
+    )
+  })
 }
 
 // ==================== AUDIT LOG ====================
