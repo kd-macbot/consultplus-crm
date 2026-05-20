@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../lib/auth'
-import { getClients, getCellValues, getColumns, getDropdownOptions, getExpenses } from '../lib/storage'
+import { getExpenses } from '../lib/storage'
+import { useClients, useColumns, useCellValues, useDropdownOptions } from '../lib/queries'
 import { supabase } from '../lib/supabase'
-import type { Client, Column, CellValue, DropdownOption, Expense } from '../lib/types'
+import type { Column, Expense } from '../lib/types'
+import { buildCellIndex, buildDropdownIndex, cellKey } from '../lib/tableIndices'
 import { Users, Euro, CheckCircle2, TrendingUp, TrendingDown, Wallet, BookUser } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn, formatCurrency } from '@/lib/utils'
@@ -12,90 +15,81 @@ export function Dashboard() {
   const isAdmin = user?.role === 'admin'
   const isRestricted = user?.role === 'manager' || user?.role === 'employee'
 
-  const [stats, setStats] = useState({
-    total: 0,
-    contactsCount: 0,
-    statusCounts: {} as Record<string, number>,
-    totalHonorar: 0,
-    honorarByAccountant: {} as Record<string, { sum: number; count: number }>,
-    honorarByStatus: {} as Record<string, number>,
-    monthlyExpenses: 0,
+  // Споделените данни идват от React Query кеша — навигацията между страници
+  // не ги презарежда (staleTime 30s), а retry-ът е в storage слоя.
+  const clientsQ = useClients()
+  const columnsQ = useColumns()
+  const cellsQ = useCellValues()
+  const dropdownsQ = useDropdownOptions()
+  const contactsCountQ = useQuery({
+    queryKey: ['contactsCount'],
+    queryFn: async () => {
+      const { count } = await supabase.from('crm_contacts').select('*', { count: 'exact', head: true })
+      return count ?? 0
+    },
   })
-  const [loading, setLoading] = useState(true)
+  const expensesQ = useQuery({
+    queryKey: ['expenses'],
+    queryFn: getExpenses,
+    enabled: isAdmin,
+  })
 
-  useEffect(() => { loadStats() }, [])
+  const loading = clientsQ.isLoading || columnsQ.isLoading || cellsQ.isLoading || dropdownsQ.isLoading
 
-  async function loadStats() {
-    try {
-      const [clientsRes, columnsRes, cellsRes, dropdownsRes, contactsRes, expsRes] =
-        await Promise.allSettled([
-          getClients(),
-          getColumns(),
-          getCellValues(),
-          getDropdownOptions(),
-          supabase.from('crm_contacts').select('*', { count: 'exact', head: true }),
-          isAdmin ? getExpenses() : Promise.resolve([] as Expense[]),
-        ])
+  const stats = useMemo(() => {
+    const clients = clientsQ.data ?? []
+    const columns = columnsQ.data ?? []
+    const cells = cellsQ.data ?? []
+    const dropdowns = dropdownsQ.data ?? []
+    const contactsCount = contactsCountQ.data ?? 0
+    const exps = (expensesQ.data ?? []) as Expense[]
 
-      const clients = clientsRes.status === 'fulfilled' ? clientsRes.value : []
-      const columns = columnsRes.status === 'fulfilled' ? columnsRes.value : []
-      const cells = cellsRes.status === 'fulfilled' ? cellsRes.value : []
-      const dropdowns = dropdownsRes.status === 'fulfilled' ? dropdownsRes.value : []
-      const contactsCount = contactsRes.status === 'fulfilled' ? (contactsRes.value.count ?? 0) : 0
-      const exps = expsRes.status === 'fulfilled' ? expsRes.value as Expense[] : []
+    const cellIdx = buildCellIndex(cells)
+    const dropdownIdx = buildDropdownIndex(dropdowns)
 
-      const cellMap = new Map<string, CellValue>()
-      for (const cv of cells) cellMap.set(`${cv.client_id}:${cv.column_id}`, cv)
-      const dropdownMap = new Map(dropdowns.map((d: DropdownOption) => [d.id, d]))
+    const statusCol = columns.find((c: Column) => c.name === 'Статус')
+    const statusCounts: Record<string, number> = {}
 
-      const statusCol = columns.find((c: Column) => c.name === 'Статус')
-      const statusCounts: Record<string, number> = {}
-
-      if (statusCol) {
-        for (const client of clients) {
-          const cell = cellMap.get(`${client.id}:${statusCol.id}`)
-          const label = cell?.value_dropdown ? (dropdownMap.get(cell.value_dropdown)?.value || 'N/A') : 'N/A'
-          statusCounts[label] = (statusCounts[label] || 0) + 1
-        }
+    if (statusCol) {
+      for (const client of clients) {
+        const cell = cellIdx.get(cellKey(client.id, statusCol.id))
+        const label = cell?.value_dropdown ? (dropdownIdx.get(cell.value_dropdown)?.value || 'N/A') : 'N/A'
+        statusCounts[label] = (statusCounts[label] || 0) + 1
       }
-
-      const honorarCol = columns.find((c: Column) => c.name === 'Хонорар')
-      const accountantCol = columns.find((c: Column) => c.name === 'Счетоводител')
-      let totalHonorar = 0
-      const honorarByAccountant: Record<string, { sum: number; count: number }> = {}
-      const honorarByStatus: Record<string, number> = {}
-
-      if (isAdmin) {
-        for (const client of clients) {
-          const hCell = honorarCol ? cellMap.get(`${client.id}:${honorarCol.id}`) : null
-          const amount = hCell?.value_number && hCell.value_number > 0 ? hCell.value_number : 0
-          totalHonorar += amount
-
-          if (accountantCol) {
-            const aCell = cellMap.get(`${client.id}:${accountantCol.id}`)
-            const name = aCell?.value_text || 'Без счетоводител'
-            if (!honorarByAccountant[name]) honorarByAccountant[name] = { sum: 0, count: 0 }
-            honorarByAccountant[name].sum += amount
-            honorarByAccountant[name].count++
-          }
-
-          if (statusCol) {
-            const sCell = cellMap.get(`${client.id}:${statusCol.id}`)
-            const statusLabel = sCell?.value_dropdown ? (dropdownMap.get(sCell.value_dropdown)?.value ?? 'N/A') : 'N/A'
-            honorarByStatus[statusLabel] = (honorarByStatus[statusLabel] || 0) + amount
-          }
-        }
-      }
-
-      const monthlyExpenses = exps.reduce((sum: number, e: Expense) => sum + e.amount, 0)
-
-      setStats({ total: clients.length, contactsCount, statusCounts, totalHonorar, honorarByAccountant, honorarByStatus, monthlyExpenses })
-    } catch (err) {
-      console.error('Failed to load stats:', err)
-    } finally {
-      setLoading(false)
     }
-  }
+
+    const honorarCol = columns.find((c: Column) => c.name === 'Хонорар')
+    const accountantCol = columns.find((c: Column) => c.name === 'Счетоводител')
+    let totalHonorar = 0
+    const honorarByAccountant: Record<string, { sum: number; count: number }> = {}
+    const honorarByStatus: Record<string, number> = {}
+
+    if (isAdmin) {
+      for (const client of clients) {
+        const hCell = honorarCol ? cellIdx.get(cellKey(client.id, honorarCol.id)) : null
+        const amount = hCell?.value_number && hCell.value_number > 0 ? hCell.value_number : 0
+        totalHonorar += amount
+
+        if (accountantCol) {
+          const aCell = cellIdx.get(cellKey(client.id, accountantCol.id))
+          const name = aCell?.value_text || 'Без счетоводител'
+          if (!honorarByAccountant[name]) honorarByAccountant[name] = { sum: 0, count: 0 }
+          honorarByAccountant[name].sum += amount
+          honorarByAccountant[name].count++
+        }
+
+        if (statusCol) {
+          const sCell = cellIdx.get(cellKey(client.id, statusCol.id))
+          const statusLabel = sCell?.value_dropdown ? (dropdownIdx.get(sCell.value_dropdown)?.value ?? 'N/A') : 'N/A'
+          honorarByStatus[statusLabel] = (honorarByStatus[statusLabel] || 0) + amount
+        }
+      }
+    }
+
+    const monthlyExpenses = exps.reduce((sum: number, e: Expense) => sum + e.amount, 0)
+
+    return { total: clients.length, contactsCount, statusCounts, totalHonorar, honorarByAccountant, honorarByStatus, monthlyExpenses }
+  }, [clientsQ.data, columnsQ.data, cellsQ.data, dropdownsQ.data, contactsCountQ.data, expensesQ.data, isAdmin])
 
   const roleLabel: Record<string, string> = { admin: 'Администратор', manager: 'Мениджър', employee: 'Служител' }
   const profit = stats.totalHonorar - stats.monthlyExpenses
