@@ -12,7 +12,7 @@ import {
 import { NOTIFICATION_METHODS, ART55_INCOME_TYPES, type MonthlyWork, type Client, type Column, type CellValue, type DropdownOption, type Art55Entry } from '../lib/types'
 import {
   buildCellIndex, buildDropdownIndex, clientDisplayName,
-  resolveDropdownText,
+  resolveDropdownText, cellKey,
 } from '../lib/tableIndices'
 import { useRealtime } from '../lib/useRealtime'
 
@@ -88,6 +88,7 @@ export function WorkSheetPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])  // празно = всички
+  const [accountantFilter, setAccountantFilter] = useState<string>('')  // празно = всички
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
   const [art55ModalFor, setArt55ModalFor] = useState<{ client: Client; name: string } | null>(null)
 
@@ -158,6 +159,17 @@ export function WorkSheetPage() {
   const statusCol = useMemo(() => columns.find(c => c.name === 'Статус'), [columns])
   const advanceCol = useMemo(() => columns.find(c => c.name === 'Авансови вноски'), [columns])
   const art55Col = useMemo(() => columns.find(c => c.name === 'Чл. 55 ЗДДФЛ'), [columns])
+  const accountantCol = useMemo(() => columns.find(c => c.name === 'Счетоводител'), [columns])
+
+  // Счетоводителят може да е staff-свързана колона (value_text) или dropdown.
+  function accountantOf(clientId: string): string {
+    if (!accountantCol) return ''
+    const cell = cellIdx.get(cellKey(clientId, accountantCol.id))
+    if (!cell) return ''
+    if (cell.value_text) return cell.value_text
+    if (cell.value_dropdown) return dropdownIdx.get(cell.value_dropdown)?.value ?? ''
+    return ''
+  }
 
   // Списък със стойности на статуса (за филтър). „Без дейност" и „Без ДДС"
   // не се показват — тези клиенти изобщо не участват в Работен лист.
@@ -168,7 +180,7 @@ export function WorkSheetPage() {
   }, [dropdowns, statusCol])
 
   // Подготвени клиенти за render: name, status, monthly row
-  type Row = { client: Client; name: string; status: string; advance: string; art55: string; work: MonthlyWork | undefined }
+  type Row = { client: Client; name: string; status: string; accountant: string; advance: string; art55: string; work: MonthlyWork | undefined }
   const tableRows: Row[] = useMemo(() => {
     const visible = user?.role === 'employee'
       ? clients.filter(c => c.assigned_to === user.id)
@@ -178,22 +190,29 @@ export function WorkSheetPage() {
         client: c,
         name: clientDisplayName(c.id, columns, cellIdx),
         status: resolveDropdownText(c.id, statusCol, cellIdx, dropdownIdx),
+        accountant: accountantOf(c.id),
         advance: resolveDropdownText(c.id, advanceCol, cellIdx, dropdownIdx),
         art55: resolveDropdownText(c.id, art55Col, cellIdx, dropdownIdx),
         work: rows.get(c.id),
       }))
       .filter(r => !isHiddenStatus(r.status))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, rows, user])
+  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, rows, user])
+
+  // Списък със счетоводители за филтъра (само присъстващите в таблицата).
+  const accountantOptions = useMemo(() => {
+    return [...new Set(tableRows.map(r => r.accountant).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'bg'))
+  }, [tableRows])
 
   const filteredRows = useMemo(() => {
     const s = search.trim().toLowerCase()
     return tableRows.filter(r => {
       if (statusFilter.length > 0 && !statusFilter.includes(r.status)) return false
+      if (accountantFilter && r.accountant !== accountantFilter) return false
       if (s && !r.name.toLowerCase().includes(s)) return false
       return true
     })
-  }, [tableRows, search, statusFilter])
+  }, [tableRows, search, statusFilter, accountantFilter])
 
   const stats = useMemo(() => {
     let totalResult = 0
@@ -301,6 +320,25 @@ export function WorkSheetPage() {
           <button onClick={() => setStatusFilter([])} className="text-muted-foreground hover:text-foreground">
             (изчисти)
           </button>
+        )}
+
+        {accountantOptions.length > 0 && (
+          <div className="flex items-center gap-1.5 pl-2 border-l border-border">
+            <span className="text-muted-foreground uppercase tracking-wider font-semibold">Счетоводител:</span>
+            <select
+              value={accountantFilter}
+              onChange={e => setAccountantFilter(e.target.value)}
+              className="h-6 px-1 text-xs border border-border rounded bg-background focus:border-primary"
+            >
+              <option value="">Всички</option>
+              {accountantOptions.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            {accountantFilter && (
+              <button onClick={() => setAccountantFilter('')} className="text-muted-foreground hover:text-foreground">
+                ✕
+              </button>
+            )}
+          </div>
         )}
 
         <div className="ml-auto flex items-center gap-4">
