@@ -35,6 +35,12 @@ function fmt(v: number): string {
 export function YearlyViewPage() {
   const { user } = useAuth()
   const [tab, setTab] = useState<'advance' | 'art55' | 'vat'>('vat')
+  // Табовете се mount-ват при първо посещение и остават монтирани → следващите
+  // превключвания са мигновени (без повторно изграждане на голямата таблица).
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(['vat']))
+  useEffect(() => {
+    setVisitedTabs(prev => prev.has(tab) ? prev : new Set(prev).add(tab))
+  }, [tab])
   const [year, setYear] = useState(new Date().getFullYear())
 
   const [clients, setClients] = useState<Client[]>([])
@@ -281,16 +287,29 @@ export function YearlyViewPage() {
         </div>
       </div>
 
-      {/* Body */}
+      {/* Body — трите таба се монтират веднъж и се скриват с CSS, за да е
+          мигновено превключването (без повторно mount на голямата таблица). */}
       <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="p-6 text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Зареждане...</div>
-        ) : tab === 'advance' ? (
-          <AdvanceTable rows={advanceRows} year={year} canEdit={canEdit} onPatch={patchAmount} />
-        ) : tab === 'art55' ? (
-          <Art55Table rows={art55Rows} year={year} canEdit={canEdit} onPatchStatus={patchArt55Status} />
         ) : (
-          <VatTable rows={vatRows} year={year} canEdit={canEdit} onPatch={patchResult} />
+          <>
+            {visitedTabs.has('vat') && (
+              <div className={tab === 'vat' ? '' : 'hidden'}>
+                <VatTable rows={vatRows} year={year} canEdit={canEdit} onPatch={patchResult} />
+              </div>
+            )}
+            {visitedTabs.has('advance') && (
+              <div className={tab === 'advance' ? '' : 'hidden'}>
+                <AdvanceTable rows={advanceRows} year={year} canEdit={canEdit} onPatch={patchAmount} />
+              </div>
+            )}
+            {visitedTabs.has('art55') && (
+              <div className={tab === 'art55' ? '' : 'hidden'}>
+                <Art55Table rows={art55Rows} year={year} canEdit={canEdit} onPatchStatus={patchArt55Status} />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
