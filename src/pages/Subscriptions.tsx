@@ -7,6 +7,7 @@ import {
   buildCellIndex, buildDropdownIndex, cellKey,
   clientDisplayName, resolveDropdownText, resolveNumber,
 } from '../lib/tableIndices'
+import { statusBadgeClass } from '../lib/statusBadge'
 import { Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -16,17 +17,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ConfirmDialog } from '@/components/ui/alert-dialog'
 
 const SUB_MARKER = '__sub__'
-
-const STATUS_BADGE: Record<string, string> = {
-  'АКТИВНА': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-  'НУЛЕВО': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-}
-function statusBadgeCls(s: string): string {
-  if (STATUS_BADGE[s]) return STATUS_BADGE[s]
-  const n = s.toLowerCase()
-  if (n.includes('без')) return 'bg-slate-200 text-slate-600 dark:bg-slate-700/40 dark:text-slate-400'
-  return 'bg-muted text-foreground'
-}
 
 type AmountBucket = 'all' | 'zero' | 'low' | 'mid' | 'high'
 const BUCKET_LABEL: Record<AmountBucket, string> = {
@@ -96,7 +86,6 @@ export function SubscriptionsPage() {
     )
   }, [allClients, allColumns, cellIdx, user])
 
-  const nameColumn = useMemo(() => allColumns.find(c => c.type === 'text'), [allColumns])
   const honorarColumn = useMemo(() => allColumns.find(c => c.name === 'Хонорар'), [allColumns])
   const statusColumn = useMemo(() => allColumns.find(c => c.name === 'Статус'), [allColumns])
   const subColumns = useMemo(() => allColumns.filter(c => c.staff_department === SUB_MARKER), [allColumns])
@@ -188,19 +177,13 @@ export function SubscriptionsPage() {
 
   const totalHonorar = useMemo(() => {
     if (!honorarColumn) return 0
-    return clients.reduce((sum, c) => {
-      const cell = allCells.find(cv => cv.client_id === c.id && cv.column_id === honorarColumn.id)
-      return sum + (cell?.value_number ?? 0)
-    }, 0)
-  }, [clients, allCells, honorarColumn])
+    return clients.reduce((sum, c) => sum + (resolveNumber(c.id, honorarColumn, cellIdx) ?? 0), 0)
+  }, [clients, cellIdx, honorarColumn])
 
   const filteredTotalHonorar = useMemo(() => {
     if (!honorarColumn) return 0
-    return filteredClients.reduce((sum, c) => {
-      const cell = allCells.find(cv => cv.client_id === c.id && cv.column_id === honorarColumn.id)
-      return sum + (cell?.value_number ?? 0)
-    }, 0)
-  }, [filteredClients, allCells, honorarColumn])
+    return filteredClients.reduce((sum, c) => sum + (resolveNumber(c.id, honorarColumn, cellIdx) ?? 0), 0)
+  }, [filteredClients, cellIdx, honorarColumn])
 
   async function handleAddColumn(name: string, type: ColumnType) {
     await addColumn(name, type, false, user?.id, { userId: user?.id, userName: user?.full_name ?? '' }, SUB_MARKER)
@@ -284,7 +267,7 @@ export function SubscriptionsPage() {
                     key={s}
                     onClick={() => setStatusFilter(prev => active ? prev.filter(x => x !== s) : [...prev, s])}
                     className={`px-2 py-0.5 rounded-full font-semibold transition ${
-                      active ? statusBadgeCls(s) : 'bg-muted/40 text-muted-foreground hover:bg-muted'
+                      active ? statusBadgeClass(s) : 'bg-muted/40 text-muted-foreground hover:bg-muted'
                     }`}
                   >{s}</button>
                 )
@@ -396,7 +379,7 @@ export function SubscriptionsPage() {
                     {(() => {
                       const s = clientStatus(client.id)
                       return s ? (
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadgeCls(s)}`}>{s}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadgeClass(s)}`}>{s}</span>
                       ) : <span className="text-dark/20">—</span>
                     })()}
                   </td>
