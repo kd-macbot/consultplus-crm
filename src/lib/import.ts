@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import type { Column, CellValue, DropdownOption } from './types'
 import {
   getColumns, getClients, getCellValues, getDropdownOptions,
@@ -25,7 +24,9 @@ export interface ImportResult {
 
 // ── Parse file ──────────────────────────────────────────────
 
-export function parseFile(file: File): Promise<ParsedSheet> {
+export async function parseFile(file: File): Promise<ParsedSheet> {
+  // Динамичен import — xlsx се сваля чак при реално парсване на файл.
+  const XLSX = await import('xlsx')
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {
