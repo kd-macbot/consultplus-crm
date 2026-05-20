@@ -8,6 +8,7 @@ import {
   getClients, getColumns, getCellValues, getDropdownOptions,
   getMonthlyWork, ensureMonthlyRows, upsertMonthlyWorkByKey,
   getArt55EntriesForPeriod, addArt55Entry, updateArt55Entry, deleteArt55Entry,
+  getOssAmounts,
 } from '../lib/storage'
 import { NOTIFICATION_METHODS, ART55_INCOME_TYPES, type MonthlyWork, type Client, type Column, type CellValue, type DropdownOption, type Art55Entry } from '../lib/types'
 import {
@@ -81,6 +82,8 @@ export function WorkSheetPage() {
   const [dropdowns, setDropdowns] = useState<DropdownOption[]>([])
   const [rows, setRows] = useState<Map<string, MonthlyWork>>(new Map())
   const [art55Entries, setArt55Entries] = useState<Map<string, Art55Entry[]>>(new Map())  // key = client_id
+  // Сбор от предходните месеци на тримесечието (без текущия) — за ОСС сумата за деклариране.
+  const [ossPrior, setOssPrior] = useState<Map<string, number>>(new Map())  // key = client_id
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])  // празно = всички
@@ -142,6 +145,19 @@ export function WorkSheetPage() {
         byClient.set(e.client_id, arr)
       })
       setArt55Entries(byClient)
+
+      // ОСС: на последния месец от тримесечието зареждаме предходните 2 месеца
+      // за да покажем сборната сума за деклариране. Текущият месец идва live от `rows`.
+      if (month % 3 === 0) {
+        const oss = await getOssAmounts(year, [month - 2, month - 1])
+        const prior = new Map<string, number>()
+        oss.forEach(o => {
+          prior.set(o.client_id, (prior.get(o.client_id) ?? 0) + (o.oss_amount ?? 0))
+        })
+        setOssPrior(prior)
+      } else {
+        setOssPrior(new Map())
+      }
     } catch (e: any) {
       if (!silent) toast.error(e.message ?? 'Грешка при зареждане')
     }
@@ -161,6 +177,7 @@ export function WorkSheetPage() {
   const statistikaCol = useMemo(() => columns.find(c => c.name === 'СТАТИСТИКА'), [columns])
   const intrastatCol = useMemo(() => columns.find(c => c.name === 'Интрастат'), [columns])
   const siddoCol = useMemo(() => columns.find(c => c.name === 'СИДДО'), [columns])
+  const ossCol = useMemo(() => columns.find(c => c.name === 'ОСС'), [columns])
 
   // Счетоводителят може да е staff-свързана колона (value_text) или dropdown.
   function accountantOf(clientId: string): string {
@@ -184,7 +201,7 @@ export function WorkSheetPage() {
   type Row = {
     client: Client; name: string; status: string; accountant: string
     advance: string; art55: string
-    akciz: string; statistika: string; intrastat: string; siddo: string
+    akciz: string; statistika: string; intrastat: string; siddo: string; oss: string
     work: MonthlyWork | undefined
   }
   const tableRows: Row[] = useMemo(() => {
@@ -203,11 +220,12 @@ export function WorkSheetPage() {
         statistika: resolveDropdownText(c.id, statistikaCol, cellIdx, dropdownIdx),
         intrastat: resolveDropdownText(c.id, intrastatCol, cellIdx, dropdownIdx),
         siddo: resolveDropdownText(c.id, siddoCol, cellIdx, dropdownIdx),
+        oss: resolveDropdownText(c.id, ossCol, cellIdx, dropdownIdx),
         work: rows.get(c.id),
       }))
       .filter(r => !isHiddenStatus(r.status))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, akcizCol, statistikaCol, intrastatCol, siddoCol, rows, user])
+  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, akcizCol, statistikaCol, intrastatCol, siddoCol, ossCol, rows, user])
 
   // Списък със счетоводители за филтъра (само присъстващите в таблицата).
   const accountantOptions = useMemo(() => {
@@ -374,7 +392,7 @@ export function WorkSheetPage() {
         ) : filteredRows.length === 0 ? (
           <div className="p-10 text-center text-muted-foreground">Няма съвпадения</div>
         ) : (
-          <table className="w-full border-collapse min-w-[1900px]">
+          <table className="w-full border-collapse min-w-[2050px]">
             <thead className="bg-navy text-white sticky top-0 z-10">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-10">#</th>
@@ -394,6 +412,7 @@ export function WorkSheetPage() {
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Статист.</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Интрастат</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">СИДДО</th>
+                <th className="px-2 py-2 text-right text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="ОСС месечна сума; на края на тримесечието — сума за деклариране">ОСС</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Бележки</th>
               </tr>
             </thead>
@@ -476,6 +495,9 @@ export function WorkSheetPage() {
                       onChange={v => patchRow(row.client.id, { intrastat_done: v })} />
                     <MasterFlagCell flag={row.siddo} checked={!!w?.siddo_done} disabled={!canEdit}
                       onChange={v => patchRow(row.client.id, { siddo_done: v })} />
+                    <OssCell flag={row.oss} amount={w?.oss_amount ?? null} disabled={!canEdit}
+                      quarterTotal={month % 3 === 0 ? (ossPrior.get(row.client.id) ?? 0) + (w?.oss_amount ?? 0) : null}
+                      onSave={v => patchRow(row.client.id, { oss_amount: v })} />
                     <td className="px-2 py-0.5">
                       <TextCell
                         value={w?.notes ?? ''}
@@ -536,6 +558,31 @@ function MasterFlagCell({ flag, checked, disabled, onChange }: {
         checked={checked}
         onChange={e => onChange(e.target.checked)}
         className="h-4 w-4 cursor-pointer accent-emerald-600" />
+    </td>
+  )
+}
+
+// ОСС месечна сума. Само за клиенти с мастер ОСС = ДА. На последния месец
+// от тримесечието (quarterTotal !== null) показва сборната сума за деклариране.
+function OssCell({ flag, amount, disabled, quarterTotal, onSave }: {
+  flag: string
+  amount: number | null
+  disabled?: boolean
+  quarterTotal: number | null
+  onSave: (v: number | null) => void
+}) {
+  if (flag !== 'ДА') {
+    return <td className="px-2 py-1.5 text-center text-[10px] text-muted-foreground/50">не</td>
+  }
+  return (
+    <td className="px-2 py-0.5 text-right">
+      <NumberCell value={amount} disabled={disabled} onSave={onSave} />
+      {quarterTotal !== null && (
+        <div className="text-[10px] text-primary font-semibold mt-0.5 whitespace-nowrap"
+          title="Сума за деклариране (сбор от тримесечието)">
+          Σ {quarterTotal.toLocaleString('bg-BG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </div>
+      )}
     </td>
   )
 }
