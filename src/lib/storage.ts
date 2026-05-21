@@ -409,18 +409,22 @@ export async function getCellValues(clientId?: string): Promise<CellValue[]> {
       if (error) throw error
       return data ?? []
     }
+    const tCount = performance.now()
     const { count } = await supabase
       .from('crm_cell_values')
       .select('*', { count: 'exact', head: true })
+    console.info(`%c[perf]%c   cells.count тур: ${Math.round(performance.now() - tCount)}ms (${count ?? 0} реда)`, 'color:#b8860b;font-weight:bold', 'color:inherit')
     const total = count ?? 0
     if (total === 0) return []
     const PAGE = 1000
     const pages = Math.ceil(total / PAGE)
+    const tPages = performance.now()
     const results = await Promise.all(
       Array.from({ length: pages }, (_, i) =>
         supabase.from('crm_cell_values').select('*').range(i * PAGE, (i + 1) * PAGE - 1)
       )
     )
+    console.info(`%c[perf]%c   cells.pages тур: ${Math.round(performance.now() - tPages)}ms (${pages} страници)`, 'color:#b8860b;font-weight:bold', 'color:inherit')
     return results.flatMap(r => r.data ?? []) as CellValue[]
   })
 }
