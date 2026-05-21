@@ -1,6 +1,7 @@
 import { useState, useEffect, type ReactNode } from 'react'
 import { AuthContext, signIn, signOut, getCurrentProfile } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import { timed } from '../../lib/perf'
 import type { Profile, Role } from '../../lib/types'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -11,7 +12,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for auth changes (skip during initial load)
     let initialized = false
 
-    getCurrentProfile().then(profile => {
+    timed('auth (профил)', getCurrentProfile).then(profile => {
       setUser(profile)
       setLoading(false)
       initialized = true

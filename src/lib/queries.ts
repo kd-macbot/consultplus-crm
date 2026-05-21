@@ -3,6 +3,7 @@ import {
   getClients, getColumns, getCellValues, getDropdownOptions,
   getContactsWithClients, getExpenses, getOpportunities,
 } from './storage'
+import { timed } from './perf'
 
 // Централизирани query ключове — ползвай ги за invalidate след мутации.
 export const qk = {
@@ -16,16 +17,16 @@ export const qk = {
 }
 
 export function useClients() {
-  return useQuery({ queryKey: qk.clients, queryFn: getClients })
+  return useQuery({ queryKey: qk.clients, queryFn: () => timed('clients', getClients) })
 }
 export function useColumns() {
-  return useQuery({ queryKey: qk.columns, queryFn: getColumns })
+  return useQuery({ queryKey: qk.columns, queryFn: () => timed('columns', getColumns) })
 }
 export function useCellValues() {
-  return useQuery({ queryKey: qk.cells, queryFn: () => getCellValues() })
+  return useQuery({ queryKey: qk.cells, queryFn: () => timed('cells (всички)', () => getCellValues()) })
 }
 export function useDropdownOptions() {
-  return useQuery({ queryKey: qk.dropdowns, queryFn: () => getDropdownOptions() })
+  return useQuery({ queryKey: qk.dropdowns, queryFn: () => timed('dropdowns', () => getDropdownOptions()) })
 }
 export function useContactsWithClients() {
   return useQuery({ queryKey: qk.contacts, queryFn: getContactsWithClients })
