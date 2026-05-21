@@ -51,7 +51,7 @@ export function SubscriptionsPage() {
   const [colFilters, setColFilters] = useState<Record<string, string>>({})
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [amountBucket, setAmountBucket] = useState<AmountBucket>('all')
-  const [markedCols, setMarkedCols] = useState<Set<string>>(new Set())
+  const [markedClients, setMarkedClients] = useState<Set<string>>(new Set())
 
   const isAdmin = user?.role === 'admin'
   const canEdit = user?.role === 'admin' || user?.role === 'manager'
@@ -186,32 +186,38 @@ export function SubscriptionsPage() {
     return filteredClients.reduce((sum, c) => sum + (resolveNumber(c.id, honorarColumn, cellIdx) ?? 0), 0)
   }, [filteredClients, cellIdx, honorarColumn])
 
-  // Маркируеми са числовите абонаментни колони (не и самият Хонорар — той е
-  // базата, спрямо която смятаме остатъка).
-  const isMarkable = (col: Column) => col.type === 'number' && col.id !== honorarColumn?.id
-
-  function toggleMark(colId: string) {
-    setMarkedCols(prev => {
+  function toggleClient(clientId: string) {
+    setMarkedClients(prev => {
       const next = new Set(prev)
-      if (next.has(colId)) next.delete(colId)
-      else next.add(colId)
+      if (next.has(clientId)) next.delete(clientId)
+      else next.add(clientId)
       return next
     })
   }
 
-  // Сбор на маркираните колони — ВИНАГИ върху всички клиенти (не зависи от
-  // активните филтри, по избор на потребителя).
+  // Сбор на хонорара на маркираните клиенти.
   const markedSum = useMemo(() => {
+    if (!honorarColumn) return 0
     let s = 0
-    for (const col of subColumns) {
-      if (col.type !== 'number' || !markedCols.has(col.id)) continue
-      for (const c of clients) s += resolveNumber(c.id, col, cellIdx) ?? 0
+    for (const c of clients) {
+      if (markedClients.has(c.id)) s += resolveNumber(c.id, honorarColumn, cellIdx) ?? 0
     }
     return s
-  }, [subColumns, markedCols, clients, cellIdx])
+  }, [markedClients, clients, cellIdx, honorarColumn])
 
-  // Остатък = общият Хонорар (всички клиенти) минус маркираните колони.
+  // Остатък = общият Хонорар (всички клиенти) минус маркираните клиенти.
   const remainingHonorar = totalHonorar - markedSum
+
+  // Чекбоксът в хедъра маркира/размаркира всички видими (филтрирани) клиенти.
+  const allFilteredMarked = filteredClients.length > 0 && filteredClients.every(c => markedClients.has(c.id))
+  function toggleAllFiltered() {
+    setMarkedClients(prev => {
+      const next = new Set(prev)
+      if (allFilteredMarked) filteredClients.forEach(c => next.delete(c.id))
+      else filteredClients.forEach(c => next.add(c.id))
+      return next
+    })
+  }
 
   async function handleAddColumn(name: string, type: ColumnType) {
     await addColumn(name, type, false, user?.id, { userId: user?.id, userName: user?.full_name ?? '' }, SUB_MARKER)
@@ -278,11 +284,11 @@ export function SubscriptionsPage() {
           )}
         </div>
 
-        {markedCols.size > 0 && (
+        {markedClients.size > 0 && (
           <div className="flex flex-wrap items-center gap-4 pl-4 border-l border-border">
             <div>
               <span className="text-xs text-muted-foreground uppercase tracking-wider mr-2">
-                Маркирани ({markedCols.size})
+                Маркирани ({markedClients.size})
               </span>
               <span className="font-bold text-amber-600">
                 {markedSum.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
@@ -295,10 +301,9 @@ export function SubscriptionsPage() {
               <span className={`font-bold ${remainingHonorar < 0 ? 'text-red-600' : 'text-foreground'}`}>
                 {remainingHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
               </span>
-              <span className="text-xs text-muted-foreground ml-2">(всички клиенти)</span>
             </div>
             <button
-              onClick={() => setMarkedCols(new Set())}
+              onClick={() => setMarkedClients(new Set())}
               className="text-xs text-muted-foreground hover:text-foreground underline"
             >
               изчисти
@@ -354,40 +359,38 @@ export function SubscriptionsPage() {
           <thead className="bg-navy text-white sticky top-0 z-10">
             {/* Main header */}
             <tr>
+              <th className="px-2 py-2 text-center w-9">
+                <input
+                  type="checkbox"
+                  checked={allFilteredMarked}
+                  onChange={toggleAllFiltered}
+                  title="Маркирай всички видими"
+                  className="h-3.5 w-3.5 cursor-pointer accent-amber-500 align-middle"
+                />
+              </th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-10">#</th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Клиент</th>
               {statusColumn && (
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Статус</th>
               )}
-              {tableColumns.map(col => {
-                const marked = markedCols.has(col.id)
-                return (
-                  <th key={col.id} className={`px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap ${marked ? 'bg-amber-500/30' : ''}`}>
-                    <div className="flex items-center gap-1">
-                      {isMarkable(col) && (
-                        <input
-                          type="checkbox"
-                          checked={marked}
-                          onChange={() => toggleMark(col.id)}
-                          title="Маркирай за сбор"
-                          className="h-3.5 w-3.5 cursor-pointer accent-amber-500"
-                        />
-                      )}
-                      <span>{col.name}</span>
-                      {isAdmin && col.staff_department === SUB_MARKER && (
-                        <button
-                          onClick={() => setConfirmDeleteCol(col)}
-                          className="text-white/50 hover:text-white ml-1 text-base leading-none"
-                          title="Изтрий колона"
-                        >×</button>
-                      )}
-                    </div>
-                  </th>
-                )
-              })}
+              {tableColumns.map(col => (
+                <th key={col.id} className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">
+                  <div className="flex items-center gap-1">
+                    <span>{col.name}</span>
+                    {isAdmin && col.staff_department === SUB_MARKER && (
+                      <button
+                        onClick={() => setConfirmDeleteCol(col)}
+                        className="text-white/50 hover:text-white ml-1 text-base leading-none"
+                        title="Изтрий колона"
+                      >×</button>
+                    )}
+                  </div>
+                </th>
+              ))}
             </tr>
             {/* Filter row */}
             <tr className="bg-navy-light">
+              <th className="px-2 py-1" />
               <th className="px-2 py-1" />
               <th className="px-2 py-1">
                 <input
@@ -427,16 +430,26 @@ export function SubscriptionsPage() {
           <tbody>
             {filteredClients.length === 0 && (
               <tr>
-                <td colSpan={tableColumns.length + 2 + (statusColumn ? 1 : 0)} className="px-4 py-8 text-center text-dark/40">
+                <td colSpan={tableColumns.length + 3 + (statusColumn ? 1 : 0)} className="px-4 py-8 text-center text-dark/40">
                   {hasFilters ? 'Няма клиенти отговарящи на филтрите' : 'Няма клиенти'}
                 </td>
               </tr>
             )}
-            {filteredClients.map((client, i) => (
+            {filteredClients.map((client, i) => {
+              const marked = markedClients.has(client.id)
+              return (
               <tr
                 key={client.id}
-                className={`border-b border-light/50 ${i % 2 === 0 ? 'bg-card' : 'bg-muted/20'} hover:bg-gold/5 transition-colors`}
+                className={`border-b border-light/50 ${marked ? 'bg-amber-100/60 dark:bg-amber-900/20' : i % 2 === 0 ? 'bg-card' : 'bg-muted/20'} hover:bg-gold/5 transition-colors`}
               >
+                <td className="px-2 py-2 text-center w-9">
+                  <input
+                    type="checkbox"
+                    checked={marked}
+                    onChange={() => toggleClient(client.id)}
+                    className="h-3.5 w-3.5 cursor-pointer accent-amber-500 align-middle"
+                  />
+                </td>
                 <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums w-10">
                   {i + 1}
                 </td>
@@ -495,10 +508,12 @@ export function SubscriptionsPage() {
                   )
                 })}
               </tr>
-            ))}
+              )
+            })}
           </tbody>
           <tfoot className="bg-navy/5 border-t-2 border-light font-semibold">
             <tr>
+              <td className="px-2 py-2" />
               <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums">
                 {filteredClients.length}
               </td>
