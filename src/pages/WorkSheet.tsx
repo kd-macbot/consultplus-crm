@@ -384,10 +384,10 @@ export function WorkSheetPage() {
           <div className="p-10 text-center text-muted-foreground">Няма съвпадения</div>
         ) : (
           <table className="w-full border-collapse min-w-[2050px]">
-            <thead className="bg-navy text-white sticky top-0 z-10">
+            <thead className="bg-navy text-white sticky top-0 z-30">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-10">#</th>
-                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap sticky left-0 bg-navy z-20">Фирма</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap sticky left-0 bg-navy z-40">Фирма</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Статус</th>
                 <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider whitespace-nowrap">Резултат €</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Подадено на</th>
@@ -415,7 +415,7 @@ export function WorkSheetPage() {
                 return (
                   <tr key={row.client.id} className={`border-b border-light/50 hover:bg-gold/5 transition-colors ${evenBg}`}>
                     <td className="px-3 py-1.5 text-xs text-muted-foreground/70 text-right">{i + 1}</td>
-                    <td className={`px-3 py-1.5 font-medium text-foreground whitespace-nowrap sticky left-0 z-10 ${evenBg}`}>
+                    <td className={`px-3 py-1.5 font-medium text-foreground whitespace-nowrap sticky left-0 z-20 ${evenBg}`}>
                       {row.name || <span className="text-muted-foreground/40 italic">(без име)</span>}
                       {isSaving && <Loader2 className="inline ml-1 h-3 w-3 animate-spin text-muted-foreground" />}
                     </td>
