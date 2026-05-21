@@ -409,23 +409,37 @@ export async function getCellValues(clientId?: string): Promise<CellValue[]> {
       if (error) throw error
       return data ?? []
     }
-    const tCount = performance.now()
-    const { count } = await supabase
+    // Един тур: взимаме редовете + точния общ брой в една заявка (count идва
+    // в Content-Range хедъра, без отделна count заявка). Ако db max_rows стига
+    // за всички редове → това е единствената заявка. Ако базата е орязала
+    // отговора, доваждаме останалите страници паралелно. Подреждаме по id за
+    // стабилна пагинация.
+    const t0 = performance.now()
+    const { data, count, error } = await supabase
       .from('crm_cell_values')
-      .select('*', { count: 'exact', head: true })
-    console.info(`%c[perf]%c   cells.count тур: ${Math.round(performance.now() - tCount)}ms (${count ?? 0} реда)`, 'color:#b8860b;font-weight:bold', 'color:inherit')
-    const total = count ?? 0
-    if (total === 0) return []
-    const PAGE = 1000
-    const pages = Math.ceil(total / PAGE)
-    const tPages = performance.now()
-    const results = await Promise.all(
-      Array.from({ length: pages }, (_, i) =>
-        supabase.from('crm_cell_values').select('*').range(i * PAGE, (i + 1) * PAGE - 1)
-      )
+      .select('*', { count: 'exact' })
+      .order('id', { ascending: true })
+    if (error) throw error
+    const first = (data ?? []) as CellValue[]
+    const total = count ?? first.length
+    if (first.length >= total) {
+      console.info(`%c[perf]%c   cells.load тур: ${Math.round(performance.now() - t0)}ms (${first.length} реда, 1 заявка)`, 'color:#b8860b;font-weight:bold', 'color:inherit')
+      return first
+    }
+    const PAGE = first.length || 1000
+    const extraPages = Math.ceil((total - first.length) / PAGE)
+    const rest = await Promise.all(
+      Array.from({ length: extraPages }, (_, i) => {
+        const start = first.length + i * PAGE
+        return supabase
+          .from('crm_cell_values')
+          .select('*')
+          .order('id', { ascending: true })
+          .range(start, start + PAGE - 1)
+      })
     )
-    console.info(`%c[perf]%c   cells.pages тур: ${Math.round(performance.now() - tPages)}ms (${pages} страници)`, 'color:#b8860b;font-weight:bold', 'color:inherit')
-    return results.flatMap(r => r.data ?? []) as CellValue[]
+    console.info(`%c[perf]%c   cells.load тур: ${Math.round(performance.now() - t0)}ms (${total} реда, ${1 + extraPages} заявки)`, 'color:#b8860b;font-weight:bold', 'color:inherit')
+    return [...first, ...rest.flatMap(r => (r.data ?? []) as CellValue[])]
   })
 }
 
