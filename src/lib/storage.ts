@@ -830,8 +830,8 @@ async function invokeFetchEik(body: object): Promise<EikLookupResult> {
 }
 
 export async function lookupEikByName(name: string): Promise<EikLookupResult> {
-  // Slug-ът на функцията в Supabase е "swift-task" (auto-генериран), но името й е "fetch-eik".
-  // URL-ът използва slug. verify_jwt=false е настроен, така че supabase.functions.invoke работи нормално.
+  // Edge функцията е със slug "swift-task" (папка supabase/functions/swift-task).
+  // verify_jwt=false е настроен, така че supabase.functions.invoke работи нормално.
   return invokeFetchEik({ name })
 }
 

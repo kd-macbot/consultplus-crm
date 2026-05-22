@@ -1,12 +1,13 @@
-// Supabase Edge Function: fetch-eik
-// Търси фирма по име в regdata.apis.bg и връща ЕИК + основни данни.
+// Supabase Edge Function: swift-task (търси фирма по име/ЕИК в regdata.apis.bg).
+// Историческо име на кода е „fetch-eik", но slug-ът (и папката) е „swift-task" —
+// фронтендът вика именно него (src/lib/storage.ts → invoke('swift-task')).
 //
 // Deploy:
-//   supabase functions deploy fetch-eik
+//   supabase functions deploy swift-task
 //   supabase secrets set REGDATA_USERNAME=... REGDATA_PASSWORD=... REGDATA_PACKET_ID=1
 //
 // Frontend извикване:
-//   POST /functions/v1/fetch-eik
+//   POST /functions/v1/swift-task
 //   body: { name: "АВОМИС ЕООД" }
 //   → { eik, caption, candidates?: [...] }
 
