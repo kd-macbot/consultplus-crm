@@ -5,13 +5,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
 import {
-  getClients, getColumns, getCellValues, getDropdownOptions,
+  getClients, getColumns, getCellValues, getDropdownOptions, getStaff,
   getTrzWork, ensureTrzRows, upsertTrzWorkByKey,
 } from '../lib/storage'
 import type { Column, CellValue, Client, DropdownOption, TrzWork } from '../lib/types'
 import {
   buildCellIndex, buildDropdownIndex, cellKey,
-  clientDisplayName, resolveDropdownText, resolveText,
+  clientDisplayName, resolveDropdownText,
 } from '../lib/tableIndices'
 import { statusBadgeClass, isHiddenStatus } from '../lib/statusBadge'
 import { useRealtime } from '../lib/useRealtime'
@@ -47,6 +47,7 @@ export function TrzPage() {
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [softwareFilter, setSoftwareFilter] = useState<string[]>([])
   const [respFilter, setRespFilter] = useState('')
+  const [respStaff, setRespStaff] = useState<string[]>([])
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
 
   const canEdit = !!user
@@ -71,6 +72,21 @@ export function TrzPage() {
       setAllColumns(cols)
       setAllCells(cells)
       setAllDropdowns(dds)
+
+      // ТРЗ отговорник филтър — стойностите идат от мастера: ако колоната е
+      // staff-свързана, теглим целия персонал на отдела (вкл. без клиенти).
+      const respColLocal = cols.find(c => {
+        const n = uc(c.name)
+        return n.includes('ТРЗ') && !n.includes('СТАТУС') && !n.includes('СОФТУЕР')
+      })
+      if (respColLocal?.staff_department) {
+        try {
+          const staff = await getStaff(respColLocal.staff_department)
+          setRespStaff(staff.map(s => s.full_name))
+        } catch { setRespStaff([]) }
+      } else {
+        setRespStaff([])
+      }
 
       // Подсигуряваме ред за всеки активен клиент (без „Без дейност"/„Без ДДС").
       const statusColLocal = cols.find(c => c.name === 'Статус')
@@ -119,8 +135,15 @@ export function TrzPage() {
 
   function valueText(col: Column | undefined, clientId: string): string {
     if (!col) return ''
-    if (col.type === 'dropdown') return resolveDropdownText(clientId, col, cellIdx, dropdownIdx)
-    return resolveText(clientId, col, cellIdx)
+    const cell = cellIdx.get(cellKey(clientId, col.id))
+    if (!cell) return ''
+    if (col.type === 'dropdown') {
+      // staff-свързаните колони пазят името във value_text; обикновените — option id.
+      if (cell.value_text) return cell.value_text
+      if (cell.value_dropdown) return dropdownIdx.get(cell.value_dropdown)?.value ?? ''
+      return ''
+    }
+    return cell.value_text ?? ''
   }
 
   const statusOptions = useMemo(() => {
@@ -159,10 +182,17 @@ export function TrzPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allClients, allColumns, cellIdx, dropdownIdx, statusCol, trzStatusCol, trzRespCol, softwareCol, rows])
 
-  const respOptions = useMemo(
-    () => [...new Set(tableRows.map(r => r.resp).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'bg')),
-    [tableRows],
-  )
+  const respOptions = useMemo(() => {
+    // 1) staff-свързана колона → целият персонал на отдела (от мастера)
+    if (respStaff.length) return [...respStaff].sort((a, b) => a.localeCompare(b, 'bg'))
+    // 2) обикновен dropdown → опциите от мастер колоната
+    if (trzRespCol?.type === 'dropdown') {
+      const opts = [...new Set(allDropdowns.filter(d => d.column_id === trzRespCol.id).map(d => d.value))]
+      if (opts.length) return opts.sort((a, b) => a.localeCompare(b, 'bg'))
+    }
+    // 3) иначе → наличните стойности
+    return [...new Set(tableRows.map(r => r.resp).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'bg'))
+  }, [respStaff, trzRespCol, allDropdowns, tableRows])
 
   const filteredRows = useMemo(() => {
     return tableRows.filter(r => {
@@ -314,7 +344,6 @@ export function TrzPage() {
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-10">#</th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Фирма</th>
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">ТРЗ</th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">ТРЗ Статус</th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Софтуер</th>
               <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Заплати</th>
@@ -326,7 +355,7 @@ export function TrzPage() {
           <tbody>
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-dark/40">
+                <td colSpan={8} className="px-4 py-8 text-center text-dark/40">
                   {hasFilters ? 'Няма клиенти отговарящи на филтрите' : 'Няма клиенти'}
                 </td>
               </tr>
@@ -343,9 +372,6 @@ export function TrzPage() {
                     {isSaving ? <Loader2 className="h-3 w-3 animate-spin inline" /> : i + 1}
                   </td>
                   <td className="px-3 py-1.5 font-medium text-foreground whitespace-nowrap">{r.name || r.client.id.slice(0, 8)}</td>
-                  <td className="px-3 py-1.5 whitespace-nowrap">
-                    {r.resp || <span className="text-dark/20">—</span>}
-                  </td>
                   <td className="px-3 py-1.5 whitespace-nowrap">
                     {r.status
                       ? <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadgeClass(r.status)}`}>{r.status}</span>
