@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../lib/auth'
-import { getExpenses, getMonthlyWork } from '../lib/storage'
+import { getExpenses, getMonthlyWork, getTrzWork } from '../lib/storage'
 import { useClients, useColumns, useCellValues, useDropdownOptions } from '../lib/queries'
 import { supabase } from '../lib/supabase'
 import type { Column, Expense } from '../lib/types'
 import { buildCellIndex, buildDropdownIndex, cellKey, resolveDropdownText } from '../lib/tableIndices'
 import { isHiddenStatus } from '../lib/statusBadge'
-import { Users, Euro, CheckCircle2, TrendingUp, TrendingDown, Wallet, BookUser, ChevronLeft, ChevronRight, ClipboardCheck, AlertTriangle } from 'lucide-react'
+import { Users, Euro, CheckCircle2, TrendingUp, TrendingDown, Wallet, BookUser, ChevronLeft, ChevronRight, ClipboardCheck, AlertTriangle, Receipt } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn, formatCurrency } from '@/lib/utils'
 
@@ -45,6 +45,13 @@ export function Dashboard() {
     queryFn: () => getMonthlyWork(wsYear, wsMonth),
   })
 
+  const [trzYear, setTrzYear] = useState(now.getFullYear())
+  const [trzMonth, setTrzMonth] = useState(now.getMonth() + 1)
+  const trzWorkQ = useQuery({
+    queryKey: ['trzWork', trzYear, trzMonth],
+    queryFn: () => getTrzWork(trzYear, trzMonth),
+  })
+
   function shiftMonth(delta: number) {
     let m = wsMonth + delta
     let y = wsYear
@@ -52,6 +59,15 @@ export function Dashboard() {
     if (m > 12) { m = 1; y++ }
     setWsMonth(m)
     setWsYear(y)
+  }
+
+  function shiftTrzMonth(delta: number) {
+    let m = trzMonth + delta
+    let y = trzYear
+    if (m < 1) { m = 12; y-- }
+    if (m > 12) { m = 1; y++ }
+    setTrzMonth(m)
+    setTrzYear(y)
   }
 
   const loading = clientsQ.isLoading || columnsQ.isLoading || cellsQ.isLoading || dropdownsQ.isLoading
@@ -89,6 +105,36 @@ export function Dashboard() {
     }
     return { total: active.length, submitted, notified, vat, amort, bank, salaries, npa, resultSum }
   }, [clientsQ.data, columnsQ.data, cellsQ.data, dropdownsQ.data, monthlyWorkQ.data, user])
+
+  // ТРЗ месечен напредък — „общо" = фирмите с ТРЗ Статус = „Активна".
+  const trzStats = useMemo(() => {
+    const clients = clientsQ.data ?? []
+    const columns = columnsQ.data ?? []
+    const cells = cellsQ.data ?? []
+    const dropdowns = dropdownsQ.data ?? []
+    const work = trzWorkQ.data ?? []
+
+    const cellIdx = buildCellIndex(cells)
+    const dropdownIdx = buildDropdownIndex(dropdowns)
+    const trzStatusCol = columns.find((c: Column) => {
+      const n = c.name.toUpperCase()
+      return n.includes('ТРЗ') && n.includes('СТАТУС')
+    })
+    const workByClient = new Map(work.map(w => [w.client_id, w]))
+
+    const active = clients.filter(c => resolveDropdownText(c.id, trzStatusCol, cellIdx, dropdownIdx) === 'Активна')
+
+    let salaries = 0, insurance = 0, payroll = 0, fullyDone = 0
+    for (const c of active) {
+      const w = workByClient.get(c.id)
+      if (!w) continue
+      if (w.salaries_prepared) salaries++
+      if (w.insurance_submitted) insurance++
+      if (w.payroll_sent) payroll++
+      if (w.salaries_prepared && w.insurance_submitted && w.payroll_sent) fullyDone++
+    }
+    return { total: active.length, salaries, insurance, payroll, fullyDone }
+  }, [clientsQ.data, columnsQ.data, cellsQ.data, dropdownsQ.data, trzWorkQ.data])
 
   const stats = useMemo(() => {
     const clients = clientsQ.data ?? []
@@ -157,16 +203,8 @@ export function Dashboard() {
     )
   }
 
-  return (
-    <div className="p-4 md:p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold text-foreground">
-          Здравей, {user?.full_name} 👋
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">{user ? roleLabel[user.role] : ''}</p>
-      </div>
-
+  const worksheetSection = (
+    <>
       {/* Работен лист — месечен напредък (всички роли) */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between px-5 pt-5 pb-3">
@@ -237,6 +275,84 @@ export function Dashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* ТРЗ Работен лист — месечен напредък (всички роли) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between px-5 pt-5 pb-3">
+          <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
+            <Receipt className="h-4 w-4 text-navy" />
+            ТРЗ Работен лист
+          </CardTitle>
+          <div className="flex items-center gap-1">
+            <button onClick={() => shiftTrzMonth(-1)} aria-label="Предходен месец"
+              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="text-sm font-medium text-foreground min-w-[130px] text-center">{MONTH_NAMES[trzMonth - 1]} {trzYear}</span>
+            <button onClick={() => shiftTrzMonth(1)} aria-label="Следващ месец"
+              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          {trzWorkQ.isLoading ? (
+            <p className="text-sm text-muted-foreground">Зареждане...</p>
+          ) : trzStats.total === 0 ? (
+            <p className="text-sm text-muted-foreground">Няма активни фирми за ТРЗ.</p>
+          ) : (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Заплати</p>
+                  <p className="text-2xl font-bold text-foreground tabular-nums">
+                    {trzStats.salaries}<span className="text-base text-muted-foreground font-normal"> / {trzStats.total}</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Осигуровки</p>
+                  <p className="text-2xl font-bold text-foreground tabular-nums">
+                    {trzStats.insurance}<span className="text-base text-muted-foreground font-normal"> / {trzStats.total}</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Ведомост</p>
+                  <p className="text-2xl font-bold text-foreground tabular-nums">
+                    {trzStats.payroll}<span className="text-base text-muted-foreground font-normal"> / {trzStats.total}</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Напълно готови</p>
+                  <p className="text-2xl font-bold text-green-600 tabular-nums">
+                    {trzStats.fullyDone}<span className="text-base text-muted-foreground font-normal"> / {trzStats.total}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                <WsProgress label="Изготвени заплати" done={trzStats.salaries} total={trzStats.total} />
+                <WsProgress label="Подадени осигуровки" done={trzStats.insurance} total={trzStats.total} />
+                <WsProgress label="Изпратена ведомост" done={trzStats.payroll} total={trzStats.total} />
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </>
+  )
+
+  return (
+    <div className="p-4 md:p-6 space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">
+          Здравей, {user?.full_name} 👋
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">{user ? roleLabel[user.role] : ''}</p>
+      </div>
+
+      {/* Работни листове — за админ са най-отдолу, за останалите тук горе */}
+      {!isAdmin && worksheetSection}
 
       {/* Restricted view — manager & employee */}
       {isRestricted && (
@@ -442,6 +558,9 @@ export function Dashboard() {
           </Card>
         </>
       )}
+
+      {/* За админа работните листове са най-отдолу, под другите карти */}
+      {isAdmin && worksheetSection}
     </div>
   )
 }
