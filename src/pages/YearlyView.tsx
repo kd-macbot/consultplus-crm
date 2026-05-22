@@ -120,7 +120,7 @@ export function YearlyViewPage() {
   // Клиенти за всеки таб
   type AdvanceRow = { client: Client; name: string; profile: string; minYearly: number | null; months: Map<number, number | null>; total: number }
   const advanceRows = useMemo(() => {
-    const visible = user?.role === 'employee' ? clients.filter(c => c.assigned_to === user.id) : clients
+    const visible = clients
     return visible
       .map(c => {
         const profile = resolveDropdownText(c.id, advanceCol, cellIdx, dropdownIdx)
@@ -137,7 +137,7 @@ export function YearlyViewPage() {
       })
       .filter((r): r is AdvanceRow => r !== null)
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cellIdx, dropdownIdx, advanceCol, advMinCol, monthlyByClient, user])
+  }, [clients, columns, cellIdx, dropdownIdx, advanceCol, advMinCol, monthlyByClient])
 
   type Art55Row = {
     client: Client; name: string
@@ -146,7 +146,7 @@ export function YearlyViewPage() {
     totalGross: number; totalTax: number
   }
   const art55Rows = useMemo(() => {
-    const visible = user?.role === 'employee' ? clients.filter(c => c.assigned_to === user.id) : clients
+    const visible = clients
     return visible
       .map(c => {
         const applies = resolveDropdownText(c.id, art55Col, cellIdx, dropdownIdx)
@@ -169,7 +169,7 @@ export function YearlyViewPage() {
       })
       .filter((r): r is Art55Row => r !== null)
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cellIdx, dropdownIdx, art55Col, art55ByClientMonth, art55Statuses, user])
+  }, [clients, columns, cellIdx, dropdownIdx, art55Col, art55ByClientMonth, art55Statuses])
 
   async function patchArt55Status(clientId: string, quarter: number, patch: Partial<Art55QuarterStatus>) {
     lastEditRef.current = Date.now()
@@ -196,7 +196,7 @@ export function YearlyViewPage() {
 
   type VatRow = { client: Client; name: string; months: Map<number, number | null>; totalPay: number; totalRefund: number; net: number }
   const vatRows = useMemo(() => {
-    const visible = user?.role === 'employee' ? clients.filter(c => c.assigned_to === user.id) : clients
+    const visible = clients
     return visible
       .map(c => {
         const months = new Map<number, number | null>()
@@ -216,7 +216,7 @@ export function YearlyViewPage() {
       })
       .filter((r): r is VatRow => r !== null)
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cellIdx, monthlyByClient, user])
+  }, [clients, columns, cellIdx, monthlyByClient])
 
   async function patchResult(clientId: string, month: number, amount: number | null) {
     lastEditRef.current = Date.now()

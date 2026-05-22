@@ -58,7 +58,9 @@ export default function App() {
                 <Route path="/worksheet" element={<WorkSheetPage />} />
                 <Route path="/yearly" element={<YearlyViewPage />} />
                 <Route path="/trz" element={<TrzPage />} />
-                <Route path="/opportunities" element={<OpportunitiesPage />} />
+                <Route path="/opportunities" element={
+                  <ProtectedRoute allowedRoles={['admin']}><OpportunitiesPage /></ProtectedRoute>
+                } />
                 <Route path="/contacts" element={<ContactsPage />} />
                 <Route path="/staff" element={
                   <ProtectedRoute allowedRoles={['admin']}><StaffPage /></ProtectedRoute>
@@ -73,7 +75,7 @@ export default function App() {
                   <ProtectedRoute allowedRoles={['admin']}><SubscriptionsPage /></ProtectedRoute>
                 } />
                 <Route path="/admin" element={
-                  <ProtectedRoute allowedRoles={['admin', 'manager']}><AdminPage /></ProtectedRoute>
+                  <ProtectedRoute allowedRoles={['admin']}><AdminPage /></ProtectedRoute>
                 } />
                 <Route path="/import" element={
                   <ProtectedRoute allowedRoles={['admin']}><ImportPage /></ProtectedRoute>

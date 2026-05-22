@@ -33,7 +33,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Бизнес',
     items: [
-      { to: '/opportunities', label: 'Възможности', icon: Target, roles: ['admin', 'manager', 'employee'] },
+      { to: '/opportunities', label: 'Възможности', icon: Target, roles: ['admin'] },
       { to: '/subscriptions', label: 'Абонаменти', icon: CreditCard, roles: ['admin'] },
       { to: '/expenses', label: 'Разходи', icon: Wallet, roles: ['admin'] },
     ],
@@ -43,7 +43,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },
       { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin'] },
-      { to: '/admin', label: 'Настройки', icon: Settings, roles: ['admin', 'manager'] },
+      { to: '/admin', label: 'Настройки', icon: Settings, roles: ['admin'] },
     ],
   },
 ]
