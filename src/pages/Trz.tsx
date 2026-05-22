@@ -248,7 +248,7 @@ export function TrzPage() {
       {/* Title bar */}
       <div className="px-3 py-2 md:px-5 md:py-3 flex items-center justify-between border-b border-border bg-card">
         <div className="flex items-center gap-2">
-          <h1 className="text-base md:text-lg font-semibold text-foreground">🧾 ТРЗ</h1>
+          <h1 className="text-base md:text-lg font-semibold text-foreground">🧾 ТРЗ Работен лист</h1>
           <div className="flex items-center gap-1 ml-2">
             <Button variant="outline" size="sm" onClick={() => changeMonth(-1)}>
               <ChevronLeft className="h-3.5 w-3.5" />
