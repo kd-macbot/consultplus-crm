@@ -15,7 +15,7 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 // следваща заявка (всяка вика getSession() → чака същия lock). Като отменяме
 // заявката, lock-ът се освобождава и следващата заявка минава по свежа връзка.
 const REQUEST_TIMEOUT_MS = 10_000
-// Edge функциите (fetch-eik → regdata) са по-бавни, дай им повече време.
+// Edge функциите (swift-task → regdata) са по-бавни, дай им повече време.
 const EDGE_TIMEOUT_MS = 30_000
 
 const timeoutFetch: typeof fetch = (input, init) => {

@@ -1,12 +1,13 @@
-// Supabase Edge Function: fetch-eik
-// Търси фирма по име в regdata.apis.bg и връща ЕИК + основни данни.
+// Supabase Edge Function: swift-task (търси фирма по име/ЕИК в regdata.apis.bg).
+// Историческо име на кода е „fetch-eik", но slug-ът (и папката) е „swift-task" —
+// фронтендът вика именно него (src/lib/storage.ts → invoke('swift-task')).
 //
 // Deploy:
-//   supabase functions deploy fetch-eik
+//   supabase functions deploy swift-task
 //   supabase secrets set REGDATA_USERNAME=... REGDATA_PASSWORD=... REGDATA_PACKET_ID=1
 //
 // Frontend извикване:
-//   POST /functions/v1/fetch-eik
+//   POST /functions/v1/swift-task
 //   body: { name: "АВОМИС ЕООД" }
 //   → { eik, caption, candidates?: [...] }
 
@@ -202,15 +203,31 @@ function parseDetails(d: any): ParsedCompany {
   const states: Array<{ date?: string; code?: string }> = Array.isArray(d?.vat?.states) ? d.vat.states : []
   // Сортираме по дата ascending → последния запис е актуалното състояние
   const sortedStates = [...states].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
-  // Известен код за дерегистрация (D21 е стандартен за отписване от ДДС регистър)
-  const DEREG_CODES = new Set(["D21"])
-  const lastCode = sortedStates[sortedStates.length - 1]?.code
-  // Активна по ДДС: има поне един state и последния НЕ е дерегистрация
-  const vatActive = sortedStates.length > 0 && !DEREG_CODES.has(lastCode ?? "")
+
+  // VAT state кодове от регистъра (regdata). Потвърдени от реални данни:
+  //   D14 = регистрация по ДДС, D15 = дерегистрация (отписване).
+  // D21 също е дерегистрационен код. Списъците се допълват при нови кодове.
+  const VAT_REGISTER_CODES = new Set(["D14"])
+  const VAT_DEREGISTER_CODES = new Set(["D15", "D21"])
+
+  const lastCode = sortedStates[sortedStates.length - 1]?.code ?? ""
+  // Актуалният ДДС статус се определя от ПОСЛЕДНОТО събитие по дата.
+  let vatActive: boolean
+  if (VAT_DEREGISTER_CODES.has(lastCode)) vatActive = false
+  else if (VAT_REGISTER_CODES.has(lastCode)) vatActive = true
+  else vatActive = sortedStates.length > 0 // непознат код → запазваме старото (консервативно) поведение
+
   const vat_number = vatActive && eik ? `BG${eik}` : null
-  // Дата на регистрация: първия state (по дата) — обикновено е регистрационна
-  const firstState = sortedStates[0]
-  const vat_registered_at = vatActive && firstState?.date ? firstState.date.split("T")[0] : null
+
+  // Дата на регистрация: датата на последното регистрационно събитие (при
+  // повторна регистрация е по-точно от „първото състояние"); fallback — първото.
+  let vat_registered_at: string | null = null
+  if (vatActive) {
+    const lastReg = [...sortedStates].reverse().find((s) => VAT_REGISTER_CODES.has(s.code ?? ""))
+    const regDate = lastReg?.date ?? sortedStates[0]?.date
+    vat_registered_at = regDate ? regDate.split("T")[0] : null
+  }
+
   const address = formatAddress(d?.addresses?.[0] ?? d?.vat?.address) ?? null
   const owner_name = d?.owners?.[0]?.name ?? null
   const managers: string[] = (d?.managers ?? []).map((m: any) => m?.name).filter(Boolean)
