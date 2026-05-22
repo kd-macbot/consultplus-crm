@@ -361,7 +361,7 @@ export function ImportPage() {
           const results = await Promise.all(
             batch.map(r => {
               const id = existingMap.get(`${r.client_id}:${r.column_id}`)!
-              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+               
               const { client_id: _c, column_id: _col, ...updates } = r
               return supabase.from('crm_cell_values').update(updates).eq('id', id)
             })

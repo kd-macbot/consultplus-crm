@@ -107,10 +107,6 @@ export function TrzPage() {
   const { status: trzStatusCol, forma: formaCol, resp: trzRespCol, software: softwareCol } =
     useMemo(() => findTrzColumns(allColumns), [allColumns])
 
-  function clientName(clientId: string): string {
-    return clientDisplayName(clientId, allColumns, cellIdx) || clientId.slice(0, 8)
-  }
-
   const valueText = (col: Column | undefined, clientId: string) =>
     resolveCellText(clientId, col, cellIdx, dropdownIdx)
 
