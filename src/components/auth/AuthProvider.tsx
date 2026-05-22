@@ -34,9 +34,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const timeout = setTimeout(() => setLoading(false), 5000)
 
+    // При връщане към таба след idle токенът може да е изтекъл, а застоялата
+    // връзка да виси. Опресняваме сесията проактивно (вече ограничено от
+    // timeout-а в supabase.ts), за да е свеж токенът преди заявките за данни и
+    // да не „забива" при смяна на страница.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        supabase.auth.getSession().catch(() => {})
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
     return () => {
       subscription.unsubscribe()
       clearTimeout(timeout)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [])
 
