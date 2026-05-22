@@ -701,7 +701,7 @@ async function _getContactsWithClients(): Promise<ContactWithClient[]> {
 
   const nameColId = cols?.[0]?.id
 
-  let nameMap: Record<string, string> = {}
+  const nameMap: Record<string, string> = {}
   if (nameColId) {
     const { data: cells } = await supabase
       .from('crm_cell_values')

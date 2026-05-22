@@ -62,7 +62,7 @@ export function ExpensesPage() {
   const totalOther = useMemo(() => otherExpenses.reduce((s, e) => s + e.amount, 0), [otherExpenses])
 
   const filteredOther = useMemo(() => {
-    let result = filterCategory !== 'all'
+    const result = filterCategory !== 'all'
       ? otherExpenses.filter(e => e.category === filterCategory)
       : otherExpenses.slice()
     result.sort((a, b) => sortAsc ? a.amount - b.amount : b.amount - a.amount)

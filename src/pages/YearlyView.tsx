@@ -3,7 +3,6 @@ import { toast } from 'sonner'
 import { Fragment } from 'react'
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
 import {
   getClients, getColumns, getCellValues, getDropdownOptions,
