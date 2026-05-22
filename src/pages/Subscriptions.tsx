@@ -8,6 +8,7 @@ import {
   clientDisplayName, resolveDropdownText, resolveNumber,
 } from '../lib/tableIndices'
 import { statusBadgeClass } from '../lib/statusBadge'
+import { type AmountBucket, BUCKET_LABEL, inBucket } from '../lib/subscriptionBuckets'
 import { Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -17,25 +18,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ConfirmDialog } from '@/components/ui/alert-dialog'
 
 const SUB_MARKER = '__sub__'
-
-type AmountBucket = 'all' | 'zero' | 'low' | 'mid' | 'high'
-const BUCKET_LABEL: Record<AmountBucket, string> = {
-  all: 'Всички',
-  zero: '0 €',
-  low: '< 200 €',
-  mid: '200-500 €',
-  high: '> 500 €',
-}
-function inBucket(amount: number | null | undefined, b: AmountBucket): boolean {
-  const v = amount ?? 0
-  switch (b) {
-    case 'all': return true
-    case 'zero': return v === 0
-    case 'low': return v > 0 && v < 200
-    case 'mid': return v >= 200 && v <= 500
-    case 'high': return v > 500
-  }
-}
 
 export function SubscriptionsPage() {
   const { user } = useAuth()

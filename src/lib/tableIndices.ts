@@ -49,6 +49,30 @@ export function resolveDropdownText(
   return dropdownIdx.get(cell.value_dropdown)?.value ?? ''
 }
 
+/**
+ * Връща текстовата стойност на клетка независимо от типа:
+ * - dropdown: ако е staff-свързана (стойност във value_text) → него; иначе
+ *   резолва option id-то през dropdownIdx.
+ * - друго: value_text.
+ * Празно ако клетката липсва.
+ */
+export function resolveCellText(
+  clientId: string,
+  column: Column | undefined,
+  cellIdx: Map<string, CellValue>,
+  dropdownIdx: Map<string, DropdownOption>,
+): string {
+  if (!column) return ''
+  const cell = cellIdx.get(cellKey(clientId, column.id))
+  if (!cell) return ''
+  if (column.type === 'dropdown') {
+    if (cell.value_text) return cell.value_text
+    if (cell.value_dropdown) return dropdownIdx.get(cell.value_dropdown)?.value ?? ''
+    return ''
+  }
+  return cell.value_text ?? ''
+}
+
 /** Връща стойността на text клетка (или празен низ). */
 export function resolveText(
   clientId: string,

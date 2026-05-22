@@ -10,28 +10,15 @@ import {
 } from '../lib/storage'
 import type { Column, CellValue, Client, DropdownOption, TrzWork } from '../lib/types'
 import {
-  buildCellIndex, buildDropdownIndex, cellKey,
-  clientDisplayName, resolveDropdownText,
+  buildCellIndex, buildDropdownIndex,
+  clientDisplayName, resolveDropdownText, resolveCellText,
 } from '../lib/tableIndices'
 import { statusBadgeClass } from '../lib/statusBadge'
+import { MONTH_NAMES } from '../lib/utils'
+import { TRZ_ACTIVE, findTrzColumns } from '../lib/trz'
 import { useRealtime } from '../lib/useRealtime'
 
-const MONTH_NAMES = [
-  'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни',
-  'Юли', 'Август', 'Септември', 'Октомври', 'Ноември', 'Декември',
-]
-
-const uc = (s: string) => s.toUpperCase()
 const today = () => new Date().toISOString().slice(0, 10)
-// В ТРЗ Работен лист влизат само фирмите с ТРЗ Статус = „Активна".
-const TRZ_ACTIVE = 'Активна'
-
-function formatDate(v: string | null | undefined): string {
-  if (!v) return ''
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v)
-  if (m) return `${m[3]}.${m[2]}.${m[1]}`
-  return v
-}
 
 export function TrzPage() {
   const { user } = useAuth()
@@ -75,15 +62,13 @@ export function TrzPage() {
       setAllCells(cells)
       setAllDropdowns(dds)
 
+      const trzCols = findTrzColumns(cols)
+
       // ТРЗ отговорник филтър — стойностите идат от мастера: ако колоната е
       // staff-свързана, теглим целия персонал на отдела (вкл. без клиенти).
-      const respColLocal = cols.find(c => {
-        const n = uc(c.name)
-        return n.includes('ТРЗ') && !n.includes('СТАТУС') && !n.includes('СОФТУЕР')
-      })
-      if (respColLocal?.staff_department) {
+      if (trzCols.resp?.staff_department) {
         try {
-          const staff = await getStaff(respColLocal.staff_department)
+          const staff = await getStaff(trzCols.resp.staff_department)
           setRespStaff(staff.map(s => s.full_name))
         } catch { setRespStaff([]) }
       } else {
@@ -91,14 +76,10 @@ export function TrzPage() {
       }
 
       // Подсигуряваме ред само за фирмите с ТРЗ Статус = „Активна".
-      const trzStatusLocal = cols.find(c => {
-        const n = uc(c.name)
-        return n.includes('ТРЗ') && n.includes('СТАТУС')
-      })
       const localCellIdx = buildCellIndex(cells)
       const localDropdownIdx = buildDropdownIndex(dds)
       const activeIds = cls
-        .filter(c => resolveDropdownText(c.id, trzStatusLocal, localCellIdx, localDropdownIdx) === TRZ_ACTIVE)
+        .filter(c => resolveDropdownText(c.id, trzCols.status, localCellIdx, localDropdownIdx) === TRZ_ACTIVE)
         .map(c => c.id)
       const created = await ensureTrzRows(activeIds, year, month, user?.id)
       if (created > 0 && !silent) toast.info(`Създадени ${created} нови реда за ${MONTH_NAMES[month - 1]} ${year}`)
@@ -123,36 +104,15 @@ export function TrzPage() {
   const cellIdx = useMemo(() => buildCellIndex(allCells), [allCells])
   const dropdownIdx = useMemo(() => buildDropdownIndex(allDropdowns), [allDropdowns])
 
-  const trzStatusCol = useMemo(() => allColumns.find(c => {
-    const n = uc(c.name)
-    return n.includes('ТРЗ') && n.includes('СТАТУС')
-  }), [allColumns])
-  const trzRespCol = useMemo(() => allColumns.find(c => {
-    const n = uc(c.name)
-    return n.includes('ТРЗ') && !n.includes('СТАТУС') && !n.includes('СОФТУЕР')
-  }), [allColumns])
-  const formaCol = useMemo(() => allColumns.find(c => {
-    const n = uc(c.name)
-    return n.includes('ФОРМА') && n.includes('ОСИГ')
-  }), [allColumns])
-  const softwareCol = useMemo(() => allColumns.find(c => uc(c.name).includes('СОФТУЕР')), [allColumns])
+  const { status: trzStatusCol, forma: formaCol, resp: trzRespCol, software: softwareCol } =
+    useMemo(() => findTrzColumns(allColumns), [allColumns])
 
   function clientName(clientId: string): string {
     return clientDisplayName(clientId, allColumns, cellIdx) || clientId.slice(0, 8)
   }
 
-  function valueText(col: Column | undefined, clientId: string): string {
-    if (!col) return ''
-    const cell = cellIdx.get(cellKey(clientId, col.id))
-    if (!cell) return ''
-    if (col.type === 'dropdown') {
-      // staff-свързаните колони пазят името във value_text; обикновените — option id.
-      if (cell.value_text) return cell.value_text
-      if (cell.value_dropdown) return dropdownIdx.get(cell.value_dropdown)?.value ?? ''
-      return ''
-    }
-    return cell.value_text ?? ''
-  }
+  const valueText = (col: Column | undefined, clientId: string) =>
+    resolveCellText(clientId, col, cellIdx, dropdownIdx)
 
   const formaOptions = useMemo(() => {
     if (!formaCol) return [] as string[]

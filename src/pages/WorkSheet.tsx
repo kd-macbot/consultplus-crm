@@ -16,12 +16,8 @@ import {
   resolveDropdownText, cellKey,
 } from '../lib/tableIndices'
 import { statusBadgeClass, isHiddenStatus } from '../lib/statusBadge'
+import { MONTH_NAMES } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
-
-const MONTH_NAMES = [
-  'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни',
-  'Юли', 'Август', 'Септември', 'Октомври', 'Ноември', 'Декември',
-]
 
 function formatCurrency(v: number | null): string {
   if (v == null) return ''
