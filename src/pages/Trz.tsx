@@ -47,7 +47,7 @@ export function TrzPage() {
   const [rows, setRows] = useState<Map<string, TrzWork>>(new Map())
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string[]>([])
+  const [formaFilter, setFormaFilter] = useState<string[]>([])
   const [softwareFilter, setSoftwareFilter] = useState<string[]>([])
   const [respFilter, setRespFilter] = useState('')
   const [respStaff, setRespStaff] = useState<string[]>([])
@@ -126,9 +126,9 @@ export function TrzPage() {
     const n = uc(c.name)
     return n.includes('ТРЗ') && !n.includes('СТАТУС') && !n.includes('СОФТУЕР')
   }), [allColumns])
-  const trzStatusCol = useMemo(() => allColumns.find(c => {
+  const formaCol = useMemo(() => allColumns.find(c => {
     const n = uc(c.name)
-    return n.includes('ТРЗ') && n.includes('СТАТУС')
+    return n.includes('ФОРМА') && n.includes('ОСИГ')
   }), [allColumns])
   const softwareCol = useMemo(() => allColumns.find(c => uc(c.name).includes('СОФТУЕР')), [allColumns])
 
@@ -149,32 +149,32 @@ export function TrzPage() {
     return cell.value_text ?? ''
   }
 
-  const statusOptions = useMemo(() => {
-    if (!trzStatusCol) return [] as string[]
-    return [...new Set(allDropdowns.filter(d => d.column_id === trzStatusCol.id).map(d => d.value))]
-  }, [allDropdowns, trzStatusCol])
+  const formaOptions = useMemo(() => {
+    if (!formaCol) return [] as string[]
+    return [...new Set(allDropdowns.filter(d => d.column_id === formaCol.id).map(d => d.value))]
+  }, [allDropdowns, formaCol])
 
   const softwareOptions = useMemo(() => {
     if (!softwareCol) return [] as string[]
     return [...new Set(allDropdowns.filter(d => d.column_id === softwareCol.id).map(d => d.value))]
   }, [allDropdowns, softwareCol])
 
-  const hasFilters = search.trim() !== '' || statusFilter.length > 0 || softwareFilter.length > 0 || respFilter !== ''
+  const hasFilters = search.trim() !== '' || formaFilter.length > 0 || softwareFilter.length > 0 || respFilter !== ''
 
   function clearFilters() {
     setSearch('')
-    setStatusFilter([])
+    setFormaFilter([])
     setSoftwareFilter([])
     setRespFilter('')
   }
 
-  type TrzRow = { client: Client; name: string; status: string; resp: string; software: string; generalStatus: string; work: TrzWork | undefined }
+  type TrzRow = { client: Client; name: string; forma: string; resp: string; software: string; generalStatus: string; work: TrzWork | undefined }
   const tableRows: TrzRow[] = useMemo(() => {
     return allClients
       .map(c => ({
         client: c,
         name: clientDisplayName(c.id, allColumns, cellIdx),
-        status: valueText(trzStatusCol, c.id),
+        forma: valueText(formaCol, c.id),
         resp: valueText(trzRespCol, c.id),
         software: valueText(softwareCol, c.id),
         generalStatus: resolveDropdownText(c.id, statusCol, cellIdx, dropdownIdx),
@@ -183,7 +183,7 @@ export function TrzPage() {
       .filter(r => !isNoActivity(r.generalStatus))
       .sort((a, b) => (a.name || a.client.id).localeCompare(b.name || b.client.id, 'bg'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allClients, allColumns, cellIdx, dropdownIdx, statusCol, trzStatusCol, trzRespCol, softwareCol, rows])
+  }, [allClients, allColumns, cellIdx, dropdownIdx, statusCol, formaCol, trzRespCol, softwareCol, rows])
 
   const respOptions = useMemo(() => {
     // 1) staff-свързана колона → целият персонал на отдела (от мастера)
@@ -200,12 +200,12 @@ export function TrzPage() {
   const filteredRows = useMemo(() => {
     return tableRows.filter(r => {
       if (search.trim() && !(r.name || '').toLowerCase().includes(search.trim().toLowerCase())) return false
-      if (statusFilter.length > 0 && !statusFilter.includes(r.status)) return false
+      if (formaFilter.length > 0 && !formaFilter.includes(r.forma)) return false
       if (softwareFilter.length > 0 && !softwareFilter.includes(r.software)) return false
       if (respFilter && r.resp !== respFilter) return false
       return true
     })
-  }, [tableRows, search, statusFilter, softwareFilter, respFilter])
+  }, [tableRows, search, formaFilter, softwareFilter, respFilter])
 
   async function patchRow(clientId: string, patch: Partial<TrzWork>) {
     lastEditRef.current = Date.now()
@@ -284,15 +284,15 @@ export function TrzPage() {
 
       {/* Filter strip */}
       <div className="px-3 md:px-5 py-2 border-b border-border bg-card flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
-        {statusOptions.length > 0 && (
+        {formaOptions.length > 0 && (
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground uppercase tracking-wider font-semibold">ТРЗ Статус:</span>
-            {statusOptions.map(s => {
-              const active = statusFilter.includes(s)
+            <span className="text-muted-foreground uppercase tracking-wider font-semibold">Форма на Осиг.:</span>
+            {formaOptions.map(s => {
+              const active = formaFilter.includes(s)
               return (
                 <button
                   key={s}
-                  onClick={() => setStatusFilter(prev => active ? prev.filter(x => x !== s) : [...prev, s])}
+                  onClick={() => setFormaFilter(prev => active ? prev.filter(x => x !== s) : [...prev, s])}
                   className={`px-2 py-0.5 rounded-full font-semibold transition ${
                     active ? statusBadgeClass(s) : 'bg-muted/40 text-muted-foreground hover:bg-muted'
                   }`}
@@ -347,7 +347,7 @@ export function TrzPage() {
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-10">#</th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Фирма</th>
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">ТРЗ Статус</th>
+              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Форма на Осиг.</th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Софтуер</th>
               <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Заплати</th>
               <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Осигуровки</th>
@@ -376,8 +376,8 @@ export function TrzPage() {
                   </td>
                   <td className="px-3 py-1.5 font-medium text-foreground whitespace-nowrap">{r.name || r.client.id.slice(0, 8)}</td>
                   <td className="px-3 py-1.5 whitespace-nowrap">
-                    {r.status
-                      ? <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadgeClass(r.status)}`}>{r.status}</span>
+                    {r.forma
+                      ? <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadgeClass(r.forma)}`}>{r.forma}</span>
                       : <span className="text-dark/20">—</span>}
                   </td>
                   <td className="px-3 py-1.5 whitespace-nowrap">
