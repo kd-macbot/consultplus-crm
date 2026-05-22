@@ -23,9 +23,8 @@ const MONTH_NAMES = [
 
 const uc = (s: string) => s.toUpperCase()
 const today = () => new Date().toISOString().slice(0, 10)
-// ТРЗ листът показва всички фирми ОСВЕН тези със статус „Без дейност".
-// (За разлика от Работен лист, „Без ДДС" фирми също имат ТРЗ → показват се.)
-const isNoActivity = (s: string) => s.toLowerCase().includes('без дейност')
+// В ТРЗ Работен лист влизат само фирмите с ТРЗ Статус = „Активна".
+const TRZ_ACTIVE = 'Активна'
 
 function formatDate(v: string | null | undefined): string {
   if (!v) return ''
@@ -91,12 +90,15 @@ export function TrzPage() {
         setRespStaff([])
       }
 
-      // Подсигуряваме ред за всеки клиент, който НЕ е „Без дейност".
-      const statusColLocal = cols.find(c => c.name === 'Статус')
+      // Подсигуряваме ред само за фирмите с ТРЗ Статус = „Активна".
+      const trzStatusLocal = cols.find(c => {
+        const n = uc(c.name)
+        return n.includes('ТРЗ') && n.includes('СТАТУС')
+      })
       const localCellIdx = buildCellIndex(cells)
       const localDropdownIdx = buildDropdownIndex(dds)
       const activeIds = cls
-        .filter(c => !isNoActivity(resolveDropdownText(c.id, statusColLocal, localCellIdx, localDropdownIdx)))
+        .filter(c => resolveDropdownText(c.id, trzStatusLocal, localCellIdx, localDropdownIdx) === TRZ_ACTIVE)
         .map(c => c.id)
       const created = await ensureTrzRows(activeIds, year, month, user?.id)
       if (created > 0 && !silent) toast.info(`Създадени ${created} нови реда за ${MONTH_NAMES[month - 1]} ${year}`)
@@ -121,7 +123,10 @@ export function TrzPage() {
   const cellIdx = useMemo(() => buildCellIndex(allCells), [allCells])
   const dropdownIdx = useMemo(() => buildDropdownIndex(allDropdowns), [allDropdowns])
 
-  const statusCol = useMemo(() => allColumns.find(c => c.name === 'Статус'), [allColumns])
+  const trzStatusCol = useMemo(() => allColumns.find(c => {
+    const n = uc(c.name)
+    return n.includes('ТРЗ') && n.includes('СТАТУС')
+  }), [allColumns])
   const trzRespCol = useMemo(() => allColumns.find(c => {
     const n = uc(c.name)
     return n.includes('ТРЗ') && !n.includes('СТАТУС') && !n.includes('СОФТУЕР')
@@ -168,22 +173,21 @@ export function TrzPage() {
     setRespFilter('')
   }
 
-  type TrzRow = { client: Client; name: string; forma: string; resp: string; software: string; generalStatus: string; work: TrzWork | undefined }
+  type TrzRow = { client: Client; name: string; forma: string; resp: string; software: string; work: TrzWork | undefined }
   const tableRows: TrzRow[] = useMemo(() => {
     return allClients
+      .filter(c => valueText(trzStatusCol, c.id) === TRZ_ACTIVE)
       .map(c => ({
         client: c,
         name: clientDisplayName(c.id, allColumns, cellIdx),
         forma: valueText(formaCol, c.id),
         resp: valueText(trzRespCol, c.id),
         software: valueText(softwareCol, c.id),
-        generalStatus: resolveDropdownText(c.id, statusCol, cellIdx, dropdownIdx),
         work: rows.get(c.id),
       }))
-      .filter(r => !isNoActivity(r.generalStatus))
       .sort((a, b) => (a.name || a.client.id).localeCompare(b.name || b.client.id, 'bg'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allClients, allColumns, cellIdx, dropdownIdx, statusCol, formaCol, trzRespCol, softwareCol, rows])
+  }, [allClients, allColumns, cellIdx, dropdownIdx, trzStatusCol, formaCol, trzRespCol, softwareCol, rows])
 
   const respOptions = useMemo(() => {
     // 1) staff-свързана колона → целият персонал на отдела (от мастера)
