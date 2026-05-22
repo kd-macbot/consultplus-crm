@@ -46,6 +46,7 @@ export function TrzPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [softwareFilter, setSoftwareFilter] = useState<string[]>([])
+  const [respFilter, setRespFilter] = useState('')
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
 
   const canEdit = !!user
@@ -132,12 +133,13 @@ export function TrzPage() {
     return [...new Set(allDropdowns.filter(d => d.column_id === softwareCol.id).map(d => d.value))]
   }, [allDropdowns, softwareCol])
 
-  const hasFilters = search.trim() !== '' || statusFilter.length > 0 || softwareFilter.length > 0
+  const hasFilters = search.trim() !== '' || statusFilter.length > 0 || softwareFilter.length > 0 || respFilter !== ''
 
   function clearFilters() {
     setSearch('')
     setStatusFilter([])
     setSoftwareFilter([])
+    setRespFilter('')
   }
 
   type TrzRow = { client: Client; name: string; status: string; resp: string; software: string; generalStatus: string; work: TrzWork | undefined }
@@ -157,14 +159,20 @@ export function TrzPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allClients, allColumns, cellIdx, dropdownIdx, statusCol, trzStatusCol, trzRespCol, softwareCol, rows])
 
+  const respOptions = useMemo(
+    () => [...new Set(tableRows.map(r => r.resp).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'bg')),
+    [tableRows],
+  )
+
   const filteredRows = useMemo(() => {
     return tableRows.filter(r => {
       if (search.trim() && !(r.name || '').toLowerCase().includes(search.trim().toLowerCase())) return false
       if (statusFilter.length > 0 && !statusFilter.includes(r.status)) return false
       if (softwareFilter.length > 0 && !softwareFilter.includes(r.software)) return false
+      if (respFilter && r.resp !== respFilter) return false
       return true
     })
-  }, [tableRows, search, statusFilter, softwareFilter])
+  }, [tableRows, search, statusFilter, softwareFilter, respFilter])
 
   async function patchRow(clientId: string, patch: Partial<TrzWork>) {
     lastEditRef.current = Date.now()
@@ -277,6 +285,22 @@ export function TrzPage() {
             })}
           </div>
         )}
+        {respOptions.length > 0 && (
+          <div className="flex items-center gap-1.5 pl-2 border-l border-border">
+            <span className="text-muted-foreground uppercase tracking-wider font-semibold">ТРЗ отговорник:</span>
+            <select
+              value={respFilter}
+              onChange={e => setRespFilter(e.target.value)}
+              className="h-6 px-1 text-xs border border-border rounded bg-background focus:border-primary"
+            >
+              <option value="">Всички</option>
+              {respOptions.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            {respFilter && (
+              <button onClick={() => setRespFilter('')} className="text-muted-foreground hover:text-foreground">✕</button>
+            )}
+          </div>
+        )}
         <div className="ml-auto text-muted-foreground">
           Готови: <span className="font-semibold text-foreground">{doneCount}</span> / {filteredRows.length}
           {isFiltered && <> (от {tableRows.length})</>}
@@ -296,12 +320,13 @@ export function TrzPage() {
               <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Заплати</th>
               <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Осигуровки</th>
               <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Ведомост</th>
+              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Бележка</th>
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-dark/40">
+                <td colSpan={9} className="px-4 py-8 text-center text-dark/40">
                   {hasFilters ? 'Няма клиенти отговарящи на филтрите' : 'Няма клиенти'}
                 </td>
               </tr>
@@ -380,20 +405,38 @@ export function TrzPage() {
                       />
                     </div>
                   </td>
+
+                  {/* Бележка — месечна, пренася се от предходния месец */}
+                  <td className="px-3 py-1.5">
+                    <NoteCell
+                      key={`${r.client.id}-${year}-${month}`}
+                      value={w?.notes ?? ''}
+                      disabled={!canEdit}
+                      onSave={v => patchRow(r.client.id, { notes: v || null })}
+                    />
+                  </td>
                 </tr>
               )
             })}
           </tbody>
-          <tfoot className="bg-navy/5 border-t-2 border-light font-semibold">
-            <tr>
-              <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums">{filteredRows.length}</td>
-              <td className="px-3 py-1.5 text-foreground" colSpan={7}>
-                Общо {isFiltered && <span className="text-xs font-normal text-muted-foreground">({filteredRows.length} от {tableRows.length})</span>}
-              </td>
-            </tr>
-          </tfoot>
         </table>
       </div>
     </div>
+  )
+}
+
+// Бележка — записва се при напускане на полето (onBlur), само ако е променена.
+function NoteCell({ value, disabled, onSave }: { value: string; disabled: boolean; onSave: (v: string) => void }) {
+  const [draft, setDraft] = useState(value)
+  return (
+    <input
+      type="text"
+      disabled={disabled}
+      value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={() => { if (draft !== value) onSave(draft) }}
+      placeholder="—"
+      className="w-full min-w-[140px] h-7 px-2 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
+    />
   )
 }

@@ -1138,7 +1138,22 @@ export async function ensureTrzRows(
   const missing = clientIds.filter(id => !existingSet.has(id))
   if (missing.length === 0) return 0
 
-  const rows = missing.map(client_id => ({ client_id, year, month, created_by: createdBy ?? null }))
+  // Бележката се „пренася" от предходния месец — новият ред стартира с нея.
+  const py = month === 1 ? year - 1 : year
+  const pm = month === 1 ? 12 : month - 1
+  const { data: prev } = await supabase
+    .from('crm_trz_work')
+    .select('client_id, notes')
+    .eq('year', py)
+    .eq('month', pm)
+    .in('client_id', missing)
+  const prevNote = new Map((prev ?? []).map(r => [r.client_id, r.notes as string | null]))
+
+  const rows = missing.map(client_id => ({
+    client_id, year, month,
+    created_by: createdBy ?? null,
+    notes: prevNote.get(client_id) ?? null,
+  }))
   const { error: insErr } = await supabase.from('crm_trz_work').insert(rows)
   if (insErr) throw insErr
   return missing.length
