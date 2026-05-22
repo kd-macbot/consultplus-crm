@@ -9,7 +9,8 @@ import {
 } from '../lib/tableIndices'
 import { statusBadgeClass } from '../lib/statusBadge'
 import { type AmountBucket, BUCKET_LABEL, inBucket } from '../lib/subscriptionBuckets'
-import { Plus, Search, X } from 'lucide-react'
+import { exportRowsToExcel } from '../lib/export'
+import { Plus, Search, X, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,6 +19,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ConfirmDialog } from '@/components/ui/alert-dialog'
 
 const SUB_MARKER = '__sub__'
+
+/** Стойност на клетка за Excel: числата остават числа, останалото — текст. */
+function exportCellValue(col: Column, cell?: CellValue): string | number {
+  if (!cell) return ''
+  if (col.type === 'number') return cell.value_number ?? ''
+  if (col.type === 'checkbox') return cell.value_bool ? 'Да' : 'Не'
+  if (col.type === 'date') return cell.value_date ?? ''
+  return cell.value_text ?? ''
+}
 
 export function SubscriptionsPage() {
   const { user } = useAuth()
@@ -201,6 +211,36 @@ export function SubscriptionsPage() {
     })
   }
 
+  async function exportRows(rowsClients: Client[], suffix: string) {
+    if (rowsClients.length === 0) { toast.error('Няма редове за експорт'); return }
+    const headers = ['Клиент', ...(statusColumn ? ['Статус'] : []), ...tableColumns.map(c => c.name)]
+    const rows: (string | number)[][] = rowsClients.map(c => {
+      const row: (string | number)[] = [clientName(c.id)]
+      if (statusColumn) row.push(clientStatus(c.id))
+      for (const col of tableColumns) row.push(exportCellValue(col, getCell(c.id, col.id)))
+      return row
+    })
+    // Финален ред „Общо" със сбора на хонорара (както в таблицата).
+    if (honorarColumn) {
+      const sum = rowsClients.reduce((s, c) => s + (resolveNumber(c.id, honorarColumn, cellIdx) ?? 0), 0)
+      const totalRow: (string | number)[] = [`Общо (${rowsClients.length})`]
+      if (statusColumn) totalRow.push('')
+      for (const col of tableColumns) totalRow.push(col.id === honorarColumn.id ? sum : '')
+      rows.push(totalRow)
+    }
+    const date = new Date().toISOString().slice(0, 10)
+    try {
+      await exportRowsToExcel({
+        headers, rows,
+        sheetName: 'Абонаменти',
+        fileName: `ConsultPlus_Абонаменти${suffix}_${date}.xlsx`,
+      })
+      toast.success(`Експортирани ${rowsClients.length} реда`)
+    } catch (e) {
+      toast.error((e as Error).message ?? 'Грешка при експорт')
+    }
+  }
+
   async function handleAddColumn(name: string, type: ColumnType) {
     await addColumn(name, type, false, user?.id, { userId: user?.id, userName: user?.full_name ?? '' }, SUB_MARKER)
     setShowAddCol(false)
@@ -241,6 +281,9 @@ export function SubscriptionsPage() {
               <X className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Изчисти</span>
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={() => exportRows(filteredClients, isFiltered ? '_филтрирани' : '')} className="gap-1">
+            <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Експорт</span>
+          </Button>
           {isAdmin && (
             <Button size="sm" onClick={() => setShowAddCol(true)}>
               <Plus className="h-3.5 w-3.5" />
@@ -284,6 +327,12 @@ export function SubscriptionsPage() {
                 {remainingHonorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
               </span>
             </div>
+            <button
+              onClick={() => exportRows(clients.filter(c => markedClients.has(c.id)), '_маркирани')}
+              className="text-xs text-amber-600 hover:text-amber-700 underline"
+            >
+              експорт
+            </button>
             <button
               onClick={() => setMarkedClients(new Set())}
               className="text-xs text-muted-foreground hover:text-foreground underline"

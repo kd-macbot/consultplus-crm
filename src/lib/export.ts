@@ -43,3 +43,21 @@ export async function exportToExcel() {
   const date = new Date().toISOString().slice(0, 10)
   XLSX.writeFile(wb, `ConsultPlus_Клиенти_${date}.xlsx`)
 }
+
+/** Общ Excel експорт от готови заглавия + редове (AOA). */
+export async function exportRowsToExcel(opts: {
+  headers: string[]
+  rows: (string | number)[][]
+  sheetName: string
+  fileName: string
+}) {
+  const XLSX = await import('xlsx')
+  const ws = XLSX.utils.aoa_to_sheet([opts.headers, ...opts.rows])
+  ws['!cols'] = opts.headers.map((h, i) => {
+    const maxLen = Math.max(h.length, ...opts.rows.map(r => String(r[i] ?? '').length))
+    return { wch: Math.min(maxLen + 2, 40) }
+  })
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, opts.sheetName)
+  XLSX.writeFile(wb, opts.fileName)
+}
