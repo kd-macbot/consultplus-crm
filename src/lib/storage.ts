@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork } from './types'
 
 /**
  * Retry helper за четящи заявки с TIMEOUT — решава „понякога не зарежда и
@@ -1097,6 +1097,63 @@ export async function upsertMonthlyWorkByKey(
 ): Promise<void> {
   const { error } = await supabase
     .from('crm_monthly_work')
+    .upsert(
+      { client_id: clientId, year, month, created_by: createdBy ?? null, ...patch, updated_at: new Date().toISOString() },
+      { onConflict: 'client_id,year,month' },
+    )
+  if (error) throw error
+}
+
+// ==================== ТРЗ МЕСЕЧЕН ЛИСТ ====================
+
+export async function getTrzWork(year: number, month: number): Promise<TrzWork[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_trz_work')
+      .select('*')
+      .eq('year', year)
+      .eq('month', month)
+    if (error) throw error
+    return (data ?? []) as TrzWork[]
+  })
+}
+
+/** Уверява се, че за всеки client_id има ТРЗ ред за месеца. Връща броя нови. */
+export async function ensureTrzRows(
+  clientIds: string[],
+  year: number,
+  month: number,
+  createdBy?: string,
+): Promise<number> {
+  if (clientIds.length === 0) return 0
+  const { data: existing, error: existingErr } = await supabase
+    .from('crm_trz_work')
+    .select('client_id')
+    .eq('year', year)
+    .eq('month', month)
+    .in('client_id', clientIds)
+  if (existingErr) throw existingErr
+
+  const existingSet = new Set((existing ?? []).map(r => r.client_id))
+  const missing = clientIds.filter(id => !existingSet.has(id))
+  if (missing.length === 0) return 0
+
+  const rows = missing.map(client_id => ({ client_id, year, month, created_by: createdBy ?? null }))
+  const { error: insErr } = await supabase.from('crm_trz_work').insert(rows)
+  if (insErr) throw insErr
+  return missing.length
+}
+
+/** Upsert по (client_id, year, month) — за редове създадени, но без известен id. */
+export async function upsertTrzWorkByKey(
+  clientId: string,
+  year: number,
+  month: number,
+  patch: Partial<TrzWork>,
+  createdBy?: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_trz_work')
     .upsert(
       { client_id: clientId, year, month, created_by: createdBy ?? null, ...patch, updated_at: new Date().toISOString() },
       { onConflict: 'client_id,year,month' },

@@ -236,6 +236,25 @@ export interface MonthlyWork {
   updated_at: string
 }
 
+export interface TrzWork {
+  id: string
+  client_id: string
+  year: number
+  month: number
+
+  salaries_prepared: boolean
+  insurance_submitted: boolean
+  insurance_submitted_at: string | null
+  payroll_sent: boolean
+  payroll_sent_at: string | null
+
+  notes: string | null
+
+  created_at: string
+  created_by: string | null
+  updated_at: string
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory
