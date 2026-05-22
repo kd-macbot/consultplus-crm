@@ -192,10 +192,7 @@ export function WorkSheetPage() {
     work: MonthlyWork | undefined
   }
   const tableRows: Row[] = useMemo(() => {
-    const visible = user?.role === 'employee'
-      ? clients.filter(c => c.assigned_to === user.id)
-      : clients
-    return visible
+    return clients
       .map(c => ({
         client: c,
         name: clientDisplayName(c.id, columns, cellIdx),
@@ -212,7 +209,7 @@ export function WorkSheetPage() {
       }))
       .filter(r => !isHiddenStatus(r.status))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, akcizCol, statistikaCol, intrastatCol, siddoCol, ossCol, rows, user])
+  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, akcizCol, statistikaCol, intrastatCol, siddoCol, ossCol, rows])
 
   // Списък със счетоводители за филтъра (само присъстващите в таблицата).
   const accountantOptions = useMemo(() => {

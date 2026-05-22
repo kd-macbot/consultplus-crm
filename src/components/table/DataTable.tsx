@@ -377,10 +377,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     onRefresh()
   }
 
-  const clients = useMemo(() => {
-    if (user?.role === 'employee') return allClients.filter(c => c.assigned_to === user.id)
-    return allClients
-  }, [allClients, user])
+  const clients = useMemo(() => allClients, [allClients])
 
   const contactsByClientId = useMemo(
     () => new Map(allContacts.map(c => [c.client_id, c])),
