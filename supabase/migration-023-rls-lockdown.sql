@@ -170,21 +170,10 @@ create policy "opp_all" on crm_opportunities
   with check (is_current_user_admin());
 
 -- ============================================================
--- crm_subscriptions — само admin
--- (преди: „true" за public → anon имаше пълен достъп)
+-- crm_subscriptions — пропусната: таблицата не е създадена в базата
+-- и приложението не я ползва (абонаментите се пазят през генеричните
+-- колони / crm_cell_values). Ако някога се добави, се обезопасява тогава.
 -- ============================================================
-alter table crm_subscriptions enable row level security;
-
-drop policy if exists "subscriptions_read"   on crm_subscriptions;
-drop policy if exists "subscriptions_insert" on crm_subscriptions;
-drop policy if exists "subscriptions_update" on crm_subscriptions;
-drop policy if exists "subscriptions_delete" on crm_subscriptions;
-drop policy if exists "subscriptions_all"    on crm_subscriptions;
-
-create policy "subscriptions_all" on crm_subscriptions
-  for all to authenticated
-  using (is_current_user_admin())
-  with check (is_current_user_admin());
 
 -- ============================================================
 -- crm_expenses — само admin
