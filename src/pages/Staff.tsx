@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import { createStaffMember, updateStaffMember, setStaffActive } from '../lib/storage'
-import { useAuth } from '../lib/auth'
-import { Users, UserCheck, UserX, Pencil, Mail, Phone, Building2, Plus } from 'lucide-react'
+import { createStaffMember, updateStaffMember, setStaffActive, getAllProfiles } from '../lib/storage'
+import { useAuth, adminCreateUser } from '../lib/auth'
+import type { Profile, Role } from '../lib/types'
+import { Users, UserCheck, UserX, Pencil, Mail, Phone, Building2, Plus, KeyRound, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,17 +33,26 @@ const DEPT_VARIANT: Record<string, 'info' | 'success' | 'warning' | 'muted'> = {
   'Друго': 'muted',
 }
 
+const ROLE_LABELS: Record<Role, string> = {
+  admin: 'Администратор',
+  manager: 'Мениджър',
+  employee: 'Служител',
+}
+
 export function StaffPage() {
   const { user } = useAuth()
   const [staff, setStaff] = useState<StaffMember[]>([])
+  const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<StaffMember | null>(null)
   const [filterDept, setFilterDept] = useState('all')
+  const [accountFor, setAccountFor] = useState<StaffMember | null>(null)
+  const [accountLoading, setAccountLoading] = useState(false)
 
   const isAdmin = user?.role === 'admin'
 
-  useEffect(() => { loadStaff() }, [])
+  useEffect(() => { loadStaff(); loadProfiles() }, [])
 
   async function loadStaff() {
     setLoading(true)
@@ -52,6 +62,30 @@ export function StaffPage() {
       .order('full_name')
     if (!error) setStaff(data ?? [])
     setLoading(false)
+  }
+
+  async function loadProfiles() {
+    // RLS: само админ вижда чужди профили; за останалите се връща само техният.
+    try { setProfiles(await getAllProfiles()) } catch { /* без права */ }
+  }
+
+  // Връзка служител ↔ акаунт по имейл (case-insensitive).
+  const profileByEmail = useMemo(
+    () => new Map(profiles.map(p => [p.email.toLowerCase(), p])),
+    [profiles],
+  )
+  const profileOf = (m: StaffMember): Profile | undefined =>
+    m.email ? profileByEmail.get(m.email.toLowerCase()) : undefined
+
+  async function createAccount(password: string, role: Role) {
+    if (!accountFor?.email) return
+    setAccountLoading(true)
+    const { error } = await adminCreateUser(accountFor.email.trim(), password, accountFor.full_name, role)
+    setAccountLoading(false)
+    if (error) { toast.error(error); return }
+    toast.success(`Акаунт за „${accountFor.full_name}" е създаден`)
+    setAccountFor(null)
+    await loadProfiles()
   }
 
   async function saveStaff(member: Partial<StaffMember>) {
@@ -153,8 +187,10 @@ export function StaffPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {active.map(member => (
           <StaffCard key={member.id} member={member} isAdmin={isAdmin}
+            profile={profileOf(member)}
             onEdit={() => { setEditing(member); setShowForm(true) }}
             onToggle={() => toggleActive(member.id, member.is_active)}
+            onCreateAccount={() => setAccountFor(member)}
           />
         ))}
       </div>
@@ -165,8 +201,10 @@ export function StaffPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 opacity-60">
             {inactive.map(member => (
               <StaffCard key={member.id} member={member} isAdmin={isAdmin}
+                profile={profileOf(member)}
                 onEdit={() => { setEditing(member); setShowForm(true) }}
                 onToggle={() => toggleActive(member.id, member.is_active)}
+                onCreateAccount={() => setAccountFor(member)}
               />
             ))}
           </div>
@@ -179,12 +217,20 @@ export function StaffPage() {
         onSave={saveStaff}
         onClose={() => { setShowForm(false); setEditing(null) }}
       />
+
+      <CreateAccountForm
+        member={accountFor}
+        loading={accountLoading}
+        onSubmit={createAccount}
+        onClose={() => setAccountFor(null)}
+      />
     </div>
   )
 }
 
-function StaffCard({ member, isAdmin, onEdit, onToggle }: {
-  member: StaffMember; isAdmin: boolean; onEdit: () => void; onToggle: () => void
+function StaffCard({ member, isAdmin, profile, onEdit, onToggle, onCreateAccount }: {
+  member: StaffMember; isAdmin: boolean; profile?: Profile
+  onEdit: () => void; onToggle: () => void; onCreateAccount: () => void
 }) {
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -219,10 +265,18 @@ function StaffCard({ member, isAdmin, onEdit, onToggle }: {
               <span>{member.phone}</span>
             </div>
           )}
+          {profile && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-600" />
+              <span className="text-muted-foreground">Акаунт:</span>
+              <span className="font-medium">{ROLE_LABELS[profile.role]}</span>
+              {!profile.is_active && <span className="text-destructive">(деактивиран)</span>}
+            </div>
+          )}
         </div>
 
         {isAdmin && (
-          <div className="flex gap-2 pt-3 border-t border-border">
+          <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
             <Button variant="ghost" size="sm" onClick={onEdit} className="h-7 text-xs gap-1 px-2">
               <Pencil className="h-3 w-3" /> Редактирай
             </Button>
@@ -232,6 +286,11 @@ function StaffCard({ member, isAdmin, onEdit, onToggle }: {
                 : <><UserCheck className="h-3 w-3" /> Активирай</>
               }
             </Button>
+            {!profile && member.email && (
+              <Button variant="ghost" size="sm" onClick={onCreateAccount} className="h-7 text-xs gap-1 px-2 text-primary">
+                <KeyRound className="h-3 w-3" /> Създай акаунт
+              </Button>
+            )}
           </div>
         )}
       </CardContent>
@@ -318,6 +377,66 @@ function StaffForm({ open, member, onSave, onClose }: {
           <Button variant="outline" onClick={onClose}>Отказ</Button>
           <Button onClick={handleSave} disabled={!name.trim()}>
             {member ? 'Запази' : 'Добави'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CreateAccountForm({ member, loading, onSubmit, onClose }: {
+  member: StaffMember | null; loading: boolean
+  onSubmit: (password: string, role: Role) => void; onClose: () => void
+}) {
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState<Role>('employee')
+
+  useEffect(() => {
+    if (member) { setPassword(''); setRole('employee') }
+  }, [member])
+
+  return (
+    <Dialog open={!!member} onOpenChange={open => { if (!open) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Създай акаунт</DialogTitle>
+        </DialogHeader>
+
+        {member && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-muted/40 p-3 text-sm space-y-0.5">
+              <p><span className="text-muted-foreground">Служител:</span> <span className="font-medium">{member.full_name}</span></p>
+              <p><span className="text-muted-foreground">Имейл (логин):</span> <span className="font-medium">{member.email}</span></p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ca-pass">Временна парола *</Label>
+              <Input id="ca-pass" type="password" value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="поне 6 символа" autoFocus />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ca-role">Роля *</Label>
+              <select
+                id="ca-role"
+                value={role}
+                onChange={e => setRole(e.target.value as Role)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {(Object.keys(ROLE_LABELS) as Role[]).map(r => (
+                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                ))}
+              </select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Потребителят влиза с имейла си и тази парола (препоръчай да я смени след първото влизане). Имейл за потвърждение не се праща.
+            </p>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Отказ</Button>
+          <Button onClick={() => onSubmit(password, role)} disabled={loading || password.length < 6}>
+            {loading ? 'Създаване...' : 'Създай акаунт'}
           </Button>
         </DialogFooter>
       </DialogContent>
