@@ -9,9 +9,8 @@ import { buildCellIndex, buildDropdownIndex, cellKey, resolveDropdownText } from
 import { isHiddenStatus } from '../lib/statusBadge'
 import { Users, Euro, CheckCircle2, TrendingUp, TrendingDown, Wallet, BookUser, ChevronLeft, ChevronRight, ClipboardCheck, AlertTriangle, Receipt } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { cn, formatCurrency } from '@/lib/utils'
-
-const MONTH_NAMES = ['Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни', 'Юли', 'Август', 'Септември', 'Октомври', 'Ноември', 'Декември']
+import { cn, formatCurrency, MONTH_NAMES } from '@/lib/utils'
+import { TRZ_ACTIVE, findTrzColumns, computeTrzProgress } from '../lib/trz'
 
 export function Dashboard() {
   const { user } = useAuth()
@@ -116,24 +115,13 @@ export function Dashboard() {
 
     const cellIdx = buildCellIndex(cells)
     const dropdownIdx = buildDropdownIndex(dropdowns)
-    const trzStatusCol = columns.find((c: Column) => {
-      const n = c.name.toUpperCase()
-      return n.includes('ТРЗ') && n.includes('СТАТУС')
-    })
+    const trzStatusCol = findTrzColumns(columns).status
     const workByClient = new Map(work.map(w => [w.client_id, w]))
 
-    const active = clients.filter(c => resolveDropdownText(c.id, trzStatusCol, cellIdx, dropdownIdx) === 'Активна')
-
-    let salaries = 0, insurance = 0, payroll = 0, fullyDone = 0
-    for (const c of active) {
-      const w = workByClient.get(c.id)
-      if (!w) continue
-      if (w.salaries_prepared) salaries++
-      if (w.insurance_submitted) insurance++
-      if (w.payroll_sent) payroll++
-      if (w.salaries_prepared && w.insurance_submitted && w.payroll_sent) fullyDone++
-    }
-    return { total: active.length, salaries, insurance, payroll, fullyDone }
+    const activeIds = clients
+      .filter(c => resolveDropdownText(c.id, trzStatusCol, cellIdx, dropdownIdx) === TRZ_ACTIVE)
+      .map(c => c.id)
+    return computeTrzProgress(activeIds, workByClient)
   }, [clientsQ.data, columnsQ.data, cellsQ.data, dropdownsQ.data, trzWorkQ.data])
 
   const stats = useMemo(() => {
