@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import { createStaffMember, updateStaffMember, setStaffActive, getAllProfiles } from '../lib/storage'
+import { createStaffMember, updateStaffMember, setStaffActive, getAllProfiles, withRetry } from '../lib/storage'
 import { useAuth, adminCreateUser } from '../lib/auth'
 import type { Profile, Role } from '../lib/types'
 import { Users, UserCheck, UserX, Pencil, Mail, Phone, Building2, Plus, KeyRound, ShieldCheck } from 'lucide-react'
@@ -56,17 +56,30 @@ export function StaffPage() {
 
   async function loadStaff() {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('crm_staff')
-      .select('*')
-      .order('full_name')
-    if (!error) setStaff(data ?? [])
-    setLoading(false)
+    try {
+      // withRetry: при връщане към „заспал" таб първата заявка може да се
+      // отмени (timeout заради опресняване на токена) — повтаряме вместо да
+      // оставим празна страница, която иска ръчен рефреш.
+      const data = await withRetry(async () => {
+        const { data, error } = await supabase
+          .from('crm_staff')
+          .select('*')
+          .order('full_name')
+        if (error) throw error
+        return data ?? []
+      })
+      setStaff(data)
+    } catch (err) {
+      console.error('loadStaff error:', err)
+      toast.error('Грешка при зареждане на персонала. Опитайте отново.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function loadProfiles() {
     // RLS: само админ вижда чужди профили; за останалите се връща само техният.
-    try { setProfiles(await getAllProfiles()) } catch { /* без права */ }
+    try { setProfiles(await withRetry(getAllProfiles)) } catch { /* без права */ }
   }
 
   // Връзка служител ↔ акаунт по имейл (case-insensitive).
@@ -80,36 +93,50 @@ export function StaffPage() {
   async function createAccount(password: string, role: Role) {
     if (!accountFor?.email) return
     setAccountLoading(true)
-    const { error } = await adminCreateUser(accountFor.email.trim(), password, accountFor.full_name, role)
-    setAccountLoading(false)
-    if (error) { toast.error(error); return }
-    toast.success(`Акаунт за „${accountFor.full_name}" е създаден`)
-    setAccountFor(null)
-    await loadProfiles()
+    try {
+      const { error } = await adminCreateUser(accountFor.email.trim(), password, accountFor.full_name, role)
+      if (error) { toast.error(error); return }
+      toast.success(`Акаунт за „${accountFor.full_name}" е създаден`)
+      setAccountFor(null)
+      await loadProfiles()
+    } finally {
+      setAccountLoading(false)
+    }
   }
 
   async function saveStaff(member: Partial<StaffMember>) {
     const audit = { userId: user?.id, userName: user?.full_name ?? '' }
-    if (editing) {
-      await updateStaffMember(editing.id, member, { ...audit, staffName: editing.full_name })
-      toast.success(`${editing.full_name} е обновен`)
-    } else {
-      await createStaffMember(member, audit)
-      toast.success('Служителят е добавен')
+    try {
+      if (editing) {
+        await updateStaffMember(editing.id, member, { ...audit, staffName: editing.full_name })
+        toast.success(`${editing.full_name} е обновен`)
+      } else {
+        await createStaffMember(member, audit)
+        toast.success('Служителят е добавен')
+      }
+      setShowForm(false)
+      setEditing(null)
+      await loadStaff()
+    } catch (err) {
+      // Формата остава отворена, за да опита пак — без мълчаливо „заковаване".
+      console.error('saveStaff error:', err)
+      toast.error('Промяната не беше записана. Опитайте отново.')
     }
-    setShowForm(false)
-    setEditing(null)
-    await loadStaff()
   }
 
   async function toggleActive(id: string, current: boolean) {
     const member = staff.find(s => s.id === id)
-    await setStaffActive(id, !current, {
-      userId: user?.id,
-      userName: user?.full_name ?? '',
-      staffName: member?.full_name,
-    })
-    await loadStaff()
+    try {
+      await setStaffActive(id, !current, {
+        userId: user?.id,
+        userName: user?.full_name ?? '',
+        staffName: member?.full_name,
+      })
+      await loadStaff()
+    } catch (err) {
+      console.error('toggleActive error:', err)
+      toast.error('Промяната не беше записана. Опитайте отново.')
+    }
   }
 
   const filtered = filterDept === 'all' ? staff : staff.filter(s => s.department === filterDept)
