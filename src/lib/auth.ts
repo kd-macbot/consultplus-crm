@@ -57,6 +57,28 @@ export async function signOut() {
   await supabase.auth.signOut()
 }
 
+// Кеш на профила в localStorage — за мигновен студен старт. При отваряне
+// рисуваме веднага от кеша, а getCurrentProfile() го опреснява фоново.
+const PROFILE_CACHE_KEY = 'consultplus-profile'
+
+export function getCachedProfile(): Profile | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY)
+    return raw ? (JSON.parse(raw) as Profile) : null
+  } catch {
+    return null
+  }
+}
+
+export function setCachedProfile(profile: Profile | null): void {
+  try {
+    if (profile) localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile))
+    else localStorage.removeItem(PROFILE_CACHE_KEY)
+  } catch {
+    /* localStorage недостъпен — игнорирай */
+  }
+}
+
 export async function getCurrentProfile(): Promise<Profile | null> {
   try {
     const { data: { session } } = await supabase.auth.getSession()

@@ -340,11 +340,18 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   async function handleBulkStatus(optionId: string) {
     if (!statusCol || !optionId || selected.size === 0) return
     const count = selected.size
-    await Promise.all([...selected].map(clientId =>
-      setCellValue(clientId, statusCol.id, { value_dropdown: optionId }, {
-        userId: user?.id, userName: user?.full_name ?? '', columnName: 'Статус',
-      })
-    ))
+    try {
+      await Promise.all([...selected].map(clientId =>
+        setCellValue(clientId, statusCol.id, { value_dropdown: optionId }, {
+          userId: user?.id, userName: user?.full_name ?? '', columnName: 'Статус',
+        })
+      ))
+    } catch (err) {
+      console.error('Bulk status error:', err)
+      toast.error('Част от промените не бяха записани. Опитайте отново.')
+      onRefresh()
+      return
+    }
     setSelected(new Set())
     toast.success(`Статусът е обновен за ${count} клиента`)
     onRefresh()
@@ -353,11 +360,18 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   async function handleBulkAccountant(staffName: string) {
     if (!accountantCol || !staffName || selected.size === 0) return
     const count = selected.size
-    await Promise.all([...selected].map(clientId =>
-      setCellValue(clientId, accountantCol.id, { value_text: staffName, value_dropdown: null }, {
-        userId: user?.id, userName: user?.full_name ?? '', columnName: 'Счетоводител',
-      })
-    ))
+    try {
+      await Promise.all([...selected].map(clientId =>
+        setCellValue(clientId, accountantCol.id, { value_text: staffName, value_dropdown: null }, {
+          userId: user?.id, userName: user?.full_name ?? '', columnName: 'Счетоводител',
+        })
+      ))
+    } catch (err) {
+      console.error('Bulk accountant error:', err)
+      toast.error('Част от промените не бяха записани. Опитайте отново.')
+      onRefresh()
+      return
+    }
     setSelected(new Set())
     toast.success(`Счетоводителят е обновен за ${count} клиента`)
     onRefresh()
@@ -365,12 +379,19 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
 
   async function handleBulkDelete() {
     const count = selected.size
-    await Promise.all([...selected].map(clientId => {
-      const row = data.find(r => r.clientId === clientId)
-      return softDeleteClient(clientId, {
-        userId: user?.id, userName: user?.full_name ?? '', clientName: row?.clientName ?? '',
-      })
-    }))
+    try {
+      await Promise.all([...selected].map(clientId => {
+        const row = data.find(r => r.clientId === clientId)
+        return softDeleteClient(clientId, {
+          userId: user?.id, userName: user?.full_name ?? '', clientName: row?.clientName ?? '',
+        })
+      }))
+    } catch (err) {
+      console.error('Bulk delete error:', err)
+      toast.error('Част от клиентите не бяха изтрити. Опитайте отново.')
+      onRefresh()
+      return
+    }
     setSelected(new Set())
     setConfirmBulkDelete(false)
     toast.success(`${count} клиента са изтрити`)

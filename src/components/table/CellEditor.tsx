@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from 'react'
 import type { Column, DropdownOption, CellValue } from '../../lib/types'
 import { getDropdownOptions, setCellValue, getStaff, type StaffMember } from '../../lib/storage'
 import { useAuth } from '../../lib/auth'
+import { toast } from 'sonner'
+
+const SAVE_ERROR = 'Промяната не е записана. Опитайте отново.'
 
 interface Props {
   column: Column
@@ -85,6 +88,7 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
       onSave(patch)
     } catch (err) {
       console.error('Save error:', err)
+      toast.error(SAVE_ERROR)
       onCancel()
     }
   }
@@ -108,6 +112,7 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
             onSave({ value_bool: e.target.checked })
           } catch (err) {
             console.error('Checkbox save error:', err)
+            toast.error(SAVE_ERROR)
             onCancel()
           }
         }}
@@ -131,6 +136,7 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
               onSave(staffPatch)
             } catch (err) {
               console.error('Staff dropdown save error:', err)
+              toast.error(SAVE_ERROR)
               onCancel()
             }
           }}
@@ -159,6 +165,7 @@ export function CellEditor({ column, clientId, clientName, cell, oldDisplay, onS
             onSave(dropPatch)
           } catch (err) {
             console.error('Dropdown save error:', err)
+            toast.error(SAVE_ERROR)
             onCancel()
           }
         }}
