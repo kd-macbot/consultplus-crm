@@ -315,7 +315,10 @@ export function WorkSheetPage() {
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
             <Button variant="ghost" size="sm" onClick={() => { const p = previousMonth(); setYear(p.year); setMonth(p.month) }}>
-              Днес
+              Работен месец
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { const d = new Date(); setYear(d.getFullYear()); setMonth(d.getMonth() + 1) }}>
+              Календарен месец
             </Button>
           </div>
         </div>
