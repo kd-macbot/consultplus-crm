@@ -9,7 +9,7 @@ import { buildCellIndex, buildDropdownIndex, cellKey, resolveDropdownText } from
 import { isHiddenStatus } from '../lib/statusBadge'
 import { Users, Euro, CheckCircle2, TrendingUp, TrendingDown, Wallet, BookUser, ChevronLeft, ChevronRight, ClipboardCheck, AlertTriangle, Receipt } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { cn, formatCurrency, MONTH_NAMES } from '@/lib/utils'
+import { cn, formatCurrency, MONTH_NAMES, previousMonth } from '@/lib/utils'
 import { TRZ_ACTIVE, findTrzColumns, computeTrzProgress } from '../lib/trz'
 
 export function Dashboard() {
@@ -36,16 +36,17 @@ export function Dashboard() {
     enabled: isAdmin,
   })
 
-  const now = new Date()
-  const [wsYear, setWsYear] = useState(now.getFullYear())
-  const [wsMonth, setWsMonth] = useState(now.getMonth() + 1)
+  // Дефолтваме на предходен месец — работните листове са „месец назад".
+  const initialMonth = previousMonth()
+  const [wsYear, setWsYear] = useState(initialMonth.year)
+  const [wsMonth, setWsMonth] = useState(initialMonth.month)
   const monthlyWorkQ = useQuery({
     queryKey: ['monthlyWork', wsYear, wsMonth],
     queryFn: () => getMonthlyWork(wsYear, wsMonth),
   })
 
-  const [trzYear, setTrzYear] = useState(now.getFullYear())
-  const [trzMonth, setTrzMonth] = useState(now.getMonth() + 1)
+  const [trzYear, setTrzYear] = useState(initialMonth.year)
+  const [trzMonth, setTrzMonth] = useState(initialMonth.month)
   const trzWorkQ = useQuery({
     queryKey: ['trzWork', trzYear, trzMonth],
     queryFn: () => getTrzWork(trzYear, trzMonth),
