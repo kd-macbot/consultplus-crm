@@ -21,3 +21,14 @@ export function formatDate(v: string | null | undefined): string {
   if (m) return `${m[3]}.${m[2]}.${m[1]}`
   return v
 }
+
+/**
+ * Предходен месец (1-индексиран) спрямо подадената дата. Работните листове
+ * (Месечна / ТРЗ) винаги се водят месец назад — през юни се прави май.
+ * Януари → декември на предходната година.
+ */
+export function previousMonth(d: Date = new Date()): { year: number; month: number } {
+  const m = d.getMonth() // 0..11; текущ 1-индексиран = m + 1, предходен 1-индексиран = m
+  if (m === 0) return { year: d.getFullYear() - 1, month: 12 }
+  return { year: d.getFullYear(), month: m }
+}

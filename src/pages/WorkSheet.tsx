@@ -16,7 +16,7 @@ import {
   resolveDropdownText, cellKey,
 } from '../lib/tableIndices'
 import { statusBadgeClass, isHiddenStatus } from '../lib/statusBadge'
-import { MONTH_NAMES } from '../lib/utils'
+import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
 
 function formatCurrency(v: number | null): string {
@@ -59,9 +59,11 @@ function art55Deadline(applies: string, month: number): string | null {
 
 export function WorkSheetPage() {
   const { user } = useAuth()
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  // Дефолтваме на предходен месец — счет./ТРЗ винаги се работи месец назад
+  // (през юни се прави май).
+  const initial = previousMonth()
+  const [year, setYear] = useState(initial.year)
+  const [month, setMonth] = useState(initial.month)
 
   const [clients, setClients] = useState<Client[]>([])
   const [columns, setColumns] = useState<Column[]>([])
@@ -312,7 +314,7 @@ export function WorkSheetPage() {
             <Button variant="outline" size="sm" onClick={() => changeMonth(1)}>
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth() + 1) }}>
+            <Button variant="ghost" size="sm" onClick={() => { const p = previousMonth(); setYear(p.year); setMonth(p.month) }}>
               Днес
             </Button>
           </div>

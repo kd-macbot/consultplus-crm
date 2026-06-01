@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatDate, MONTH_NAMES } from './utils'
+import { formatDate, MONTH_NAMES, previousMonth } from './utils'
 
 describe('formatDate', () => {
   it('ISO → DD.MM.YYYY', () => {
@@ -21,5 +21,17 @@ describe('MONTH_NAMES', () => {
     expect(MONTH_NAMES).toHaveLength(12)
     expect(MONTH_NAMES[0]).toBe('Януари')
     expect(MONTH_NAMES[11]).toBe('Декември')
+  })
+})
+
+describe('previousMonth', () => {
+  it('юни → май на същата година', () => {
+    expect(previousMonth(new Date(2026, 5, 15))).toEqual({ year: 2026, month: 5 })
+  })
+  it('януари → декември на предходната година', () => {
+    expect(previousMonth(new Date(2026, 0, 10))).toEqual({ year: 2025, month: 12 })
+  })
+  it('декември → ноември', () => {
+    expect(previousMonth(new Date(2026, 11, 31))).toEqual({ year: 2026, month: 11 })
   })
 })

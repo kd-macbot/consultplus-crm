@@ -14,7 +14,7 @@ import {
   clientDisplayName, resolveDropdownText, resolveCellText,
 } from '../lib/tableIndices'
 import { statusBadgeClass } from '../lib/statusBadge'
-import { MONTH_NAMES } from '../lib/utils'
+import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { TRZ_ACTIVE, findTrzColumns } from '../lib/trz'
 import { useRealtime } from '../lib/useRealtime'
 
@@ -22,9 +22,10 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 export function TrzPage() {
   const { user } = useAuth()
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  // Дефолтваме на предходен месец — ТРЗ работата винаги е за изминалия месец.
+  const initial = previousMonth()
+  const [year, setYear] = useState(initial.year)
+  const [month, setMonth] = useState(initial.month)
 
   const [allClients, setAllClients] = useState<Client[]>([])
   const [allColumns, setAllColumns] = useState<Column[]>([])
@@ -219,7 +220,7 @@ export function TrzPage() {
             <Button variant="outline" size="sm" onClick={() => changeMonth(1)}>
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth() + 1) }}>
+            <Button variant="ghost" size="sm" onClick={() => { const p = previousMonth(); setYear(p.year); setMonth(p.month) }}>
               Днес
             </Button>
           </div>
