@@ -75,6 +75,7 @@ export function WorkSheetPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])  // празно = всички
   const [accountantFilter, setAccountantFilter] = useState<string>('')  // празно = всички
+  const [respFilter, setRespFilter] = useState<string>('')  // празно = всички
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
   const [art55ModalFor, setArt55ModalFor] = useState<{ client: Client; name: string } | null>(null)
 
@@ -159,6 +160,7 @@ export function WorkSheetPage() {
   const advanceCol = useMemo(() => columns.find(c => c.name === 'Авансови вноски'), [columns])
   const art55Col = useMemo(() => columns.find(c => c.name === 'Чл. 55 ЗДДФЛ'), [columns])
   const accountantCol = useMemo(() => columns.find(c => c.name === 'Счетоводител'), [columns])
+  const respCol = useMemo(() => columns.find(c => c.name === 'Отговорник'), [columns])
   // Master ДА/НЕ флагове → месечни чекбоксове
   const akcizCol = useMemo(() => columns.find(c => c.name === 'АКЦИЗ'), [columns])
   const statistikaCol = useMemo(() => columns.find(c => c.name === 'СТАТИСТИКА'), [columns])
@@ -176,6 +178,16 @@ export function WorkSheetPage() {
     return ''
   }
 
+  // Отговорник — същата логика (staff-свързана или dropdown).
+  function responsibleOf(clientId: string): string {
+    if (!respCol) return ''
+    const cell = cellIdx.get(cellKey(clientId, respCol.id))
+    if (!cell) return ''
+    if (cell.value_text) return cell.value_text
+    if (cell.value_dropdown) return dropdownIdx.get(cell.value_dropdown)?.value ?? ''
+    return ''
+  }
+
   // Списък със стойности на статуса (за филтър). „Без дейност" и „Без ДДС"
   // не се показват — тези клиенти изобщо не участват в Работен лист.
   const statusOptions = useMemo(() => {
@@ -186,7 +198,7 @@ export function WorkSheetPage() {
 
   // Подготвени клиенти за render: name, status, monthly row
   type Row = {
-    client: Client; name: string; status: string; accountant: string
+    client: Client; name: string; status: string; accountant: string; responsible: string
     advance: string; art55: string
     akciz: string; statistika: string; intrastat: string; siddo: string; oss: string
     work: MonthlyWork | undefined
@@ -198,6 +210,7 @@ export function WorkSheetPage() {
         name: clientDisplayName(c.id, columns, cellIdx),
         status: resolveDropdownText(c.id, statusCol, cellIdx, dropdownIdx),
         accountant: accountantOf(c.id),
+        responsible: responsibleOf(c.id),
         advance: resolveDropdownText(c.id, advanceCol, cellIdx, dropdownIdx),
         art55: resolveDropdownText(c.id, art55Col, cellIdx, dropdownIdx),
         akciz: resolveDropdownText(c.id, akcizCol, cellIdx, dropdownIdx),
@@ -209,11 +222,16 @@ export function WorkSheetPage() {
       }))
       .filter(r => !isHiddenStatus(r.status))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, akcizCol, statistikaCol, intrastatCol, siddoCol, ossCol, rows])
+  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, respCol, akcizCol, statistikaCol, intrastatCol, siddoCol, ossCol, rows])
 
   // Списък със счетоводители за филтъра (само присъстващите в таблицата).
   const accountantOptions = useMemo(() => {
     return [...new Set(tableRows.map(r => r.accountant).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'bg'))
+  }, [tableRows])
+
+  // Списък с отговорници за филтъра (само присъстващите в таблицата).
+  const respOptions = useMemo(() => {
+    return [...new Set(tableRows.map(r => r.responsible).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'bg'))
   }, [tableRows])
 
   const filteredRows = useMemo(() => {
@@ -221,10 +239,11 @@ export function WorkSheetPage() {
     return tableRows.filter(r => {
       if (statusFilter.length > 0 && !statusFilter.includes(r.status)) return false
       if (accountantFilter && r.accountant !== accountantFilter) return false
+      if (respFilter && r.responsible !== respFilter) return false
       if (s && !r.name.toLowerCase().includes(s)) return false
       return true
     })
-  }, [tableRows, search, statusFilter, accountantFilter])
+  }, [tableRows, search, statusFilter, accountantFilter, respFilter])
 
   const stats = useMemo(() => {
     let totalResult = 0
@@ -347,6 +366,25 @@ export function WorkSheetPage() {
             </select>
             {accountantFilter && (
               <button onClick={() => setAccountantFilter('')} className="text-muted-foreground hover:text-foreground">
+                ✕
+              </button>
+            )}
+          </div>
+        )}
+
+        {respOptions.length > 0 && (
+          <div className="flex items-center gap-1.5 pl-2 border-l border-border">
+            <span className="text-muted-foreground uppercase tracking-wider font-semibold">Отговорник:</span>
+            <select
+              value={respFilter}
+              onChange={e => setRespFilter(e.target.value)}
+              className="h-6 px-1 text-xs border border-border rounded bg-background focus:border-primary"
+            >
+              <option value="">Всички</option>
+              {respOptions.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            {respFilter && (
+              <button onClick={() => setRespFilter('')} className="text-muted-foreground hover:text-foreground">
                 ✕
               </button>
             )}
