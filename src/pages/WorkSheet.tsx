@@ -466,7 +466,7 @@ export function WorkSheetPage() {
                 <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider whitespace-nowrap">Резултат €</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Подадено на</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Уведомени</th>
-                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Несъотв. НАП</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Бележки</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="Авансова вноска корпоративен данък">Аванс. вн.</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="Декларация чл. 55 ЗДДФЛ">Чл. 55</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">ДДС осчет</th>
@@ -478,7 +478,7 @@ export function WorkSheetPage() {
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Интрастат</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">СИДДО</th>
                 <th className="px-2 py-2 text-right text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="ОСС месечна сума; на края на тримесечието — сума за деклариране">ОСС</th>
-                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Бележки</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Несъотв. НАП</th>
               </tr>
             </thead>
             <tbody>
@@ -524,11 +524,11 @@ export function WorkSheetPage() {
                     </td>
                     <td className="px-2 py-0.5">
                       <TextCell
-                        value={w?.npa_inconsistencies ?? ''}
+                        value={w?.notes ?? ''}
                         disabled={!canEdit}
-                        onSave={v => patchRow(row.client.id, { npa_inconsistencies: v || null })}
+                        onSave={v => patchRow(row.client.id, { notes: v || null })}
                         placeholder="—"
-                        className="w-40"
+                        className="w-48"
                       />
                     </td>
                     <AdvanceAmountCell
@@ -565,11 +565,11 @@ export function WorkSheetPage() {
                       onSave={v => patchRow(row.client.id, { oss_amount: v })} />
                     <td className="px-2 py-0.5">
                       <TextCell
-                        value={w?.notes ?? ''}
+                        value={w?.npa_inconsistencies ?? ''}
                         disabled={!canEdit}
-                        onSave={v => patchRow(row.client.id, { notes: v || null })}
+                        onSave={v => patchRow(row.client.id, { npa_inconsistencies: v || null })}
                         placeholder="—"
-                        className="w-48"
+                        className="w-40"
                       />
                     </td>
                   </tr>
