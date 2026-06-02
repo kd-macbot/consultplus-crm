@@ -696,7 +696,7 @@ function AdvanceAmountCell({ relevance, deadline, amount, disabled, onChange }: 
           onChange={e => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={e => { if (e.key === 'Enter') ref.current?.blur(); if (e.key === 'Escape') { setDraft(amount?.toString() ?? ''); ref.current?.blur() } }}
-          placeholder={isDue ? '0' : '—'}
+          placeholder="—"
           className="h-6 px-1 text-xs text-right border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-20 tabular-nums"
         />
         {isDue && !isPaid && deadline && (
@@ -900,7 +900,9 @@ function NumberCell({ value, onSave, disabled }: { value: number | null; onSave:
       onChange={e => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={e => { if (e.key === 'Enter') ref.current?.blur(); if (e.key === 'Escape') { setDraft(value?.toString() ?? ''); ref.current?.blur() } }}
-      placeholder="0"
+      // „—" вместо „0" в placeholder — за да се различава „празно" от реална
+      // стойност 0 (има клиенти с истинска 0).
+      placeholder="—"
       // Bold при попълнена стойност — числата да изпъкват от празните.
       className={`h-7 px-1 text-xs text-right border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-24 tabular-nums ${value !== null ? 'font-semibold text-foreground' : ''}`}
     />
