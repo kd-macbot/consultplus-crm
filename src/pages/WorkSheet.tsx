@@ -485,7 +485,13 @@ export function WorkSheetPage() {
               {filteredRows.map((row, i) => {
                 const w = row.work
                 const isSaving = savingFor.has(row.client.id)
-                const evenBg = i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
+                // „Подадено на" има стойност → ДДС-то е подадено → редът се
+                // оцветява леко в зелено за бърз scan кои са приключени.
+                // Запазваме редуването четен/нечетен и за done, и за not-done.
+                const isSubmitted = !!w?.submitted_at
+                const evenBg = isSubmitted
+                  ? (i % 2 === 0 ? 'bg-emerald-50 dark:bg-emerald-950/40' : 'bg-emerald-100/60 dark:bg-emerald-950/30')
+                  : (i % 2 === 0 ? 'bg-card' : 'bg-muted/20')
                 return (
                   <tr key={row.client.id} className={`border-b border-light/50 hover:bg-gold/5 transition-colors ${evenBg}`}>
                     <td className="px-3 py-1.5 text-xs text-muted-foreground/70 text-right">{i + 1}</td>
@@ -895,7 +901,8 @@ function NumberCell({ value, onSave, disabled }: { value: number | null; onSave:
       onBlur={commit}
       onKeyDown={e => { if (e.key === 'Enter') ref.current?.blur(); if (e.key === 'Escape') { setDraft(value?.toString() ?? ''); ref.current?.blur() } }}
       placeholder="0"
-      className="h-7 px-1 text-xs text-right border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-24 tabular-nums"
+      // Bold при попълнена стойност — числата да изпъкват от празните.
+      className={`h-7 px-1 text-xs text-right border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-24 tabular-nums ${value !== null ? 'font-semibold text-foreground' : ''}`}
     />
   )
 }
