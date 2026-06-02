@@ -538,14 +538,20 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                 cell={cellData}
                 oldDisplay={oldDisplay}
                 onSave={(patch) => {
-                  setEditCell(null)
+                  // Само ако потребителят още е на ТАЗИ клетка — иначе вече е
+                  // отворил друга и не искаме да я затворим под ръцете му.
+                  setEditCell(curr =>
+                    curr?.clientId === clientId && curr?.columnId === col.id ? null : curr
+                  )
                   setAllCells(prev => {
                     const idx = prev.findIndex(cv => cv.client_id === clientId && cv.column_id === col.id)
                     if (idx >= 0) return prev.map((cv, i) => i === idx ? { ...cv, ...patch } : cv)
                     return [...prev, { id: '', client_id: clientId, column_id: col.id, ...patch } as CellValue]
                   })
                 }}
-                onCancel={() => setEditCell(null)}
+                onCancel={() => setEditCell(curr =>
+                  curr?.clientId === clientId && curr?.columnId === col.id ? null : curr
+                )}
               />
             )
           }

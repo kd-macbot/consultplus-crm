@@ -43,43 +43,68 @@ export function TrzPage() {
   const canEdit = !!user
   const lastEditRef = useRef(0)
 
-  useEffect(() => { void loadAll() }, [year, month])
+  // На първия рендер зареждаме мастер + месец. След това смяната на месец
+  // презарежда САМО ТРЗ редовете — без клиенти/колони/клетки.
+  const isFirstLoadRef = useRef(true)
+  useEffect(() => {
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false
+      void loadAll()
+    } else {
+      void loadMonth()
+    }
+  }, [year, month])
+
+  const deferEdits = () => Date.now() - lastEditRef.current < 3000
 
   useRealtime({
-    channel: 'trz',
-    tables: ['crm_trz_work', 'crm_cell_values', 'crm_clients'],
+    channel: 'trz-master',
+    tables: ['crm_cell_values', 'crm_clients'],
     onChange: () => loadAll(true),
-    shouldDefer: () => Date.now() - lastEditRef.current < 3000,
+    shouldDefer: deferEdits,
+  })
+  useRealtime({
+    channel: 'trz-month',
+    tables: ['crm_trz_work'],
+    onChange: () => loadMonth(true),
+    shouldDefer: deferEdits,
   })
 
-  async function loadAll(silent = false) {
+  interface MasterData {
+    cls: Client[]; cols: Column[]; cells: CellValue[]; dds: DropdownOption[]
+  }
+
+  async function loadMaster(): Promise<MasterData> {
+    const [cls, cols, cells, dds] = await Promise.all([
+      getClients(), getColumns(), getCellValues(), getDropdownOptions(),
+    ])
+    setAllClients(cls)
+    setAllColumns(cols)
+    setAllCells(cells)
+    setAllDropdowns(dds)
+
+    // ТРЗ отговорник филтър — зависи от мастер колоната, не от месеца.
+    const trzCols = findTrzColumns(cols)
+    if (trzCols.resp?.staff_department) {
+      try {
+        const staff = await getStaff(trzCols.resp.staff_department)
+        setRespStaff(staff.map(s => s.full_name))
+      } catch { setRespStaff([]) }
+    } else {
+      setRespStaff([])
+    }
+
+    return { cls, cols, cells, dds }
+  }
+
+  async function loadMonth(silent = false, master?: MasterData) {
     if (!silent) setLoading(true)
     try {
-      const [cls, cols, cells, dds] = await Promise.all([
-        getClients(), getColumns(), getCellValues(), getDropdownOptions()
-      ])
-      setAllClients(cls)
-      setAllColumns(cols)
-      setAllCells(cells)
-      setAllDropdowns(dds)
-
-      const trzCols = findTrzColumns(cols)
-
-      // ТРЗ отговорник филтър — стойностите идат от мастера: ако колоната е
-      // staff-свързана, теглим целия персонал на отдела (вкл. без клиенти).
-      if (trzCols.resp?.staff_department) {
-        try {
-          const staff = await getStaff(trzCols.resp.staff_department)
-          setRespStaff(staff.map(s => s.full_name))
-        } catch { setRespStaff([]) }
-      } else {
-        setRespStaff([])
-      }
-
-      // Подсигуряваме ред само за фирмите с ТРЗ Статус = „Активна".
-      const localCellIdx = buildCellIndex(cells)
-      const localDropdownIdx = buildDropdownIndex(dds)
-      const activeIds = cls
+      const m = master ?? { cls: allClients, cols: allColumns, cells: allCells, dds: allDropdowns }
+      const trzCols = findTrzColumns(m.cols)
+      const localCellIdx = buildCellIndex(m.cells)
+      const localDropdownIdx = buildDropdownIndex(m.dds)
+      const activeIds = m.cls
         .filter(c => resolveDropdownText(c.id, trzCols.status, localCellIdx, localDropdownIdx) === TRZ_ACTIVE)
         .map(c => c.id)
       const created = await ensureTrzRows(activeIds, year, month, user?.id)
@@ -87,6 +112,17 @@ export function TrzPage() {
 
       const work = await getTrzWork(year, month)
       setRows(new Map(work.map(w => [w.client_id, w])))
+    } catch (e: any) {
+      if (!silent) toast.error(e.message ?? 'Грешка при зареждане')
+    }
+    if (!silent) setLoading(false)
+  }
+
+  async function loadAll(silent = false) {
+    if (!silent) setLoading(true)
+    try {
+      const master = await loadMaster()
+      await loadMonth(true, master)
     } catch (e: any) {
       if (!silent) toast.error(e.message ?? 'Грешка при зареждане')
     }
@@ -181,7 +217,7 @@ export function TrzPage() {
       await upsertTrzWorkByKey(clientId, year, month, patch, user?.id)
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при запис')
-      await loadAll()
+      await loadMonth()
     } finally {
       setSavingFor(prev => {
         const next = new Set(prev)

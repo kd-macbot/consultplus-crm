@@ -83,46 +83,73 @@ export function WorkSheetPage() {
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'employee'
 
-  useEffect(() => { void loadAll() }, [year, month])
+  // На първия рендер зареждаме мастер + месец. След това смяната на месец
+  // презарежда САМО месечните данни (не клиенти/колони/клетки — те не
+  // зависят от месеца и така спестяваме секунди при ◀ ▶).
+  const isFirstLoadRef = useRef(true)
+  useEffect(() => {
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false
+      void loadAll()
+    } else {
+      void loadMonth()
+    }
+  }, [year, month])
 
   // Кога потребителят последно е редактирал — за да не презаписваме полето
   // изпод ръцете му при realtime презареждане.
   const lastEditRef = useRef(0)
+  const deferEdits = () => Date.now() - lastEditRef.current < 3000
 
-  // Realtime — промени от колеги се отразяват тихо (без спинър), след кратко
-  // изчакване и само ако в момента не се редактира активно.
+  // Realtime — промени от колеги се отразяват тихо (без спинър). Разделено
+  // на два канала: мастер таблиците (клиенти/клетки) → loadAll; месечните
+  // таблици → loadMonth, за да не презареждаме излишно.
   useRealtime({
-    channel: 'worksheet',
-    tables: ['crm_monthly_work', 'crm_art55_entries', 'crm_cell_values', 'crm_clients'],
+    channel: 'worksheet-master',
+    tables: ['crm_cell_values', 'crm_clients'],
     onChange: () => loadAll(true),
-    shouldDefer: () => Date.now() - lastEditRef.current < 3000,
+    shouldDefer: deferEdits,
+  })
+  useRealtime({
+    channel: 'worksheet-month',
+    tables: ['crm_monthly_work', 'crm_art55_entries'],
+    onChange: () => loadMonth(true),
+    shouldDefer: deferEdits,
   })
 
-  async function loadAll(silent = false) {
+  interface MasterData {
+    cls: Client[]; cols: Column[]; cvs: CellValue[]; dds: DropdownOption[]
+  }
+
+  async function loadMaster(): Promise<MasterData> {
+    const [cls, cols, cvs, dds] = await Promise.all([
+      getClients(), getColumns(), getCellValues(), getDropdownOptions(),
+    ])
+    setClients(cls)
+    setColumns(cols)
+    setCells(cvs)
+    setDropdowns(dds)
+    return { cls, cols, cvs, dds }
+  }
+
+  async function loadMonth(silent = false, master?: MasterData) {
     if (!silent) setLoading(true)
     try {
-      // 1. Базови данни (само първия път или ако се променят клиенти)
-      const [cls, cols, cvs, dds] = await Promise.all([
-        getClients(), getColumns(), getCellValues(), getDropdownOptions(),
-      ])
-      setClients(cls)
-      setColumns(cols)
-      setCells(cvs)
-      setDropdowns(dds)
+      // Ползваме подадения master (при първи зар.) или текущия state (при смяна на месец).
+      const m = master ?? { cls: clients, cols: columns, cvs: cells, dds: dropdowns }
 
-      // 2. Уверяваме се, че всеки активен клиент има ред за избрания месец.
+      // 1. Уверяваме се, че всеки активен клиент има ред за избрания месец.
       // „Без дейност" / „Без ДДС" се пропускат — те не участват в работата.
-      // Build O(1) индекси локално (state-ът още не е обновен).
-      const statusColLocal = cols.find(c => c.name === 'Статус')
-      const localCellIdx = buildCellIndex(cvs)
-      const localDropdownIdx = buildDropdownIndex(dds)
-      const activeIds = cls
+      const statusColLocal = m.cols.find(c => c.name === 'Статус')
+      const localCellIdx = buildCellIndex(m.cvs)
+      const localDropdownIdx = buildDropdownIndex(m.dds)
+      const activeIds = m.cls
         .filter(c => !isHiddenStatus(resolveDropdownText(c.id, statusColLocal, localCellIdx, localDropdownIdx)))
         .map(c => c.id)
       const created = await ensureMonthlyRows(activeIds, year, month, user?.id)
-      if (created > 0) toast.info(`Създадени ${created} нови реда за ${MONTH_NAMES[month - 1]} ${year}`)
+      if (created > 0 && !silent) toast.info(`Създадени ${created} нови реда за ${MONTH_NAMES[month - 1]} ${year}`)
 
-      // 3. Зареждаме редовете за избрания месец
+      // 2. Зареждаме редовете за избрания месец
       const [work, art55] = await Promise.all([
         getMonthlyWork(year, month),
         getArt55EntriesForPeriod(year, [month]),
@@ -148,6 +175,17 @@ export function WorkSheetPage() {
       } else {
         setOssPrior(new Map())
       }
+    } catch (e: any) {
+      if (!silent) toast.error(e.message ?? 'Грешка при зареждане')
+    }
+    if (!silent) setLoading(false)
+  }
+
+  async function loadAll(silent = false) {
+    if (!silent) setLoading(true)
+    try {
+      const master = await loadMaster()
+      await loadMonth(true, master)  // вътрешно silent — външният setLoading управлява спинъра
     } catch (e: any) {
       if (!silent) toast.error(e.message ?? 'Грешка при зареждане')
     }
@@ -288,7 +326,7 @@ export function WorkSheetPage() {
       await upsertMonthlyWorkByKey(clientId, year, month, patch, user?.id)
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при запис')
-      await loadAll()
+      await loadMonth()
     } finally {
       setSavingFor(prev => {
         const next = new Set(prev)
