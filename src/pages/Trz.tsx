@@ -410,7 +410,8 @@ export function TrzPage() {
                         disabled={!canEdit}
                         value={w?.insurance_submitted_at ?? ''}
                         onChange={e => patchRow(r.client.id, { insurance_submitted_at: e.target.value || null })}
-                        className="h-7 px-1 text-xs border border-border rounded bg-background"
+                        // Скриваме „дд.мм.гггг г." при празна стойност — само иконата остава.
+                        className={`h-7 px-1 text-xs border border-border rounded bg-background ${!w?.insurance_submitted_at ? 'text-transparent' : ''}`}
                       />
                     </div>
                   </td>
@@ -430,7 +431,8 @@ export function TrzPage() {
                         disabled={!canEdit}
                         value={w?.payroll_sent_at ?? ''}
                         onChange={e => patchRow(r.client.id, { payroll_sent_at: e.target.value || null })}
-                        className="h-7 px-1 text-xs border border-border rounded bg-background"
+                        // Скриваме „дд.мм.гггг г." при празна стойност — само иконата остава.
+                        className={`h-7 px-1 text-xs border border-border rounded bg-background ${!w?.payroll_sent_at ? 'text-transparent' : ''}`}
                       />
                     </div>
                   </td>

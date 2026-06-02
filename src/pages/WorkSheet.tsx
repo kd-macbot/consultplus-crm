@@ -517,7 +517,9 @@ export function WorkSheetPage() {
                       <input type="date" disabled={!canEdit}
                         value={w?.submitted_at ?? ''}
                         onChange={e => patchRow(row.client.id, { submitted_at: e.target.value || null })}
-                        className="h-7 px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-32" />
+                        // Когато няма стойност — скриваме „дд.мм.гггг г." (text-transparent),
+                        // иконата на календара остава видима и кликаема.
+                        className={`h-7 px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-32 ${!w?.submitted_at ? 'text-transparent' : ''}`} />
                     </td>
                     <td className="px-2 py-0.5">
                       <select disabled={!canEdit}
