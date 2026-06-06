@@ -43,7 +43,7 @@ import { RefreshContactDialog } from '../clients/RefreshContactDialog'
 import { ViewsMenu } from './ViewsMenu'
 import {
   getViews, getDefaultView, getActiveViewId, setActiveViewId,
-  saveView, deleteView, setDefaultView, type View,
+  saveView, deleteView, setDefaultView, syncViewsFromDb, type View,
 } from '../../lib/views'
 
 interface ClientRow {
@@ -211,6 +211,24 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   useEffect(() => { loadData() }, [refreshKey])
+
+  // Синхронизираме изгледите от акаунта (DB) при вход — така изгледите,
+  // създадени на друго устройство, се появяват и тук. localStorage остава
+  // мигновен кеш; това само го опреснява, ако DB има по-нови данни.
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    void syncViewsFromDb(user.id).then(changed => {
+      if (changed && !cancelled) {
+        setViews(getViews())
+        const active = getActiveViewId() ?? getDefaultView()?.id ?? null
+        setActiveViewIdLocal(active)
+        const v = getViews().find(view => view.id === active)
+        setHiddenCols(new Set(v?.hiddenCols ?? []))
+      }
+    })
+    return () => { cancelled = true }
+  }, [user?.id])
 
   useEffect(() => {
     function handler(e: MouseEvent) {

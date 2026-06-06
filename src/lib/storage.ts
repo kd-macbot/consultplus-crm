@@ -844,8 +844,48 @@ export async function fetchEikRaw(eik: string): Promise<unknown> {
   return invokeEdge({ fetchEik: eik })
 }
 
-// ==================== PROFILES ====================
+// ==================== USER VIEWS (синхр. изгледи) ====================
 
+export interface UserViewsStore {
+  views: unknown[]
+  activeId: string | null
+}
+
+/** Чете запазените изгледи на текущия потребител от DB (или null ако няма ред). */
+export async function getUserViews(): Promise<UserViewsStore | null> {
+  return withRetry(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) return null
+    const { data, error } = await supabase
+      .from('crm_user_views')
+      .select('views, active_id')
+      .eq('user_id', session.user.id)
+      .maybeSingle()
+    if (error) throw error
+    if (!data) return null
+    return { views: (data.views as unknown[]) ?? [], activeId: data.active_id ?? null }
+  })
+}
+
+/** Записва изгледите на текущия потребител (upsert по user_id). */
+export async function saveUserViews(store: UserViewsStore): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.user) return
+  const { error } = await supabase
+    .from('crm_user_views')
+    .upsert(
+      {
+        user_id: session.user.id,
+        views: store.views,
+        active_id: store.activeId,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    )
+  if (error) throw error
+}
+
+// ==================== PROFILES ====================
 export async function getProfiles(): Promise<{ id: string; full_name: string }[]> {
   const { data, error } = await supabase
     .from('profiles')

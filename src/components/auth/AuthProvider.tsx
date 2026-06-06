@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { AuthContext, signIn, signOut, getCurrentProfile, getCachedProfile, setCachedProfile } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import { clearViewsCache } from '../../lib/views'
 import { timed } from '../../lib/perf'
 import type { Profile, Role } from '../../lib/types'
 
@@ -80,6 +81,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await signOut()
     applyProfile(null)
+    // Чистим локалния кеш на изгледите — на споделен компютър следващият
+    // потребител да не види чужди изгледи.
+    clearViewsCache()
   }
 
   const isRole = (role: Role) => user?.role === role
