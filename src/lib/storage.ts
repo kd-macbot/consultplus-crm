@@ -943,60 +943,84 @@ export async function softDeleteOpportunity(id: string): Promise<void> {
 }
 
 /**
- * Конвертира opportunity в client: създава нов client, копира името в първата text колона,
- * създава контакт с цялата информация и маркира opportunity-то като конвертирано.
+ * Конвертира opportunity в client: създава нов client, копира името в първата text
+ * колона, създава контакт с цялата информация и маркира opportunity-то като конвертирано.
+ *
+ * Безопасност при частичен провал:
+ *  - Идемпотентност: ако opportunity-то вече има converted_to_client_id, връща го
+ *    без да създава дубликат.
+ *  - Rollback: при грешка след създаване на клиента, чисти контакта и soft-delete-ва
+ *    клиента, за да не остане „сирак" в грида.
  */
 export async function convertOpportunityToClient(
   opp: Opportunity,
   userId?: string,
   userName?: string,
 ): Promise<{ clientId: string }> {
+  // 0. Идемпотентност — ако вече е конвертиран, връщаме същия клиент.
+  if (opp.converted_to_client_id) {
+    return { clientId: opp.converted_to_client_id }
+  }
+
   // 1. Нов клиент
   const client = await addClient(userId, undefined, { userId, userName })
 
-  // 2. Името в първата text колона
-  const cols = await getColumns()
-  const nameCol = cols.find(c => c.type === 'text')
-  if (nameCol && opp.name) {
-    await setCellValue(client.id, nameCol.id, { value_text: opp.name })
-  }
-  // 3. Отговорник в колоната „Отговорник" (ако е попълнен)
-  if (opp.responsible) {
-    const respCol = cols.find(c => c.name === 'Отговорник')
-    if (respCol) {
-      await setCellValue(client.id, respCol.id, { value_text: opp.responsible })
+  try {
+    // 2. Името в първата text колона
+    const cols = await getColumns()
+    const nameCol = cols.find(c => c.type === 'text')
+    if (nameCol && opp.name) {
+      await setCellValue(client.id, nameCol.id, { value_text: opp.name })
     }
+    // 3. Отговорник в колоната „Отговорник" (ако е попълнен)
+    if (opp.responsible) {
+      const respCol = cols.find(c => c.name === 'Отговорник')
+      if (respCol) {
+        await setCellValue(client.id, respCol.id, { value_text: opp.responsible })
+      }
+    }
+
+    // 4. Контакт с попълнени данни
+    await upsertContact(buildContactPayload(client.id, null, {
+      eik: opp.eik,
+      vat_number: opp.vat_number,
+      vat_registered_at: opp.vat_registered_at,
+      address: opp.address,
+      public_url: opp.public_url,
+      owner_name: opp.owner_name_legal,
+      manager_name: opp.manager_name_legal,
+      owner_email: opp.contact_email,
+      owner_phone: opp.contact_phone,
+      notes: opp.notes,
+    }, userId))
+
+    // 5. Маркираме opportunity-то
+    await updateOpportunity(opp.id, {
+      converted_to_client_id: client.id,
+      converted_at: new Date().toISOString(),
+      stage: 'Печеливш',
+    })
+
+    // 6. Audit log (logAudit вътрешно гълта грешки, така че не разваля транзакцията)
+    await logAudit(userId, userName ?? '', 'convert_opportunity', 'opportunity', opp.id, {
+      client_name: opp.name,
+      new_value: client.id,
+      metadata: { eik: opp.eik },
+    })
+
+    return { clientId: client.id }
+  } catch (err) {
+    // Rollback: чистим следите от частично създадения клиент, за да не остане
+    // сирак. Самият orphan от cell_values остава (невидим през грида), но
+    // клиентът и контактът се изтриват.
+    try {
+      await supabase.from('crm_contacts').delete().eq('client_id', client.id)
+      await softDeleteClient(client.id)
+    } catch (rollbackErr) {
+      console.error('Conversion rollback failed:', rollbackErr)
+    }
+    throw err
   }
-
-  // 4. Контакт с попълнени данни
-  await upsertContact(buildContactPayload(client.id, null, {
-    eik: opp.eik,
-    vat_number: opp.vat_number,
-    vat_registered_at: opp.vat_registered_at,
-    address: opp.address,
-    public_url: opp.public_url,
-    owner_name: opp.owner_name_legal,
-    manager_name: opp.manager_name_legal,
-    owner_email: opp.contact_email,
-    owner_phone: opp.contact_phone,
-    notes: opp.notes,
-  }, userId))
-
-  // 5. Маркираме opportunity-то
-  await updateOpportunity(opp.id, {
-    converted_to_client_id: client.id,
-    converted_at: new Date().toISOString(),
-    stage: 'Печеливш',
-  })
-
-  // 6. Audit log
-  await logAudit(userId, userName ?? '', 'convert_opportunity', 'opportunity', opp.id, {
-    client_name: opp.name,
-    new_value: client.id,
-    metadata: { eik: opp.eik },
-  })
-
-  return { clientId: client.id }
 }
 
 // ==================== MONTHLY WORK ====================

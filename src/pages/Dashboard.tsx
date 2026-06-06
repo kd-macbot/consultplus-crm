@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../lib/auth'
-import { getExpenses, getMonthlyWork, getTrzWork } from '../lib/storage'
+import { getExpenses, getMonthlyWork, getTrzWork, withRetry } from '../lib/storage'
 import { useClients, useColumns, useCellValues, useDropdownOptions } from '../lib/queries'
 import { supabase } from '../lib/supabase'
 import type { Column, Expense } from '../lib/types'
@@ -25,10 +25,11 @@ export function Dashboard() {
   const dropdownsQ = useDropdownOptions()
   const contactsCountQ = useQuery({
     queryKey: ['contactsCount'],
-    queryFn: async () => {
-      const { count } = await supabase.from('crm_contacts').select('*', { count: 'exact', head: true })
+    queryFn: () => withRetry(async () => {
+      const { count, error } = await supabase.from('crm_contacts').select('*', { count: 'exact', head: true })
+      if (error) throw error
       return count ?? 0
-    },
+    }),
   })
   const expensesQ = useQuery({
     queryKey: ['expenses'],
