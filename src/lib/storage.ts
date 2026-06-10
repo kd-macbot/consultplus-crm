@@ -38,6 +38,28 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   })
 }
 
+/**
+ * Защитен timeout специално за ЗАПИСИ. Адресира известен hang в supabase-js:
+ * понякога вътрешният Web Lock (navigator.locks) увисва преди реалната HTTP
+ * заявка → нашият fetch timeout не го хваща → потребителят не вижда грешка и
+ * мисли, че записът „тихо изчезва", докато не презареди страницата.
+ *
+ * Този timeout е извън клиента, така че винаги ще се задейства и ще покаже на
+ * потребителя ясно действие.
+ */
+const SAVE_TIMEOUT_MS = 15000
+const SAVE_HANG_MSG = 'Записът се бави твърде дълго. Сесията може да е блокирана — моля, презаредете страницата (F5).'
+
+export async function trackSave<T>(p: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(SAVE_HANG_MSG)), SAVE_TIMEOUT_MS)
+    p.then(
+      v => { clearTimeout(timer); resolve(v) },
+      e => { clearTimeout(timer); reject(e) },
+    )
+  })
+}
+
 // ==================== AUDIT LOG ====================
 
 export async function logAudit(
@@ -455,25 +477,27 @@ export async function setCellValue(
     value_dropdown: value.value_dropdown ?? null,
   }
 
-  const { data: existing } = await supabase
-    .from('crm_cell_values')
-    .select('id')
-    .eq('client_id', clientId)
-    .eq('column_id', columnId)
-    .maybeSingle()
+  await trackSave((async () => {
+    const { data: existing } = await supabase
+      .from('crm_cell_values')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('column_id', columnId)
+      .maybeSingle()
 
-  if (existing) {
-    const { error } = await supabase
-      .from('crm_cell_values')
-      .update(updates)
-      .eq('id', existing.id)
-    if (error) throw error
-  } else {
-    const { error } = await supabase
-      .from('crm_cell_values')
-      .insert([{ client_id: clientId, column_id: columnId, ...updates }])
-    if (error) throw error
-  }
+    if (existing) {
+      const { error } = await supabase
+        .from('crm_cell_values')
+        .update(updates)
+        .eq('id', existing.id)
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from('crm_cell_values')
+        .insert([{ client_id: clientId, column_id: columnId, ...updates }])
+      if (error) throw error
+    }
+  })())
 
   if (audit) {
     await logAudit(audit.userId, audit.userName ?? '', 'update_cell', 'cell', clientId, {
@@ -1159,13 +1183,15 @@ export async function upsertMonthlyWorkByKey(
   patch: Partial<MonthlyWork>,
   createdBy?: string,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('crm_monthly_work')
-    .upsert(
-      { client_id: clientId, year, month, created_by: createdBy ?? null, ...patch, updated_at: new Date().toISOString() },
-      { onConflict: 'client_id,year,month' },
-    )
-  if (error) throw error
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_monthly_work')
+      .upsert(
+        { client_id: clientId, year, month, created_by: createdBy ?? null, ...patch, updated_at: new Date().toISOString() },
+        { onConflict: 'client_id,year,month' },
+      )
+    if (error) throw error
+  })())
 }
 
 // ==================== ТРЗ МЕСЕЧЕН ЛИСТ ====================
@@ -1231,13 +1257,15 @@ export async function upsertTrzWorkByKey(
   patch: Partial<TrzWork>,
   createdBy?: string,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('crm_trz_work')
-    .upsert(
-      { client_id: clientId, year, month, created_by: createdBy ?? null, ...patch, updated_at: new Date().toISOString() },
-      { onConflict: 'client_id,year,month' },
-    )
-  if (error) throw error
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_trz_work')
+      .upsert(
+        { client_id: clientId, year, month, created_by: createdBy ?? null, ...patch, updated_at: new Date().toISOString() },
+        { onConflict: 'client_id,year,month' },
+      )
+    if (error) throw error
+  })())
 }
 
 // ==================== ART. 55 ENTRIES ====================
