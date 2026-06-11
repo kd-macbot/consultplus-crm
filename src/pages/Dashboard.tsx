@@ -306,7 +306,7 @@ export function Dashboard() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Ведомост</p>
+                  <p className="text-xs text-muted-foreground">Д1 и Д6</p>
                   <p className="text-2xl font-bold text-foreground tabular-nums">
                     {trzStats.payroll}<span className="text-base text-muted-foreground font-normal"> / {trzStats.total}</span>
                   </p>
