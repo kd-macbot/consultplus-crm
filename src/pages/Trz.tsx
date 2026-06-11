@@ -351,7 +351,7 @@ export function TrzPage() {
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Софтуер</th>
               <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Заплати</th>
               <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Осигуровки</th>
-              <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Ведомост</th>
+              <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Д1 и Д6</th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Бележка</th>
             </tr>
           </thead>
