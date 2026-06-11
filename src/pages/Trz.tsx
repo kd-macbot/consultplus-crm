@@ -346,7 +346,7 @@ export function TrzPage() {
           <thead className="bg-navy text-white sticky top-0 z-10">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-10">#</th>
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Фирма</th>
+              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-[180px]">Фирма</th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Форма на Осиг.</th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Софтуер</th>
               <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Заплати</th>
@@ -374,7 +374,7 @@ export function TrzPage() {
                   <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums w-10">
                     {isSaving ? <Loader2 className="h-3 w-3 animate-spin inline" /> : i + 1}
                   </td>
-                  <td className="px-3 py-1.5 font-medium text-foreground whitespace-nowrap">{r.name || r.client.id.slice(0, 8)}</td>
+                  <td className="px-3 py-1.5 font-medium text-foreground whitespace-nowrap truncate max-w-[180px]" title={r.name || r.client.id}>{r.name || r.client.id.slice(0, 8)}</td>
                   <td className="px-3 py-1.5 whitespace-nowrap">
                     {r.forma
                       ? <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadgeClass(r.forma)}`}>{r.forma}</span>
@@ -467,7 +467,7 @@ function NoteCell({ value, disabled, onSave }: { value: string; disabled: boolea
       onChange={e => setDraft(e.target.value)}
       onBlur={() => { if (draft !== value) onSave(draft) }}
       placeholder="—"
-      className="w-full min-w-[140px] h-7 px-2 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
+      className="w-full min-w-[320px] h-7 px-2 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
     />
   )
 }
