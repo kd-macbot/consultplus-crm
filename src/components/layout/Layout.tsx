@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { EnvironmentBanner } from './EnvironmentBanner'
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[] }
 type NavSection = { title: string | null; items: NavItem[] }
@@ -73,6 +74,9 @@ export function Layout() {
 
   return (
     <div className="min-h-screen flex bg-background">
+
+      {/* Видим маркер за dev/test среда — не се рендерира на production. */}
+      <EnvironmentBanner />
 
       {/* Mobile top bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-navy text-white flex items-center px-4 z-40 shadow-lg">
