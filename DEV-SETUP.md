@@ -41,22 +41,61 @@
 
 Този проект е празен. Трябва да пуснем всички миграции, за да има същата схема като live.
 
-В Supabase Dashboard на dev проекта → SQL Editor → пусни **по ред**:
+В Supabase Dashboard на dev проекта → **SQL Editor** → пусни **по ред** (един по един, всеки в нов query):
 
 ```
-supabase/migration-002-staff.sql
-supabase/migration-003-audit-tags.sql
-... всички до ...
-supabase/migration-024-user-views.sql
+migration-001-initial-schema.sql      ← създава базовите таблици
+migration-002-staff.sql
+migration-003-audit-tags.sql
+migration-004-expenses.sql
+migration-005-subscriptions.sql
+migration-006-profiles-admin.sql
+migration-007-contacts.sql
+migration-008-regdata-token.sql
+migration-009-contacts-vat-url.sql
+migration-010-staff-departments.sql
+migration-011-opportunities.sql
+migration-012-monthly-work.sql
+migration-013-advance-art55.sql
+migration-014-advance-art55-amounts.sql
+migration-015-performance-indexes.sql
+migration-016-realtime.sql
+migration-017-master-flags.sql
+migration-018-oss-amount.sql
+migration-019-trz.sql
+migration-020-trz-monthly.sql
+migration-022-trz-status.sql
+migration-023-rls-lockdown.sql
+migration-024-user-views.sql
 ```
 
-Всяка миграция е идемпотентна — ако се препъне, пусни отново.
+> Бележка: миграция **021 липсва** в номерацията (било пропуснато при историята). Прескачаш я и продължаваш с 022.
 
-> ⚠️ **Внимание:** пускай само на DEV проекта, НЕ на live. URL-ите са различни.
+Всяка миграция е написана идемпотентно — ако се препъне на нещо вече съществуващо, пусни я отново.
+
+> ⚠️ **Внимание:** пускай само на DEV проекта, НЕ на live. Проверявай URL-а в адресната лента на Dashboard-а преди всяко изпълнение.
+
+### Първи admin потребител (без него не можеш да влезеш)
+
+След като миграциите минат:
+
+1. В Dashboard на dev проекта → **Authentication → Users** → **Add user** → **Create new user**.
+2. Имейл/парола (например `admin@dev.local` / някаква парола).
+3. Сложи ✓ на **Auto Confirm User** (за да не чака потвърждение на имейл).
+4. Натисни **Create user**. Копирай UUID на новия потребител (показва се в списъка).
+5. Отвори **SQL Editor** и пусни:
+
+```sql
+insert into profiles (id, email, full_name, role, is_active)
+values ('UUID-ОТ-СТЪПКА-4', 'admin@dev.local', 'Dev Admin', 'admin', true)
+on conflict (id) do update set role = 'admin', is_active = true;
+```
+
+Сега имаш admin акаунт на dev. С него ще създаваш останалите тестови потребители през UI-то (страница Персонал → Създай акаунт).
 
 ### Seed данни (опционално)
 
-Може да пуснеш `scripts/seed-supabase.py` срещу dev проекта, за да има няколко тестови клиента.
+Може да пуснеш `scripts/seed-supabase.py` срещу dev проекта, за да има няколко тестови клиента. Редактирай `SB_URL` и `SB_KEY` в скрипта (на dev стойностите) преди да го пуснеш.
 
 ---
 
