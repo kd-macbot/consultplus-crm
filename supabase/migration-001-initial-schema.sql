@@ -39,8 +39,15 @@ create table if not exists crm_columns (
   position int not null default 0,
   is_required bool not null default false,
   created_by uuid references profiles(id),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Свързване с отдел от персонала: ако е сетнато, dropdown стойностите се
+  -- теглят live от crm_staff (а не от crm_dropdown_options). Ползва се от
+  -- миграция 010 нататък.
+  staff_department text
 );
+
+-- Безопасно за live: ако колоната е създадена ръчно по-рано, ALTER е no-op.
+alter table crm_columns add column if not exists staff_department text;
 
 create index if not exists idx_columns_position on crm_columns(position);
 
