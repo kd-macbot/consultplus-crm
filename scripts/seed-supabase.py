@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Seed CRM data into Supabase from crm_data.json"""
+"""Seed CRM data into Supabase from crm_data.json.
+
+Credentials се вземат от env vars (никога hardcoded):
+    SB_URL — Supabase project URL
+    SB_KEY — service role key (НЕ anon — нужни са admin права за seed)
+
+Пример:
+    SB_URL=https://xxx.supabase.co SB_KEY=eyJ... python scripts/seed-supabase.py
+
+Препоръчителна употреба: само на dev проекти за тестови данни.
+"""
 import json
 import sys
 import os
@@ -11,8 +21,14 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "supabase", "-q"])
     from supabase import create_client
 
-SB_URL = "https://shzmbcyctmuojpwaiagx.supabase.co"
-SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoem1iY3ljdG11b2pwd2FpYWd4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTA3MzY0OSwiZXhwIjoyMDkwNjQ5NjQ5fQ.Qzxt_PwG1Rlmw60RTQzav6bZCqrGVPrPOUnvoKJSGYI"
+SB_URL = os.environ.get("SB_URL")
+SB_KEY = os.environ.get("SB_KEY")
+
+if not SB_URL or not SB_KEY:
+    print("ГРЕШКА: задай env vars SB_URL и SB_KEY (service role).", file=sys.stderr)
+    print("Пример:", file=sys.stderr)
+    print('  SB_URL=https://xxx.supabase.co SB_KEY="eyJ..." python scripts/seed-supabase.py', file=sys.stderr)
+    sys.exit(1)
 
 COLUMN_MAP = [
     {"header": "Фирма", "name": "Фирма", "type": "text", "required": True},
