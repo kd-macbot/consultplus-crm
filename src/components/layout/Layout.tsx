@@ -73,10 +73,13 @@ export function Layout() {
     .toUpperCase() ?? '?'
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="min-h-screen flex flex-col bg-background">
 
-      {/* Видим маркер за dev/test среда — не се рендерира на production. */}
+      {/* Видим маркер за dev/test среда — не се рендерира на production.
+          Стои като header горе на цялата ширина. */}
       <EnvironmentBanner />
+
+      <div className="flex-1 flex min-h-0">
 
       {/* Mobile top bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-navy text-white flex items-center px-4 z-40 shadow-lg">
@@ -189,6 +192,7 @@ export function Layout() {
       <main className="flex-1 overflow-auto pt-14 md:pt-0 min-w-0">
         <Outlet />
       </main>
+      </div>
     </div>
   )
 }
