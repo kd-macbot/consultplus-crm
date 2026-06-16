@@ -46,58 +46,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const timeout = setTimeout(() => setLoading(false), 5000)
 
-    // При връщане към таба след idle: правим HEALTH CHECK на supabase сесията
-    // с твърд timeout. Ако auth refresh-ът е увиснал в navigator.locks (познат
-    // проблем на supabase-js, който се случваше когато браузърът заспие таба),
-    // нашата заявка ще се прекъсне след 5 секунди и ще направим soft reload —
-    // абсолютно същото нещо, което потребителят правеше ръчно с F5.
+    // При връщане към таба: HEALTH CHECK с истинска мрежова заявка срещу 5s
+    // timeout. Това хваща два различни проблема:
+    //  (а) Web Lock в supabase-js увиснал при token refresh.
+    //  (б) Stale HTTPS connection — TCP връзката умряла докато табът е спял.
     //
-    // Защити срещу false-positive:
-    //  - Пропускаме бързи смени на таб (под 30 сек невидим).
-    //  - Reload-ваме само веднъж в една сесия (sessionStorage guard).
-    let hiddenAt: number | null = null
+    // И в двата случая, всяка следваща заявка ще timeout-ва с „Заявката
+    // изтече". Health check-ът ги детектира предварително; soft reload-ът
+    // ги решава автоматично, без потребителят да си спомня за F5.
+    //
+    // ВАЖНО: getSession() НЕ струва — върна кеширания токен без мрежа.
+    // Затова правим лек select от crm_columns (HEAD-only, без данни).
+    //
+    // Защити:
+    //  - Throttle: max един health check на 20 секунди.
+    //  - Reload guard: сесионен флаг, който прави max един auto-reload.
+    //    Ако след reload-а проблемът се повтори → не reload-ваме отново
+    //    (избягваме безкраен цикъл при upstream проблем).
+    //  - Health check се прави САМО ако потребителят е логнат — на login
+    //    страницата RLS би хвърлила грешка, която не значи „забит клиент".
+    let lastHealthCheck = 0
+    const HEALTH_THROTTLE_MS = 20_000
+    const HEALTH_TIMEOUT_MS = 5_000
+    const SESSION_RELOAD_FLAG = 'auth-stuck-reload-done'
 
-    const onVisible = () => {
-      if (document.visibilityState === 'hidden') {
-        hiddenAt = Date.now()
-        return
-      }
-      // visible — проверяваме дали табът е бил скрит достатъчно дълго
-      const idleMs = hiddenAt ? Date.now() - hiddenAt : 0
-      hiddenAt = null
-      if (idleMs < 30_000) {
-        // Бърза смяна на таб — само освежаваме session-а, не правим health check.
-        supabase.auth.getSession().catch(() => {})
-        return
-      }
+    const onWake = () => {
+      if (document.visibilityState !== 'visible') return
+      const cachedProfile = getCachedProfile()
+      if (!cachedProfile) return  // не сме логнати — не правим health check
+      const now = Date.now()
+      if (now - lastHealthCheck < HEALTH_THROTTLE_MS) return
+      lastHealthCheck = now
 
-      // Бил е скрит > 30s → правим health check срещу 5s timeout.
       let timer: ReturnType<typeof setTimeout> | undefined
+      console.debug('[auth] health check…')
       Promise.race<unknown>([
-        supabase.auth.getSession(),
+        // Лека мрежова проверка — HEAD-only, без редове.
+        supabase.from('crm_columns')
+          .select('id', { count: 'exact', head: true })
+          .then(({ error }) => { if (error) throw error }),
         new Promise((_, reject) => {
-          timer = setTimeout(() => reject(new Error('auth-stuck')), 5_000)
+          timer = setTimeout(() => reject(new Error('health-timeout')), HEALTH_TIMEOUT_MS)
         }),
       ]).then(
-        () => { if (timer) clearTimeout(timer) },
         () => {
-          // Supabase клиентът е „забит" — спасяваме потребителя със soft reload.
-          if (sessionStorage.getItem('auth-stuck-reload') === '1') return
-          try { sessionStorage.setItem('auth-stuck-reload', '1') } catch { /* ignore */ }
-          console.warn('Supabase auth check timed out → soft reload')
-          setTimeout(() => {
-            try { sessionStorage.removeItem('auth-stuck-reload') } catch { /* ignore */ }
-            window.location.reload()
-          }, 100)
+          if (timer) clearTimeout(timer)
+          console.debug('[auth] health check OK')
+        },
+        (err) => {
+          if (timer) clearTimeout(timer)
+          console.warn('[auth] health check FAILED:', (err as Error).message)
+          // Ако вече сме reload-вали в тази session — не правим втори опит,
+          // за да избегнем безкраен цикъл.
+          if (sessionStorage.getItem(SESSION_RELOAD_FLAG) === '1') {
+            console.warn('[auth] reload вече направен в тази сесия — пропускам')
+            return
+          }
+          try { sessionStorage.setItem(SESSION_RELOAD_FLAG, '1') } catch { /* ignore */ }
+          console.warn('[auth] soft reload')
+          window.location.reload()
         },
       )
     }
-    document.addEventListener('visibilitychange', onVisible)
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
 
     return () => {
       subscription.unsubscribe()
       clearTimeout(timeout)
-      document.removeEventListener('visibilitychange', onVisible)
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
     }
   }, [])
 
