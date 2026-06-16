@@ -26,13 +26,18 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, SlidersHorizontal, X, RefreshCw } from 'lucide-react'
-import type { Column, CellValue, DropdownOption, Tag, ClientTag, Client, Contact } from '../../lib/types'
+import type { Column, CellValue, DropdownOption, Client, Contact } from '../../lib/types'
 import {
-  getColumns, getClients, getCellValues, getDropdownOptions,
-  softDeleteClient, getTags, getClientTags, updateColumnPositions,
-  setCellValue, getStaff, type StaffMember,
-  getAllContacts, upsertContact, buildContactPayload,
+  softDeleteClient, updateColumnPositions,
+  setCellValue, type StaffMember,
+  upsertContact, buildContactPayload,
 } from '../../lib/storage'
+import {
+  useClients, useColumns, useCellValues, useDropdownOptions,
+  useTags, useClientTags, useStaff, useAllContacts,
+  qk,
+} from '../../lib/queries'
+import { queryClient } from '../../lib/queryClient'
 import { useAuth } from '../../lib/auth'
 import { buildCellIndex, buildDropdownIndex, cellKey, clientDisplayName } from '../../lib/tableIndices'
 import { toast } from 'sonner'
@@ -160,7 +165,6 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [editCell, setEditCell] = useState<{ clientId: string; columnId: string } | null>(null)
-  const [loading, setLoading] = useState(true)
   const [tagFilter, setTagFilter] = useState<string[]>([])
   const [columnOrder, setColumnOrder] = useState<string[]>([])
 
@@ -188,15 +192,37 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
-  const [staffList, setStaffList] = useState<StaffMember[]>([])
 
-  const [columns, setColumnsState] = useState<Column[]>([])
-  const [allCells, setAllCells] = useState<CellValue[]>([])
-  const [allDropdowns, setAllDropdowns] = useState<DropdownOption[]>([])
-  const [allClients, setAllClients] = useState<Client[]>([])
-  const [allTags, setAllTags] = useState<Tag[]>([])
-  const [allClientTags, setAllClientTags] = useState<ClientTag[]>([])
-  const [allContacts, setAllContacts] = useState<Contact[]>([])
+  // Master данните идват от React Query (споделени между всички страници).
+  // Persisted кешът в localStorage прави повторни отваряния МИГНОВЕНИ —
+  // не fetch-ваме на mount, а показваме кешираните данни и опресняваме
+  // тихо във фонов режим.
+  const clientsQ = useClients()
+  const columnsQ = useColumns()
+  const cellsQ = useCellValues()
+  const dropdownsQ = useDropdownOptions()
+  const tagsQ = useTags()
+  const clientTagsQ = useClientTags()
+  const staffQ = useStaff()
+  const contactsQ = useAllContacts()
+
+  const allClients = useMemo(() => clientsQ.data ?? [], [clientsQ.data])
+  const allCells = useMemo(() => cellsQ.data ?? [], [cellsQ.data])
+  const allDropdowns = useMemo(() => dropdownsQ.data ?? [], [dropdownsQ.data])
+  const allTags = useMemo(() => tagsQ.data ?? [], [tagsQ.data])
+  const allClientTags = useMemo(() => clientTagsQ.data ?? [], [clientTagsQ.data])
+  const staffList: StaffMember[] = useMemo(() => staffQ.data ?? [], [staffQ.data])
+  const allContacts = useMemo(() => contactsQ.data ?? [], [contactsQ.data])
+  // Скриваме „Хонорар" и __sub__ системните колони от грида.
+  const columns = useMemo(
+    () => (columnsQ.data ?? []).filter((c: Column) => c.name !== 'Хонорар' && c.staff_department !== '__sub__'),
+    [columnsQ.data],
+  )
+
+  // Loading е true само ако НЯМАМЕ кеширани данни (първи cold start без
+  // persist). При навигация след предходно посещение → cache hit → нула чакане.
+  const loading = !clientsQ.data || !columnsQ.data || !cellsQ.data || !dropdownsQ.data
+
   const [editingEikFor, setEditingEikFor] = useState<string | null>(null)
   const [eikDraft, setEikDraft] = useState('')
   const [confirmDeleteRow, setConfirmDeleteRow] = useState<ClientRow | null>(null)
@@ -206,11 +232,26 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScrollPos = useRef<{ top: number; left: number } | null>(null)
-  const isInitialLoad = useRef(true)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
-  useEffect(() => { loadData() }, [refreshKey])
+  // refreshKey се бумва от извън страницата (напр. след създаване на нов
+  // клиент в NewClientDialog). Инвалидираме RQ кеша → следващото четене
+  // тегли свежи данни.
+  useEffect(() => {
+    if (refreshKey === 0) return
+    queryClient.invalidateQueries({ queryKey: qk.clients })
+    queryClient.invalidateQueries({ queryKey: qk.cells })
+    queryClient.invalidateQueries({ queryKey: qk.allContacts })
+    queryClient.invalidateQueries({ queryKey: qk.clientTags })
+  }, [refreshKey])
+
+  // Инициализираме columnOrder при първото зареждане на колоните (от RQ кеша).
+  useEffect(() => {
+    if (columnOrder.length === 0 && columns.length > 0) {
+      setColumnOrder(columns.map(c => c.id))
+    }
+  }, [columns, columnOrder.length])
 
   // Синхронизираме изгледите от акаунта (DB) при вход — така изгледите,
   // създадени на друго устройство, се появяват и тук. localStorage остава
@@ -240,48 +281,9 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     return () => document.removeEventListener('mousedown', handler)
   }, [showColPanel])
 
-  async function loadData() {
-    if (scrollRef.current) {
-      savedScrollPos.current = {
-        top: scrollRef.current.scrollTop,
-        left: scrollRef.current.scrollLeft,
-      }
-    }
-    const firstLoad = isInitialLoad.current
-    if (firstLoad) setLoading(true)
-    try {
-      const [cols, clients, cells, dropdowns, tags, clientTags, staff, contacts] = await Promise.all([
-        getColumns(), getClients(), getCellValues(), getDropdownOptions(), getTags(), getClientTags(),
-        getStaff().catch(() => [] as StaffMember[]),
-        getAllContacts().catch(() => [] as Contact[]),
-      ])
-      const filtered = cols.filter((c: Column) => c.name !== 'Хонорар' && c.staff_department !== '__sub__')
-      setColumnsState(filtered)
-      setColumnOrder(filtered.map((c: Column) => c.id))
-      setAllClients(clients)
-      setAllCells(cells)
-      setAllDropdowns(dropdowns)
-      setAllTags(tags)
-      setAllClientTags(clientTags)
-      setStaffList(staff)
-      setAllContacts(contacts)
-      isInitialLoad.current = false
-      if (savedScrollPos.current && scrollRef.current) {
-        const pos = savedScrollPos.current
-        savedScrollPos.current = null
-        requestAnimationFrame(() => {
-          if (scrollRef.current) {
-            scrollRef.current.scrollTop = pos.top
-            scrollRef.current.scrollLeft = pos.left
-          }
-        })
-      }
-    } catch (err) {
-      console.error('Failed to load data:', err)
-    } finally {
-      if (firstLoad) setLoading(false)
-    }
-  }
+  // loadData() и isInitialLoad бяха премахнати — React Query сега управлява
+  // зареждането и кеша. Refresh се прави чрез invalidateQueries (виж по-горе).
+
 
   function toggleColVisibility(colId: string) {
     const next = new Set(hiddenCols)
@@ -561,7 +563,10 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                   setEditCell(curr =>
                     curr?.clientId === clientId && curr?.columnId === col.id ? null : curr
                   )
-                  setAllCells(prev => {
+                  // Оптимистичен update на споделения React Query кеш →
+                  // всички страници (Dashboard, Worksheet) виждат веднага.
+                  queryClient.setQueryData<CellValue[]>(qk.cells, (prev) => {
+                    if (!prev) return prev
                     const idx = prev.findIndex(cv => cv.client_id === clientId && cv.column_id === col.id)
                     if (idx >= 0) return prev.map((cv, i) => i === idx ? { ...cv, ...patch } : cv)
                     return [...prev, { id: '', client_id: clientId, column_id: col.id, ...patch } as CellValue]
@@ -626,7 +631,8 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                   if (trimmed === (contact?.eik ?? '')) return
                   try {
                     await upsertContact(buildContactPayload(clientId, contact, { eik: trimmed || null }, user?.id))
-                    setAllContacts(prev => {
+                    queryClient.setQueryData<Contact[]>(qk.allContacts, (prev) => {
+                      if (!prev) return prev
                       const idx = prev.findIndex(c => c.client_id === clientId)
                       if (idx >= 0) return prev.map((c, i) => i === idx ? { ...c, eik: trimmed || null } : c)
                       return [...prev, { client_id: clientId, eik: trimmed || null } as Contact]
@@ -696,7 +702,8 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                     const newVatNumber = newDate ? (eik ? `BG${eik}` : contact?.vat_number ?? null) : null
                     const patch = { vat_registered_at: newDate || null, vat_number: newVatNumber }
                     await upsertContact(buildContactPayload(clientId, contact, patch, user?.id))
-                    setAllContacts(prev => {
+                    queryClient.setQueryData<Contact[]>(qk.allContacts, (prev) => {
+                      if (!prev) return prev
                       const idx = prev.findIndex(c => c.client_id === clientId)
                       if (idx >= 0) return prev.map((c, i) => i === idx ? { ...c, ...patch } : c)
                       return [...prev, { client_id: clientId, ...patch } as Contact]
