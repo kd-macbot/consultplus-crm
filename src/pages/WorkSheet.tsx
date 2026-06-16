@@ -5,11 +5,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
 import {
-  getMonthlyWork, ensureMonthlyRows, upsertMonthlyWorkByKey,
-  getArt55EntriesForPeriod, addArt55Entry, updateArt55Entry, deleteArt55Entry,
+  ensureMonthlyRows, upsertMonthlyWorkByKey,
+  addArt55Entry, updateArt55Entry, deleteArt55Entry,
   getOssAmounts,
 } from '../lib/storage'
-import { useClients, useColumns, useCellValues, useDropdownOptions, useInvalidateCrm } from '../lib/queries'
+import {
+  useClients, useColumns, useCellValues, useDropdownOptions,
+  useMonthlyWork, useArt55Entries, useInvalidateCrm,
+} from '../lib/queries'
+import { queryClient } from '../lib/queryClient'
 import { NOTIFICATION_METHODS, ART55_INCOME_TYPES, type MonthlyWork, type Client, type Art55Entry } from '../lib/types'
 import {
   buildCellIndex, buildDropdownIndex, clientDisplayName,
@@ -82,12 +86,30 @@ export function WorkSheetPage() {
   const dropdowns = useMemo(() => dropdownsQ.data ?? [], [dropdownsQ.data])
   const masterReady = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!dropdownsQ.data
 
-  // Месечните данни (monthly_work / art55 / oss) остават own state —
-  // специфични са за тази страница и зависят от year/month.
-  const [rows, setRows] = useState<Map<string, MonthlyWork>>(new Map())
-  const [art55Entries, setArt55Entries] = useState<Map<string, Art55Entry[]>>(new Map())
+  // Месечните данни идват от React Query — кешират се по (year, month) ключ
+  // в persisted localStorage. Повторно посещение на същия месец = МИГНОВЕНО.
+  const monthlyWorkQ = useMonthlyWork(year, month)
+  const art55Q = useArt55Entries(year, [month])
+  const { invalidateMonthlyWork, invalidateArt55 } = useInvalidateCrm()
+
+  // Деривираме Map структурите от array data за бърз lookup в render-а.
+  const rows = useMemo(() => {
+    const m = new Map<string, MonthlyWork>()
+    ;(monthlyWorkQ.data ?? []).forEach(w => m.set(w.client_id, w))
+    return m
+  }, [monthlyWorkQ.data])
+  const art55Entries = useMemo(() => {
+    const m = new Map<string, Art55Entry[]>()
+    ;(art55Q.data ?? []).forEach(e => {
+      const arr = m.get(e.client_id) ?? []
+      arr.push(e)
+      m.set(e.client_id, arr)
+    })
+    return m
+  }, [art55Q.data])
+
+  // ОСС: само за последния месец на тримесечието. Запазваме own state.
   const [ossPrior, setOssPrior] = useState<Map<string, number>>(new Map())
-  const [monthLoading, setMonthLoading] = useState(true)
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])
@@ -98,24 +120,58 @@ export function WorkSheetPage() {
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'employee'
 
-  // Пълен page loading = чакаме master или месечните данни.
-  const loading = !masterReady || monthLoading
+  // Пълен page loading = чакаме master или месечните данни (само ако НЕ са кеширани).
+  const loading = !masterReady || (monthlyWorkQ.isLoading && !monthlyWorkQ.data) || (art55Q.isLoading && !art55Q.data)
 
   // Кога потребителят последно е редактирал — за да не презаписваме полето
   // изпод ръцете му при realtime презареждане.
   const lastEditRef = useRef(0)
   const deferEdits = () => Date.now() - lastEditRef.current < 3000
 
-  // Месечните данни се зареждат при смяна на year/month и след като master стане готов.
+  // Уверяваме се, че всеки активен клиент има ред за избрания месец.
+  // Това е мутация в DB — пускаме във фон, не блокира UI-то.
+  // Cached monthly_work data вече се рендира; след създаване refetch-ваме.
   useEffect(() => {
     if (!masterReady) return
-    void loadMonth()
+    const statusColLocal = columns.find(c => c.name === 'Статус')
+    const localCellIdx = buildCellIndex(cells)
+    const localDropdownIdx = buildDropdownIndex(dropdowns)
+    const activeIds = clients
+      .filter(c => !isHiddenStatus(resolveDropdownText(c.id, statusColLocal, localCellIdx, localDropdownIdx)))
+      .map(c => c.id)
+    if (activeIds.length === 0) return
+    void ensureMonthlyRows(activeIds, year, month, user?.id)
+      .then(created => {
+        if (created > 0) {
+          toast.info(`Създадени ${created} нови реда за ${MONTH_NAMES[month - 1]} ${year}`)
+          invalidateMonthlyWork(year, month)
+        }
+      })
+      .catch((err: any) => toast.error(err.message ?? 'Грешка при подготовка на месеца'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month, masterReady])
 
-  // Realtime — промени от колеги се отразяват тихо. Master таблиците
-  // инвалидират React Query кеша (всички страници виждат свежите данни);
-  // месечните се освежават само локално.
+  // ОСС: на последния месец от тримесечието зареждаме предходните 2 месеца
+  // за да покажем сборната сума за деклариране.
+  useEffect(() => {
+    if (!masterReady) return
+    if (month % 3 !== 0) {
+      setOssPrior(new Map())
+      return
+    }
+    void getOssAmounts(year, [month - 2, month - 1])
+      .then(oss => {
+        const prior = new Map<string, number>()
+        oss.forEach(o => {
+          prior.set(o.client_id, (prior.get(o.client_id) ?? 0) + (o.oss_amount ?? 0))
+        })
+        setOssPrior(prior)
+      })
+      .catch(() => setOssPrior(new Map()))
+  }, [year, month, masterReady])
+
+  // Realtime — промени от колеги се отразяват тихо. Всичко минава през
+  // React Query invalidation → всички страници виждат свежите данни.
   useRealtime({
     channel: 'worksheet-master',
     tables: ['crm_cell_values', 'crm_clients'],
@@ -130,55 +186,12 @@ export function WorkSheetPage() {
   useRealtime({
     channel: 'worksheet-month',
     tables: ['crm_monthly_work', 'crm_art55_entries'],
-    onChange: () => loadMonth(true),
+    onChange: () => {
+      invalidateMonthlyWork(year, month)
+      invalidateArt55(year, [month])
+    },
     shouldDefer: deferEdits,
   })
-
-  async function loadMonth(silent = false) {
-    if (!silent) setMonthLoading(true)
-    try {
-      // 1. Уверяваме се, че всеки активен клиент има ред за избрания месец.
-      // „Без дейност" / „Без ДДС" се пропускат — те не участват в работата.
-      const statusColLocal = columns.find(c => c.name === 'Статус')
-      const localCellIdx = buildCellIndex(cells)
-      const localDropdownIdx = buildDropdownIndex(dropdowns)
-      const activeIds = clients
-        .filter(c => !isHiddenStatus(resolveDropdownText(c.id, statusColLocal, localCellIdx, localDropdownIdx)))
-        .map(c => c.id)
-      const created = await ensureMonthlyRows(activeIds, year, month, user?.id)
-      if (created > 0 && !silent) toast.info(`Създадени ${created} нови реда за ${MONTH_NAMES[month - 1]} ${year}`)
-
-      // 2. Зареждаме редовете за избрания месец
-      const [work, art55] = await Promise.all([
-        getMonthlyWork(year, month),
-        getArt55EntriesForPeriod(year, [month]),
-      ])
-      setRows(new Map(work.map(w => [w.client_id, w])))
-      const byClient = new Map<string, Art55Entry[]>()
-      art55.forEach(e => {
-        const arr = byClient.get(e.client_id) ?? []
-        arr.push(e)
-        byClient.set(e.client_id, arr)
-      })
-      setArt55Entries(byClient)
-
-      // ОСС: на последния месец от тримесечието зареждаме предходните 2 месеца
-      // за да покажем сборната сума за деклариране. Текущият месец идва live от `rows`.
-      if (month % 3 === 0) {
-        const oss = await getOssAmounts(year, [month - 2, month - 1])
-        const prior = new Map<string, number>()
-        oss.forEach(o => {
-          prior.set(o.client_id, (prior.get(o.client_id) ?? 0) + (o.oss_amount ?? 0))
-        })
-        setOssPrior(prior)
-      } else {
-        setOssPrior(new Map())
-      }
-    } catch (e: any) {
-      if (!silent) toast.error(e.message ?? 'Грешка при зареждане')
-    }
-    if (!silent) setMonthLoading(false)
-  }
 
   // O(1) индекси — изграждат се веднъж при промяна на данните и се ползват в render-а.
   const cellIdx = useMemo(() => buildCellIndex(cells), [cells])
@@ -302,19 +315,20 @@ export function WorkSheetPage() {
 
   async function patchRow(clientId: string, patch: Partial<MonthlyWork>) {
     lastEditRef.current = Date.now()
-    // Оптимистичен update
-    setRows(prev => {
-      const next = new Map(prev)
-      const existing = next.get(clientId)
-      next.set(clientId, { ...(existing ?? { client_id: clientId, year, month } as MonthlyWork), ...patch })
-      return next
+    // Оптимистичен update директно в React Query кеша → всички страници
+    // (Dashboard, YearlyView) виждат веднага.
+    queryClient.setQueryData<MonthlyWork[]>(['monthlyWork', year, month], (prev) => {
+      if (!prev) return prev
+      const idx = prev.findIndex(w => w.client_id === clientId)
+      if (idx >= 0) return prev.map((w, i) => i === idx ? { ...w, ...patch } : w)
+      return [...prev, { client_id: clientId, year, month, ...patch } as MonthlyWork]
     })
     setSavingFor(prev => new Set(prev).add(clientId))
     try {
       await upsertMonthlyWorkByKey(clientId, year, month, patch, user?.id)
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при запис')
-      await loadMonth()
+      invalidateMonthlyWork(year, month)
     } finally {
       setSavingFor(prev => {
         const next = new Set(prev)
@@ -585,16 +599,7 @@ export function WorkSheetPage() {
           entries={art55Entries.get(art55ModalFor.client.id) ?? []}
           disabled={!canEdit}
           onClose={() => setArt55ModalFor(null)}
-          onChanged={async () => {
-            const fresh = await getArt55EntriesForPeriod(year, [month])
-            const byClient = new Map<string, Art55Entry[]>()
-            fresh.forEach(e => {
-              const arr = byClient.get(e.client_id) ?? []
-              arr.push(e)
-              byClient.set(e.client_id, arr)
-            })
-            setArt55Entries(byClient)
-          }}
+          onChanged={() => invalidateArt55(year, [month])}
           createdBy={user?.id}
         />
       )}

@@ -3,6 +3,7 @@ import {
   getClients, getColumns, getCellValues, getDropdownOptions,
   getContactsWithClients, getExpenses, getOpportunities,
   getTags, getClientTags, getStaff, getAllContacts,
+  getMonthlyWork, getTrzWork, getArt55EntriesForPeriod,
 } from './storage'
 import { timed } from './perf'
 
@@ -55,6 +56,31 @@ export function useAllContacts() {
   return useQuery({ queryKey: qk.allContacts, queryFn: getAllContacts })
 }
 
+// Месечни / годишни данни — параметризирани по year/month, така че RQ кешира
+// всеки месец отделно. След като user е посетил месец веднъж, повторното
+// посещение е МИГНОВЕНО от persisted кеша.
+export function useMonthlyWork(year: number, month: number) {
+  return useQuery({
+    queryKey: ['monthlyWork', year, month] as const,
+    queryFn: () => getMonthlyWork(year, month),
+    enabled: year > 0 && month > 0,
+  })
+}
+export function useTrzWork(year: number, month: number) {
+  return useQuery({
+    queryKey: ['trzWork', year, month] as const,
+    queryFn: () => getTrzWork(year, month),
+    enabled: year > 0 && month > 0,
+  })
+}
+export function useArt55Entries(year: number, months: number[]) {
+  return useQuery({
+    queryKey: ['art55Entries', year, months.join(',')] as const,
+    queryFn: () => getArt55EntriesForPeriod(year, months),
+    enabled: year > 0 && months.length > 0,
+  })
+}
+
 /**
  * Връща функция за invalidate на споделените данни — викай я след мутация
  * (запис/изтриване), за да се презаредят кешираните данни в другите екрани.
@@ -73,6 +99,12 @@ export function useInvalidateCrm() {
     invalidateClientTags: () => qc.invalidateQueries({ queryKey: qk.clientTags }),
     invalidateStaff: () => qc.invalidateQueries({ queryKey: qk.staff }),
     invalidateAllContacts: () => qc.invalidateQueries({ queryKey: qk.allContacts }),
+    invalidateMonthlyWork: (year: number, month: number) =>
+      qc.invalidateQueries({ queryKey: ['monthlyWork', year, month] }),
+    invalidateTrzWork: (year: number, month: number) =>
+      qc.invalidateQueries({ queryKey: ['trzWork', year, month] }),
+    invalidateArt55: (year: number, months: number[]) =>
+      qc.invalidateQueries({ queryKey: ['art55Entries', year, months.join(',')] }),
     invalidateAll: () => qc.invalidateQueries(),
   }
 }
