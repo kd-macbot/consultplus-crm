@@ -8,9 +8,9 @@
 // прозорец. Така позволяваме легитимни повторни recovery-та (Mac често
 // убива connections агресивно, потребителят може да удари timeout
 // многократно), но избягваме tight loop при истински upstream проблем.
-const RELOAD_MIN_INTERVAL_MS = 30_000
+const RELOAD_MIN_INTERVAL_MS = 5_000
 const RELOAD_BURST_WINDOW_MS = 5 * 60_000
-const RELOAD_BURST_MAX = 3
+const RELOAD_BURST_MAX = 4
 const RELOAD_HISTORY_KEY = 'auth-recovery-history'
 
 function readHistory(): number[] {

@@ -32,11 +32,12 @@ export async function withRetry<T>(
       return await withTimeout(fn(), timeoutMs)
     } catch (err) {
       lastErr = err
-      if (attempt === 0 && isTimeoutError(err)) {
-        // Първи timeout — connection вероятно е счупен. Опитваме reload вместо
-        // да губим още 36 сек в retry-та. attemptAutoReload е no-op при активен
-        // backoff (тогава продължаваме с обичайния retry).
-        attemptAutoReload(`withRetry timeout: ${(err as Error).message}`)
+      if (isTimeoutError(err)) {
+        // Всеки timeout пробва recovery. attemptAutoReload е no-op при активен
+        // backoff (min 5s между reload-и + max 4 в 5 мин). Така първият
+        // timeout пробва веднага; ако backoff блокира, вторият retry (12s
+        // по-късно) пак ще пробва и този път backoff-ът обикновено е изтекъл.
+        attemptAutoReload(`withRetry timeout #${attempt + 1}: ${(err as Error).message}`)
       }
       if (attempt === retries) break
       await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, attempt)))
