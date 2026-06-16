@@ -68,7 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let lastHealthCheck = 0
     const HEALTH_THROTTLE_MS = 20_000
     const HEALTH_TIMEOUT_MS = 5_000
-    const SESSION_RELOAD_FLAG = 'auth-stuck-reload-done'
+    const RELOAD_BACKOFF_MS = 60_000  // max един auto-reload на 60 сек
+    const RELOAD_TS_KEY = 'auth-stuck-reload-ts'
 
     const onWake = () => {
       if (document.visibilityState !== 'visible') return
@@ -96,13 +97,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         (err) => {
           if (timer) clearTimeout(timer)
           console.warn('[auth] health check FAILED:', (err as Error).message)
-          // Ако вече сме reload-вали в тази session — не правим втори опит,
-          // за да избегнем безкраен цикъл.
-          if (sessionStorage.getItem(SESSION_RELOAD_FLAG) === '1') {
-            console.warn('[auth] reload вече направен в тази сесия — пропускам')
+          // Timestamp-based backoff — позволяваме повторен auto-reload, ако
+          // последният е бил преди > RELOAD_BACKOFF_MS. Така хващаме легитимни
+          // повторни stuck-вания (всеки път след дълъг idle), но избягваме
+          // tight loop при upstream проблем (Supabase down например).
+          const lastReloadStr = sessionStorage.getItem(RELOAD_TS_KEY)
+          const lastReload = lastReloadStr ? parseInt(lastReloadStr, 10) : 0
+          if (Date.now() - lastReload < RELOAD_BACKOFF_MS) {
+            console.warn('[auth] reload backoff активен — пропускам')
             return
           }
-          try { sessionStorage.setItem(SESSION_RELOAD_FLAG, '1') } catch { /* ignore */ }
+          try { sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now())) } catch { /* ignore */ }
           console.warn('[auth] soft reload')
           window.location.reload()
         },
