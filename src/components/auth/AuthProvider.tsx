@@ -46,81 +46,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const timeout = setTimeout(() => setLoading(false), 5000)
 
-    // При връщане към таба: HEALTH CHECK с истинска мрежова заявка срещу 5s
-    // timeout. Това хваща два различни проблема:
-    //  (а) Web Lock в supabase-js увиснал при token refresh.
-    //  (б) Stale HTTPS connection — TCP връзката умряла докато табът е спял.
+    // Idle-based auto-recovery: ако табът е бил скрит > 30 секунди, правим
+    // soft reload при връщане. Защо такъв „агресивен" подход:
     //
-    // И в двата случая, всяка следваща заявка ще timeout-ва с „Заявката
-    // изтече". Health check-ът ги детектира предварително; soft reload-ът
-    // ги решава автоматично, без потребителят да си спомня за F5.
+    // Browser-ите често „убиват" дълготрайни HTTP/2 connections след idle.
+    // Малки заявки (light SELECT-и) се възстановяват с нов connection без
+    // проблем, но тежки заявки (всичките ~1500 cell_values, ~1MB payload)
+    // се забиват и нашият withRetry се мъчи 4 пъти по 12 секунди = ~50s
+    // преди да се откаже. През това време потребителят гледа спинър и
+    // тогава ръчно прави F5.
     //
-    // ВАЖНО: getSession() НЕ струва — върна кеширания токен без мрежа.
-    // Затова правим лек select от crm_columns (HEAD-only, без данни).
+    // Health check-ове срещу леки заявки минават, но не предсказват
+    // проблема при тежките — затова просто след дълъг idle reload-ваме
+    // превантивно. С persisted RQ кеш + кеширан профил, reload-ът е
+    // практически мигновен (без login, без login).
     //
     // Защити:
-    //  - Throttle: max един health check на 20 секунди.
-    //  - Reload guard: сесионен флаг, който прави max един auto-reload.
-    //    Ако след reload-а проблемът се повтори → не reload-ваме отново
-    //    (избягваме безкраен цикъл при upstream проблем).
-    //  - Health check се прави САМО ако потребителят е логнат — на login
-    //    страницата RLS би хвърлила грешка, която не значи „забит клиент".
-    let lastHealthCheck = 0
-    const HEALTH_THROTTLE_MS = 20_000
-    const HEALTH_TIMEOUT_MS = 5_000
-    const RELOAD_BACKOFF_MS = 60_000  // max един auto-reload на 60 сек
-    const RELOAD_TS_KEY = 'auth-stuck-reload-ts'
+    //  - Само ако сме били скрити > 30s (бързи смени на таб не реагират).
+    //  - Само ако сме логнати.
+    //  - 60s backoff между два reload-а (избягва tight loop).
+    const RELOAD_BACKOFF_MS = 60_000
+    const IDLE_THRESHOLD_MS = 30_000
+    const RELOAD_TS_KEY = 'auth-idle-reload-ts'
+    let hiddenAt: number | null = null
 
-    const onWake = () => {
-      if (document.visibilityState !== 'visible') return
+    const onVisChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+        return
+      }
+      // visible
+      if (!hiddenAt) return
+      const idleMs = Date.now() - hiddenAt
+      hiddenAt = null
+      if (idleMs < IDLE_THRESHOLD_MS) {
+        console.log(`[auth] tab return след ${Math.round(idleMs / 1000)}s — OK`)
+        return
+      }
       const cachedProfile = getCachedProfile()
-      if (!cachedProfile) return  // не сме логнати — не правим health check
-      const now = Date.now()
-      if (now - lastHealthCheck < HEALTH_THROTTLE_MS) return
-      lastHealthCheck = now
+      if (!cachedProfile) return
 
-      let timer: ReturnType<typeof setTimeout> | undefined
-      console.debug('[auth] health check…')
-      Promise.race<unknown>([
-        // Лека мрежова проверка — HEAD-only, без редове.
-        supabase.from('crm_columns')
-          .select('id', { count: 'exact', head: true })
-          .then(({ error }) => { if (error) throw error }),
-        new Promise((_, reject) => {
-          timer = setTimeout(() => reject(new Error('health-timeout')), HEALTH_TIMEOUT_MS)
-        }),
-      ]).then(
-        () => {
-          if (timer) clearTimeout(timer)
-          console.debug('[auth] health check OK')
-        },
-        (err) => {
-          if (timer) clearTimeout(timer)
-          console.warn('[auth] health check FAILED:', (err as Error).message)
-          // Timestamp-based backoff — позволяваме повторен auto-reload, ако
-          // последният е бил преди > RELOAD_BACKOFF_MS. Така хващаме легитимни
-          // повторни stuck-вания (всеки път след дълъг idle), но избягваме
-          // tight loop при upstream проблем (Supabase down например).
-          const lastReloadStr = sessionStorage.getItem(RELOAD_TS_KEY)
-          const lastReload = lastReloadStr ? parseInt(lastReloadStr, 10) : 0
-          if (Date.now() - lastReload < RELOAD_BACKOFF_MS) {
-            console.warn('[auth] reload backoff активен — пропускам')
-            return
-          }
-          try { sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now())) } catch { /* ignore */ }
-          console.warn('[auth] soft reload')
-          window.location.reload()
-        },
-      )
+      const lastReloadStr = sessionStorage.getItem(RELOAD_TS_KEY)
+      const lastReload = lastReloadStr ? parseInt(lastReloadStr, 10) : 0
+      if (Date.now() - lastReload < RELOAD_BACKOFF_MS) {
+        console.warn(`[auth] tab idle ${Math.round(idleMs / 1000)}s — но reload backoff активен`)
+        return
+      }
+      try { sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now())) } catch { /* ignore */ }
+      console.warn(`[auth] tab idle ${Math.round(idleMs / 1000)}s → soft reload`)
+      window.location.reload()
     }
-    document.addEventListener('visibilitychange', onWake)
-    window.addEventListener('focus', onWake)
+    document.addEventListener('visibilitychange', onVisChange)
 
     return () => {
       subscription.unsubscribe()
       clearTimeout(timeout)
-      document.removeEventListener('visibilitychange', onWake)
-      window.removeEventListener('focus', onWake)
+      document.removeEventListener('visibilitychange', onVisChange)
     }
   }, [])
 
