@@ -46,14 +46,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const timeout = setTimeout(() => setLoading(false), 5000)
 
-    // При връщане към таба след idle токенът може да е изтекъл, а застоялата
-    // връзка да виси. Опресняваме сесията проактивно (вече ограничено от
-    // timeout-а в supabase.ts), за да е свеж токенът преди заявките за данни и
-    // да не „забива" при смяна на страница.
+    // При връщане към таба след idle: правим HEALTH CHECK на supabase сесията
+    // с твърд timeout. Ако auth refresh-ът е увиснал в navigator.locks (познат
+    // проблем на supabase-js, който се случваше когато браузърът заспие таба),
+    // нашата заявка ще се прекъсне след 5 секунди и ще направим soft reload —
+    // абсолютно същото нещо, което потребителят правеше ръчно с F5.
+    //
+    // Защити срещу false-positive:
+    //  - Пропускаме бързи смени на таб (под 30 сек невидим).
+    //  - Reload-ваме само веднъж в една сесия (sessionStorage guard).
+    let hiddenAt: number | null = null
+
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        supabase.auth.getSession().catch(() => {})
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+        return
       }
+      // visible — проверяваме дали табът е бил скрит достатъчно дълго
+      const idleMs = hiddenAt ? Date.now() - hiddenAt : 0
+      hiddenAt = null
+      if (idleMs < 30_000) {
+        // Бърза смяна на таб — само освежаваме session-а, не правим health check.
+        supabase.auth.getSession().catch(() => {})
+        return
+      }
+
+      // Бил е скрит > 30s → правим health check срещу 5s timeout.
+      let timer: ReturnType<typeof setTimeout> | undefined
+      Promise.race<unknown>([
+        supabase.auth.getSession(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('auth-stuck')), 5_000)
+        }),
+      ]).then(
+        () => { if (timer) clearTimeout(timer) },
+        () => {
+          // Supabase клиентът е „забит" — спасяваме потребителя със soft reload.
+          if (sessionStorage.getItem('auth-stuck-reload') === '1') return
+          try { sessionStorage.setItem('auth-stuck-reload', '1') } catch { /* ignore */ }
+          console.warn('Supabase auth check timed out → soft reload')
+          setTimeout(() => {
+            try { sessionStorage.removeItem('auth-stuck-reload') } catch { /* ignore */ }
+            window.location.reload()
+          }, 100)
+        },
+      )
     }
     document.addEventListener('visibilitychange', onVisible)
 
