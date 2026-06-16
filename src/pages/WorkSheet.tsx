@@ -5,12 +5,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
 import {
-  getClients, getColumns, getCellValues, getDropdownOptions,
   getMonthlyWork, ensureMonthlyRows, upsertMonthlyWorkByKey,
   getArt55EntriesForPeriod, addArt55Entry, updateArt55Entry, deleteArt55Entry,
   getOssAmounts,
 } from '../lib/storage'
-import { NOTIFICATION_METHODS, ART55_INCOME_TYPES, type MonthlyWork, type Client, type Column, type CellValue, type DropdownOption, type Art55Entry } from '../lib/types'
+import { useClients, useColumns, useCellValues, useDropdownOptions, useInvalidateCrm } from '../lib/queries'
+import { NOTIFICATION_METHODS, ART55_INCOME_TYPES, type MonthlyWork, type Client, type Art55Entry } from '../lib/types'
 import {
   buildCellIndex, buildDropdownIndex, clientDisplayName,
   resolveDropdownText, cellKey,
@@ -65,49 +65,66 @@ export function WorkSheetPage() {
   const [year, setYear] = useState(initial.year)
   const [month, setMonth] = useState(initial.month)
 
-  const [clients, setClients] = useState<Client[]>([])
-  const [columns, setColumns] = useState<Column[]>([])
-  const [cells, setCells] = useState<CellValue[]>([])
-  const [dropdowns, setDropdowns] = useState<DropdownOption[]>([])
+  // Master данните идват от React Query — споделени с Dashboard и Клиенти
+  // страниците. При навигация между тях кешът се ползва веднага (мигновено),
+  // вместо да теглим всичко наново. Realtime инвалидира кеша → всички страници
+  // се освежават едновременно.
+  const clientsQ = useClients()
+  const columnsQ = useColumns()
+  const cellsQ = useCellValues()
+  const dropdownsQ = useDropdownOptions()
+  const { invalidateClients, invalidateCells, invalidateColumns, invalidateDropdowns } = useInvalidateCrm()
+
+  // useMemo стабилизира референциите при undefined data → useMemo deps не churn-ват.
+  const clients = useMemo(() => clientsQ.data ?? [], [clientsQ.data])
+  const columns = useMemo(() => columnsQ.data ?? [], [columnsQ.data])
+  const cells = useMemo(() => cellsQ.data ?? [], [cellsQ.data])
+  const dropdowns = useMemo(() => dropdownsQ.data ?? [], [dropdownsQ.data])
+  const masterReady = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!dropdownsQ.data
+
+  // Месечните данни (monthly_work / art55 / oss) остават own state —
+  // специфични са за тази страница и зависят от year/month.
   const [rows, setRows] = useState<Map<string, MonthlyWork>>(new Map())
-  const [art55Entries, setArt55Entries] = useState<Map<string, Art55Entry[]>>(new Map())  // key = client_id
-  // Сбор от предходните месеци на тримесечието (без текущия) — за ОСС сумата за деклариране.
-  const [ossPrior, setOssPrior] = useState<Map<string, number>>(new Map())  // key = client_id
-  const [loading, setLoading] = useState(true)
+  const [art55Entries, setArt55Entries] = useState<Map<string, Art55Entry[]>>(new Map())
+  const [ossPrior, setOssPrior] = useState<Map<string, number>>(new Map())
+  const [monthLoading, setMonthLoading] = useState(true)
+
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string[]>([])  // празно = всички
-  const [accountantFilter, setAccountantFilter] = useState<string>('')  // празно = всички
-  const [respFilter, setRespFilter] = useState<string>('')  // празно = всички
+  const [statusFilter, setStatusFilter] = useState<string[]>([])
+  const [accountantFilter, setAccountantFilter] = useState<string>('')
+  const [respFilter, setRespFilter] = useState<string>('')
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
   const [art55ModalFor, setArt55ModalFor] = useState<{ client: Client; name: string } | null>(null)
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'employee'
 
-  // На първия рендер зареждаме мастер + месец. След това смяната на месец
-  // презарежда САМО месечните данни (не клиенти/колони/клетки — те не
-  // зависят от месеца и така спестяваме секунди при ◀ ▶).
-  const isFirstLoadRef = useRef(true)
-  useEffect(() => {
-    if (isFirstLoadRef.current) {
-      isFirstLoadRef.current = false
-      void loadAll()
-    } else {
-      void loadMonth()
-    }
-  }, [year, month])
+  // Пълен page loading = чакаме master или месечните данни.
+  const loading = !masterReady || monthLoading
 
   // Кога потребителят последно е редактирал — за да не презаписваме полето
   // изпод ръцете му при realtime презареждане.
   const lastEditRef = useRef(0)
   const deferEdits = () => Date.now() - lastEditRef.current < 3000
 
-  // Realtime — промени от колеги се отразяват тихо (без спинър). Разделено
-  // на два канала: мастер таблиците (клиенти/клетки) → loadAll; месечните
-  // таблици → loadMonth, за да не презареждаме излишно.
+  // Месечните данни се зареждат при смяна на year/month и след като master стане готов.
+  useEffect(() => {
+    if (!masterReady) return
+    void loadMonth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, month, masterReady])
+
+  // Realtime — промени от колеги се отразяват тихо. Master таблиците
+  // инвалидират React Query кеша (всички страници виждат свежите данни);
+  // месечните се освежават само локално.
   useRealtime({
     channel: 'worksheet-master',
     tables: ['crm_cell_values', 'crm_clients'],
-    onChange: () => loadAll(true),
+    onChange: () => {
+      invalidateClients()
+      invalidateCells()
+      invalidateColumns()
+      invalidateDropdowns()
+    },
     shouldDefer: deferEdits,
   })
   useRealtime({
@@ -117,33 +134,15 @@ export function WorkSheetPage() {
     shouldDefer: deferEdits,
   })
 
-  interface MasterData {
-    cls: Client[]; cols: Column[]; cvs: CellValue[]; dds: DropdownOption[]
-  }
-
-  async function loadMaster(): Promise<MasterData> {
-    const [cls, cols, cvs, dds] = await Promise.all([
-      getClients(), getColumns(), getCellValues(), getDropdownOptions(),
-    ])
-    setClients(cls)
-    setColumns(cols)
-    setCells(cvs)
-    setDropdowns(dds)
-    return { cls, cols, cvs, dds }
-  }
-
-  async function loadMonth(silent = false, master?: MasterData) {
-    if (!silent) setLoading(true)
+  async function loadMonth(silent = false) {
+    if (!silent) setMonthLoading(true)
     try {
-      // Ползваме подадения master (при първи зар.) или текущия state (при смяна на месец).
-      const m = master ?? { cls: clients, cols: columns, cvs: cells, dds: dropdowns }
-
       // 1. Уверяваме се, че всеки активен клиент има ред за избрания месец.
       // „Без дейност" / „Без ДДС" се пропускат — те не участват в работата.
-      const statusColLocal = m.cols.find(c => c.name === 'Статус')
-      const localCellIdx = buildCellIndex(m.cvs)
-      const localDropdownIdx = buildDropdownIndex(m.dds)
-      const activeIds = m.cls
+      const statusColLocal = columns.find(c => c.name === 'Статус')
+      const localCellIdx = buildCellIndex(cells)
+      const localDropdownIdx = buildDropdownIndex(dropdowns)
+      const activeIds = clients
         .filter(c => !isHiddenStatus(resolveDropdownText(c.id, statusColLocal, localCellIdx, localDropdownIdx)))
         .map(c => c.id)
       const created = await ensureMonthlyRows(activeIds, year, month, user?.id)
@@ -178,18 +177,7 @@ export function WorkSheetPage() {
     } catch (e: any) {
       if (!silent) toast.error(e.message ?? 'Грешка при зареждане')
     }
-    if (!silent) setLoading(false)
-  }
-
-  async function loadAll(silent = false) {
-    if (!silent) setLoading(true)
-    try {
-      const master = await loadMaster()
-      await loadMonth(true, master)  // вътрешно silent — външният setLoading управлява спинъра
-    } catch (e: any) {
-      if (!silent) toast.error(e.message ?? 'Грешка при зареждане')
-    }
-    if (!silent) setLoading(false)
+    if (!silent) setMonthLoading(false)
   }
 
   // O(1) индекси — изграждат се веднъж при промяна на данните и се ползват в render-а.
