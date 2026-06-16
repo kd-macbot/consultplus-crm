@@ -1,5 +1,11 @@
 import { supabase } from './supabase'
+import { attemptAutoReload } from './recovery'
 import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork } from './types'
+
+function isTimeoutError(err: unknown): boolean {
+  const msg = (err as Error)?.message ?? ''
+  return msg.includes('изтече') || msg.includes('timeout') || msg.includes('TimeoutError')
+}
 
 /**
  * Retry helper за четящи заявки с TIMEOUT — решава „понякога не зарежда и
@@ -8,6 +14,11 @@ import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry,
  *     след връщане от заспал таб), се прекъсва след timeoutMs и се повтаря с
  *     нова заявка, вместо да виси безкрай.
  *  2. retry — повтаря при грешка/timeout с exponential backoff.
+ *
+ * Auto-recovery: при ПЪРВИ timeout се опитваме soft reload (с 60s backoff).
+ * Browser-ите често прекъсват HTTP/2 connections след idle и withRetry би
+ * губил 50 секунди в напразни retry-та. Reload-ът създава freshни connections.
+ * Ако backoff не позволи reload → продължаваме с обикновените retry-та.
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
@@ -21,6 +32,12 @@ export async function withRetry<T>(
       return await withTimeout(fn(), timeoutMs)
     } catch (err) {
       lastErr = err
+      if (attempt === 0 && isTimeoutError(err)) {
+        // Първи timeout — connection вероятно е счупен. Опитваме reload вместо
+        // да губим още 36 сек в retry-та. attemptAutoReload е no-op при активен
+        // backoff (тогава продължаваме с обичайния retry).
+        attemptAutoReload(`withRetry timeout: ${(err as Error).message}`)
+      }
       if (attempt === retries) break
       await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, attempt)))
     }

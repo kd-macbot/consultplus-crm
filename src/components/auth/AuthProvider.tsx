@@ -3,23 +3,9 @@ import { AuthContext, signIn, signOut, getCurrentProfile, getCachedProfile, setC
 import { supabase } from '../../lib/supabase'
 import { queryClient } from '../../lib/queryClient'
 import { clearViewsCache } from '../../lib/views'
+import { attemptAutoReload } from '../../lib/recovery'
 import { timed } from '../../lib/perf'
 import type { Profile, Role } from '../../lib/types'
-
-const RELOAD_BACKOFF_MS = 60_000
-const RELOAD_TS_KEY = 'auth-recovery-reload-ts'
-
-function attemptAutoReload(reason: string): void {
-  const lastReloadStr = sessionStorage.getItem(RELOAD_TS_KEY)
-  const lastReload = lastReloadStr ? parseInt(lastReloadStr, 10) : 0
-  if (Date.now() - lastReload < RELOAD_BACKOFF_MS) {
-    console.warn(`[auth] reload backoff активен (${reason})`)
-    return
-  }
-  try { sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now())) } catch { /* ignore */ }
-  console.warn(`[auth] soft reload → ${reason}`)
-  window.location.reload()
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   // Хидратираме от кеша → ако имаме профил, рисуваме веднага без да чакаме
