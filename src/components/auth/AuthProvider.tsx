@@ -1,9 +1,25 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { AuthContext, signIn, signOut, getCurrentProfile, getCachedProfile, setCachedProfile } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import { queryClient } from '../../lib/queryClient'
 import { clearViewsCache } from '../../lib/views'
 import { timed } from '../../lib/perf'
 import type { Profile, Role } from '../../lib/types'
+
+const RELOAD_BACKOFF_MS = 60_000
+const RELOAD_TS_KEY = 'auth-recovery-reload-ts'
+
+function attemptAutoReload(reason: string): void {
+  const lastReloadStr = sessionStorage.getItem(RELOAD_TS_KEY)
+  const lastReload = lastReloadStr ? parseInt(lastReloadStr, 10) : 0
+  if (Date.now() - lastReload < RELOAD_BACKOFF_MS) {
+    console.warn(`[auth] reload backoff активен (${reason})`)
+    return
+  }
+  try { sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now())) } catch { /* ignore */ }
+  console.warn(`[auth] soft reload → ${reason}`)
+  window.location.reload()
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   // Хидратираме от кеша → ако имаме профил, рисуваме веднага без да чакаме
@@ -46,36 +62,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const timeout = setTimeout(() => setLoading(false), 5000)
 
-    // Idle-based auto-recovery: ако табът е бил скрит > 30 секунди, правим
-    // soft reload при връщане. Защо такъв „агресивен" подход:
+    // Auto-recovery: два независими trigger-а, които довеждат до soft reload
+    // (с общ backoff от 60s да не loop-ват). И двата targetпат един и същ
+    // проблем — счупен HTTP/2 connection след idle, при който тежки заявки
+    // се забиват за десетки секунди.
     //
-    // Browser-ите често „убиват" дълготрайни HTTP/2 connections след idle.
-    // Малки заявки (light SELECT-и) се възстановяват с нов connection без
-    // проблем, но тежки заявки (всичките ~1500 cell_values, ~1MB payload)
-    // се забиват и нашият withRetry се мъчи 4 пъти по 12 секунди = ~50s
-    // преди да се откаже. През това време потребителят гледа спинър и
-    // тогава ръчно прави F5.
+    // TRIGGER 1 (превантивен): tab idle > 30s → reload при връщане.
+    //   Малки заявки минават след reconnect, но 1MB+ отговори висят. Не
+    //   чакаме, превантивно reload-ваме при дълъг idle.
     //
-    // Health check-ове срещу леки заявки минават, но не предсказват
-    // проблема при тежките — затова просто след дълъг idle reload-ваме
-    // превантивно. С persisted RQ кеш + кеширан профил, reload-ът е
-    // практически мигновен (без login, без login).
+    // TRIGGER 2 (реактивен): React Query заявка, която тегли > 12 секунди.
+    //   Дори да не сме били идле, но cells/моntly_work е забит — detect-
+    //   ваме и reload-ваме, без да чакаме 50-те секунди.
     //
-    // Защити:
-    //  - Само ако сме били скрити > 30s (бързи смени на таб не реагират).
-    //  - Само ако сме логнати.
-    //  - 60s backoff между два reload-а (избягва tight loop).
-    const RELOAD_BACKOFF_MS = 60_000
+    // Reload-ът е практически мигновен (persisted RQ кеш + кеширан профил
+    // → екран рисуван веднага, без login).
     const IDLE_THRESHOLD_MS = 30_000
-    const RELOAD_TS_KEY = 'auth-idle-reload-ts'
+    const STUCK_QUERY_THRESHOLD_MS = 12_000
     let hiddenAt: number | null = null
 
+    // ── TRIGGER 1: tab visibility ───────────────────────────────
     const onVisChange = () => {
       if (document.visibilityState === 'hidden') {
         hiddenAt = Date.now()
         return
       }
-      // visible
       if (!hiddenAt) return
       const idleMs = Date.now() - hiddenAt
       hiddenAt = null
@@ -83,25 +94,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log(`[auth] tab return след ${Math.round(idleMs / 1000)}s — OK`)
         return
       }
-      const cachedProfile = getCachedProfile()
-      if (!cachedProfile) return
-
-      const lastReloadStr = sessionStorage.getItem(RELOAD_TS_KEY)
-      const lastReload = lastReloadStr ? parseInt(lastReloadStr, 10) : 0
-      if (Date.now() - lastReload < RELOAD_BACKOFF_MS) {
-        console.warn(`[auth] tab idle ${Math.round(idleMs / 1000)}s — но reload backoff активен`)
-        return
-      }
-      try { sessionStorage.setItem(RELOAD_TS_KEY, String(Date.now())) } catch { /* ignore */ }
-      console.warn(`[auth] tab idle ${Math.round(idleMs / 1000)}s → soft reload`)
-      window.location.reload()
+      if (!getCachedProfile()) return
+      attemptAutoReload(`idle ${Math.round(idleMs / 1000)}s`)
     }
     document.addEventListener('visibilitychange', onVisChange)
+
+    // ── TRIGGER 2: stuck React Query ────────────────────────────
+    // Tracking fetch start time за всяка заявка. Ако някоя тегли > 12s,
+    // считаме я за забита.
+    const fetchStartTimes = new Map<string, number>()
+
+    const unsubQueryCache = queryClient.getQueryCache().subscribe((event) => {
+      const query = event.query
+      const key = JSON.stringify(query.queryKey)
+      if (query.state.fetchStatus === 'fetching') {
+        if (!fetchStartTimes.has(key)) fetchStartTimes.set(key, Date.now())
+      } else {
+        fetchStartTimes.delete(key)
+      }
+    })
+
+    const stuckCheckInterval = window.setInterval(() => {
+      if (!getCachedProfile()) return
+      const now = Date.now()
+      for (const [key, started] of fetchStartTimes) {
+        const ageMs = now - started
+        if (ageMs > STUCK_QUERY_THRESHOLD_MS) {
+          fetchStartTimes.delete(key)  // изчистваме веднага, за да не повторим
+          attemptAutoReload(`stuck query ${Math.round(ageMs / 1000)}s: ${key}`)
+          return
+        }
+      }
+    }, 2_000)
 
     return () => {
       subscription.unsubscribe()
       clearTimeout(timeout)
       document.removeEventListener('visibilitychange', onVisChange)
+      unsubQueryCache()
+      clearInterval(stuckCheckInterval)
     }
   }, [])
 
