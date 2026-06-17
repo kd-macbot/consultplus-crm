@@ -204,26 +204,39 @@ function parseDetails(d: any): ParsedCompany {
   // Сортираме по дата ascending → последния запис е актуалното състояние
   const sortedStates = [...states].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
 
-  // VAT state кодове от регистъра (regdata). Потвърдени от реални данни:
-  //   D14 = регистрация по ДДС, D15 = дерегистрация (отписване).
-  // D21 също е дерегистрационен код. Списъците се допълват при нови кодове.
-  const VAT_REGISTER_CODES = new Set(["D14"])
-  const VAT_DEREGISTER_CODES = new Set(["D15", "D21"])
+  // ДДС state кодове от регистъра (regdata), пълен списък от документацията.
+  // Чифт логика: всеки „Дата на РЕГИСТРАЦИЯ" код влиза в REGISTER,
+  // всеки „Дата на ДЕРЕГИСТРАЦИЯ" — в DEREGISTER.
+  //   чл.96 (D14,D26,D28), чл.97 (D16), чл.97а (D6), чл.97б (D8),
+  //   чл.98 (D18), чл.99 (D10,D30,D32), чл.100 (D12,D20,D22),
+  //   чл.156 OSS (D34,D36), друго основание (D1,D24).
+  const VAT_REGISTER_CODES = new Set([
+    "D1", "D6", "D8", "D10", "D12", "D14", "D16", "D18", "D20",
+    "D22", "D24", "D26", "D28", "D30", "D32", "D34", "D36",
+  ])
+  const VAT_DEREGISTER_CODES = new Set([
+    "D2", "D7", "D9", "D11", "D13", "D15", "D17", "D19", "D21",
+    "D23", "D25", "D27", "D29", "D31", "D33", "D35", "D37",
+  ])
+  // чл.151а (касова отчетност, D3/D4/D5) е ПОД-режим — не променя базовия ДДС
+  // статус (фирмата вече е регистрирана). Игнорираме тези събития.
+  const VAT_NEUTRAL_CODES = new Set(["D3", "D4", "D5"])
 
-  const lastCode = sortedStates[sortedStates.length - 1]?.code ?? ""
-  // Актуалният ДДС статус се определя от ПОСЛЕДНОТО събитие по дата.
+  // Актуалният статус се определя от ПОСЛЕДНОТО релевантно (не-неутрално) събитие.
+  const relevant = sortedStates.filter((s) => !VAT_NEUTRAL_CODES.has(s.code ?? ""))
+  const lastCode = relevant[relevant.length - 1]?.code ?? ""
   let vatActive: boolean
   if (VAT_DEREGISTER_CODES.has(lastCode)) vatActive = false
   else if (VAT_REGISTER_CODES.has(lastCode)) vatActive = true
-  else vatActive = sortedStates.length > 0 // непознат код → запазваме старото (консервативно) поведение
+  else vatActive = relevant.length > 0 // непознат код → консервативно: има събитие = активна
 
   const vat_number = vatActive && eik ? `BG${eik}` : null
 
-  // Дата на регистрация: датата на последното регистрационно събитие (при
-  // повторна регистрация е по-точно от „първото състояние"); fallback — първото.
+  // Дата на регистрация: датата на ПОСЛЕДНОТО регистрационно събитие
+  // (при повторна регистрация е по-точно); fallback — първото състояние.
   let vat_registered_at: string | null = null
   if (vatActive) {
-    const lastReg = [...sortedStates].reverse().find((s) => VAT_REGISTER_CODES.has(s.code ?? ""))
+    const lastReg = [...relevant].reverse().find((s) => VAT_REGISTER_CODES.has(s.code ?? ""))
     const regDate = lastReg?.date ?? sortedStates[0]?.date
     vat_registered_at = regDate ? regDate.split("T")[0] : null
   }
