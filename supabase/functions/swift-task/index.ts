@@ -196,6 +196,31 @@ interface ParsedCompany {
   owner_name: string | null
   manager_name: string | null
   public_url: string | null
+  // Дали regdata изобщо върна ДДС обект. Ако НЕ (нова фирма, чийто ДДС
+  // запис още не е синхронизиран в регистъра) → правим VIES fallback.
+  vat_data_present: boolean
+}
+
+// VIES (EU ДДС регистър) — fallback за нови фирми, които regdata още не е
+// синхронизирал. Връща true (валиден ДДС номер), false (невалиден) или
+// null (VIES недостъпен/грешка → не променяме нищо).
+async function checkVies(eik: string): Promise<boolean | null> {
+  try {
+    const r = await fetch(
+      `https://ec.europa.eu/taxation_customs/vies/rest-api/ms/BG/vat/${encodeURIComponent(eik)}`,
+      { headers: { Accept: "application/json" } },
+    )
+    if (!r.ok) return null
+    const data = await r.json() as { isValid?: boolean; valid?: boolean; userError?: string }
+    // userError „VALID"/„INVALID" или isValid/valid булеви — поддържаме и трите форми.
+    if (typeof data.isValid === "boolean") return data.isValid
+    if (typeof data.valid === "boolean") return data.valid
+    if (data.userError === "VALID") return true
+    if (data.userError === "INVALID") return false
+    return null
+  } catch {
+    return null
+  }
 }
 
 function parseDetails(d: any): ParsedCompany {
@@ -246,7 +271,19 @@ function parseDetails(d: any): ParsedCompany {
   const managers: string[] = (d?.managers ?? []).map((m: any) => m?.name).filter(Boolean)
   const manager_name = managers.length ? managers.slice(0, 3).join(", ") : null
   const public_url: string | null = typeof d?.url === "string" ? d.url : null
-  return { eik, vat_number, vat_registered_at, address, owner_name, manager_name, public_url }
+  const vat_data_present = !!d?.vat
+  return { eik, vat_number, vat_registered_at, address, owner_name, manager_name, public_url, vat_data_present }
+}
+
+// Ако regdata НЯМА ДДС данни (нова фирма), питаме VIES. Мутира fields на място.
+async function applyViesFallback(fields: ParsedCompany): Promise<void> {
+  if (fields.vat_number || fields.vat_data_present || !fields.eik) return
+  const valid = await checkVies(fields.eik)
+  if (valid === true) {
+    fields.vat_number = `BG${fields.eik}`
+    // VIES не дава дата на регистрация → оставяме null.
+    fields.vat_registered_at = null
+  }
 }
 
 Deno.serve(async (req) => {
@@ -283,6 +320,7 @@ Deno.serve(async (req) => {
           return json({ eik: null, caption: null, total: 0, candidates: [], fields: null, error: `ЕИК ${payload.eik} не е намерен в регистъра` })
         }
         const fields = parseDetails(details)
+        await applyViesFallback(fields)
         return json({
           eik: payload.eik,
           caption: details?.name ? `${details.name}${details.legalFormShort ? " " + details.legalFormShort : ""}` : null,
@@ -312,8 +350,9 @@ Deno.serve(async (req) => {
         const fetched = await fetchData(token, best.identifier, packetId)
         const details = Array.isArray(fetched) ? fetched[0] : fetched
         fields = parseDetails(details)
+        await applyViesFallback(fields)
       } catch {
-        fields = { eik: best.identifier, vat_number: null, vat_registered_at: null, address: null, owner_name: null, manager_name: null, public_url: null }
+        fields = { eik: best.identifier, vat_number: null, vat_registered_at: null, address: null, owner_name: null, manager_name: null, public_url: null, vat_data_present: false }
       }
     }
 
