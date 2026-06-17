@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
+import { useStaff } from '../../lib/queries'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
-  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt,
+  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -11,7 +12,7 @@ import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[] }
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean }
 type NavSection = { title: string | null; items: NavItem[] }
 
 const NAV_SECTIONS: NavSection[] = [
@@ -28,6 +29,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/worksheet', label: 'Работен лист', icon: ClipboardCheck, roles: ['admin', 'manager', 'employee'] },
       { to: '/yearly', label: 'Годишен изглед', icon: CalendarRange, roles: ['admin', 'manager', 'employee'] },
       { to: '/trz', label: 'ТРЗ Работен лист', icon: Receipt, roles: ['admin', 'manager', 'employee'] },
+      { to: '/checklist', label: 'Личен чек лист', icon: ListChecks, roles: ['admin', 'manager', 'employee'], hideForTrz: true },
       { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
     ],
   },
@@ -59,6 +61,14 @@ export function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Дали потребителят е от ТРЗ отдела — за скриване на „Личен чек лист".
+  // staffList идва от споделения RQ кеш (без излишен fetch).
+  const staffQ = useStaff()
+  const isTrz = useMemo(
+    () => (staffQ.data ?? []).find(s => s.full_name === user?.full_name)?.department === 'ТРЗ',
+    [staffQ.data, user?.full_name],
+  )
 
   const handleLogout = () => {
     logout()
@@ -125,7 +135,9 @@ export function Layout() {
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {NAV_SECTIONS.map((section, secIdx) => {
-            const visibleItems = section.items.filter(item => user && item.roles.includes(user.role))
+            const visibleItems = section.items.filter(item =>
+              user && item.roles.includes(user.role) && !(item.hideForTrz && isTrz)
+            )
             if (visibleItems.length === 0) return null
             return (
               <div key={section.title ?? `s${secIdx}`} className={secIdx > 0 ? 'mt-2' : ''}>
