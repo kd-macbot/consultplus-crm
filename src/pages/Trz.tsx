@@ -5,10 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
 import {
-  getClients, getColumns, getCellValues, getDropdownOptions, getStaff,
-  getTrzWork, ensureTrzRows, upsertTrzWorkByKey,
+  getStaff, ensureTrzRows, upsertTrzWorkByKey,
 } from '../lib/storage'
-import type { Column, CellValue, Client, DropdownOption, TrzWork } from '../lib/types'
+import {
+  useClients, useColumns, useCellValues, useDropdownOptions,
+  useTrzWork, useInvalidateCrm,
+} from '../lib/queries'
+import { queryClient } from '../lib/queryClient'
+import type { Client, Column, TrzWork } from '../lib/types'
 import {
   buildCellIndex, buildDropdownIndex,
   clientDisplayName, resolveDropdownText, resolveCellText,
@@ -27,12 +31,27 @@ export function TrzPage() {
   const [year, setYear] = useState(initial.year)
   const [month, setMonth] = useState(initial.month)
 
-  const [allClients, setAllClients] = useState<Client[]>([])
-  const [allColumns, setAllColumns] = useState<Column[]>([])
-  const [allCells, setAllCells] = useState<CellValue[]>([])
-  const [allDropdowns, setAllDropdowns] = useState<DropdownOption[]>([])
-  const [rows, setRows] = useState<Map<string, TrzWork>>(new Map())
-  const [loading, setLoading] = useState(true)
+  // Master данните идват от React Query — споделени между всички страници.
+  const clientsQ = useClients()
+  const columnsQ = useColumns()
+  const cellsQ = useCellValues()
+  const dropdownsQ = useDropdownOptions()
+  const { invalidateClients, invalidateCells, invalidateColumns, invalidateDropdowns, invalidateTrzWork } = useInvalidateCrm()
+
+  const allClients = useMemo(() => clientsQ.data ?? [], [clientsQ.data])
+  const allColumns = useMemo(() => columnsQ.data ?? [], [columnsQ.data])
+  const allCells = useMemo(() => cellsQ.data ?? [], [cellsQ.data])
+  const allDropdowns = useMemo(() => dropdownsQ.data ?? [], [dropdownsQ.data])
+  const masterReady = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!dropdownsQ.data
+
+  // ТРЗ месечни данни — от React Query, кеширани по (year, month).
+  const trzWorkQ = useTrzWork(year, month)
+  const rows = useMemo(() => {
+    const m = new Map<string, TrzWork>()
+    ;(trzWorkQ.data ?? []).forEach(w => m.set(w.client_id, w))
+    return m
+  }, [trzWorkQ.data])
+
   const [search, setSearch] = useState('')
   const [formaFilter, setFormaFilter] = useState<string[]>([])
   const [softwareFilter, setSoftwareFilter] = useState<string[]>([])
@@ -40,94 +59,64 @@ export function TrzPage() {
   const [respStaff, setRespStaff] = useState<string[]>([])
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
 
+  const loading = !masterReady || (trzWorkQ.isLoading && !trzWorkQ.data)
   const canEdit = !!user
   const lastEditRef = useRef(0)
 
-  // На първия рендер зареждаме мастер + месец. След това смяната на месец
-  // презарежда САМО ТРЗ редовете — без клиенти/колони/клетки.
-  const isFirstLoadRef = useRef(true)
+  // ТРЗ отговорник филтър — зависи от мастер колоната, не от месеца.
   useEffect(() => {
-    if (isFirstLoadRef.current) {
-      isFirstLoadRef.current = false
-      void loadAll()
+    if (!masterReady) return
+    const trzCols = findTrzColumns(allColumns)
+    if (trzCols.resp?.staff_department) {
+      getStaff(trzCols.resp.staff_department)
+        .then(staff => setRespStaff(staff.map(s => s.full_name)))
+        .catch(() => setRespStaff([]))
     } else {
-      void loadMonth()
+      setRespStaff([])
     }
-  }, [year, month])
+  }, [masterReady, allColumns])
+
+  // Подготвяме месеца във фон: ensureTrzRows за активните фирми, после
+  // invalidate ТРЗ месечните данни. Cached данните вече се рендират.
+  useEffect(() => {
+    if (!masterReady) return
+    const trzCols = findTrzColumns(allColumns)
+    const localCellIdx = buildCellIndex(allCells)
+    const localDropdownIdx = buildDropdownIndex(allDropdowns)
+    const activeIds = allClients
+      .filter(c => resolveDropdownText(c.id, trzCols.status, localCellIdx, localDropdownIdx) === TRZ_ACTIVE)
+      .map(c => c.id)
+    if (activeIds.length === 0) return
+    void ensureTrzRows(activeIds, year, month, user?.id)
+      .then(created => {
+        if (created > 0) {
+          toast.info(`Създадени ${created} нови реда за ${MONTH_NAMES[month - 1]} ${year}`)
+          invalidateTrzWork(year, month)
+        }
+      })
+      .catch((err: any) => toast.error(err.message ?? 'Грешка при подготовка на месеца'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, month, masterReady])
 
   const deferEdits = () => Date.now() - lastEditRef.current < 3000
 
   useRealtime({
     channel: 'trz-master',
     tables: ['crm_cell_values', 'crm_clients'],
-    onChange: () => loadAll(true),
+    onChange: () => {
+      invalidateClients()
+      invalidateCells()
+      invalidateColumns()
+      invalidateDropdowns()
+    },
     shouldDefer: deferEdits,
   })
   useRealtime({
     channel: 'trz-month',
     tables: ['crm_trz_work'],
-    onChange: () => loadMonth(true),
+    onChange: () => invalidateTrzWork(year, month),
     shouldDefer: deferEdits,
   })
-
-  interface MasterData {
-    cls: Client[]; cols: Column[]; cells: CellValue[]; dds: DropdownOption[]
-  }
-
-  async function loadMaster(): Promise<MasterData> {
-    const [cls, cols, cells, dds] = await Promise.all([
-      getClients(), getColumns(), getCellValues(), getDropdownOptions(),
-    ])
-    setAllClients(cls)
-    setAllColumns(cols)
-    setAllCells(cells)
-    setAllDropdowns(dds)
-
-    // ТРЗ отговорник филтър — зависи от мастер колоната, не от месеца.
-    const trzCols = findTrzColumns(cols)
-    if (trzCols.resp?.staff_department) {
-      try {
-        const staff = await getStaff(trzCols.resp.staff_department)
-        setRespStaff(staff.map(s => s.full_name))
-      } catch { setRespStaff([]) }
-    } else {
-      setRespStaff([])
-    }
-
-    return { cls, cols, cells, dds }
-  }
-
-  async function loadMonth(silent = false, master?: MasterData) {
-    if (!silent) setLoading(true)
-    try {
-      const m = master ?? { cls: allClients, cols: allColumns, cells: allCells, dds: allDropdowns }
-      const trzCols = findTrzColumns(m.cols)
-      const localCellIdx = buildCellIndex(m.cells)
-      const localDropdownIdx = buildDropdownIndex(m.dds)
-      const activeIds = m.cls
-        .filter(c => resolveDropdownText(c.id, trzCols.status, localCellIdx, localDropdownIdx) === TRZ_ACTIVE)
-        .map(c => c.id)
-      const created = await ensureTrzRows(activeIds, year, month, user?.id)
-      if (created > 0 && !silent) toast.info(`Създадени ${created} нови реда за ${MONTH_NAMES[month - 1]} ${year}`)
-
-      const work = await getTrzWork(year, month)
-      setRows(new Map(work.map(w => [w.client_id, w])))
-    } catch (e: any) {
-      if (!silent) toast.error(e.message ?? 'Грешка при зареждане')
-    }
-    if (!silent) setLoading(false)
-  }
-
-  async function loadAll(silent = false) {
-    if (!silent) setLoading(true)
-    try {
-      const master = await loadMaster()
-      await loadMonth(true, master)
-    } catch (e: any) {
-      if (!silent) toast.error(e.message ?? 'Грешка при зареждане')
-    }
-    if (!silent) setLoading(false)
-  }
 
   function changeMonth(delta: number) {
     let m = month + delta
@@ -206,18 +195,19 @@ export function TrzPage() {
 
   async function patchRow(clientId: string, patch: Partial<TrzWork>) {
     lastEditRef.current = Date.now()
-    setRows(prev => {
-      const next = new Map(prev)
-      const existing = next.get(clientId)
-      next.set(clientId, { ...(existing ?? { client_id: clientId, year, month } as TrzWork), ...patch })
-      return next
+    // Оптимистичен update в React Query кеша (Dashboard и т.н. виждат веднага).
+    queryClient.setQueryData<TrzWork[]>(['trzWork', year, month], (prev) => {
+      if (!prev) return prev
+      const idx = prev.findIndex(w => w.client_id === clientId)
+      if (idx >= 0) return prev.map((w, i) => i === idx ? { ...w, ...patch } : w)
+      return [...prev, { client_id: clientId, year, month, ...patch } as TrzWork]
     })
     setSavingFor(prev => new Set(prev).add(clientId))
     try {
       await upsertTrzWorkByKey(clientId, year, month, patch, user?.id)
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при запис')
-      await loadMonth()
+      invalidateTrzWork(year, month)
     } finally {
       setSavingFor(prev => {
         const next = new Set(prev)

@@ -5,11 +5,11 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import {
-  getClients, getColumns, getCellValues, getDropdownOptions,
   getMonthlyWorkForYear, upsertMonthlyWorkByKey, ensureMonthlyRows,
   getArt55EntriesForPeriod, getArt55QuarterStatuses, upsertArt55QuarterStatus,
 } from '../lib/storage'
-import { NOTIFICATION_METHODS, type MonthlyWork, type Client, type Column, type CellValue, type DropdownOption, type Art55Entry, type Art55QuarterStatus } from '../lib/types'
+import { useClients, useColumns, useCellValues, useDropdownOptions, useInvalidateCrm } from '../lib/queries'
+import { NOTIFICATION_METHODS, type MonthlyWork, type Client, type Art55Entry, type Art55QuarterStatus } from '../lib/types'
 import {
   buildCellIndex, buildDropdownIndex,
   clientDisplayName, resolveDropdownText, resolveNumber,
@@ -42,39 +42,65 @@ export function YearlyViewPage() {
   }, [tab])
   const [year, setYear] = useState(new Date().getFullYear())
 
-  const [clients, setClients] = useState<Client[]>([])
-  const [columns, setColumns] = useState<Column[]>([])
-  const [cells, setCells] = useState<CellValue[]>([])
-  const [dropdowns, setDropdowns] = useState<DropdownOption[]>([])
+  // Master данните идват от React Query — споделени с Dashboard, Клиенти,
+  // Работен лист. При навигация cache hit → мигновено показване.
+  const clientsQ = useClients()
+  const columnsQ = useColumns()
+  const cellsQ = useCellValues()
+  const dropdownsQ = useDropdownOptions()
+  const { invalidateClients, invalidateCells, invalidateColumns, invalidateDropdowns } = useInvalidateCrm()
+
+  const clients = useMemo(() => clientsQ.data ?? [], [clientsQ.data])
+  const columns = useMemo(() => columnsQ.data ?? [], [columnsQ.data])
+  const cells = useMemo(() => cellsQ.data ?? [], [cellsQ.data])
+  const dropdowns = useMemo(() => dropdownsQ.data ?? [], [dropdownsQ.data])
+  const masterReady = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!dropdownsQ.data
+
+  // Годишните данни (monthly + art55 + статуси) остават own state — специфични
+  // за тази страница и зависят от year.
   const [monthlyByClient, setMonthlyByClient] = useState<Map<string, Map<number, MonthlyWork>>>(new Map())
   const [art55ByClientMonth, setArt55ByClientMonth] = useState<Map<string, Map<number, Art55Entry[]>>>(new Map())
   const [art55Statuses, setArt55Statuses] = useState<Map<string, Map<number, Art55QuarterStatus>>>(new Map())
-  const [loading, setLoading] = useState(true)
+  const [yearLoading, setYearLoading] = useState(true)
+
+  const loading = !masterReady || yearLoading
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'employee'
 
-  useEffect(() => { void loadAll() }, [year])
+  // Годишните данни се зареждат при смяна на year (или след като master стане готов).
+  useEffect(() => {
+    if (!masterReady) return
+    void loadYear()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, masterReady])
 
   const lastEditRef = useRef(0)
 
+  const deferEdits = () => Date.now() - lastEditRef.current < 3000
+
+  // Realtime — разделено на два канала: мастер → invalidate RQ кеша;
+  // годишните данни → loadYear (без full reload на master).
   useRealtime({
-    channel: 'yearly',
-    tables: ['crm_monthly_work', 'crm_art55_entries', 'crm_art55_quarter_status', 'crm_cell_values', 'crm_clients'],
-    onChange: () => loadAll(true),
-    shouldDefer: () => Date.now() - lastEditRef.current < 3000,
+    channel: 'yearly-master',
+    tables: ['crm_cell_values', 'crm_clients'],
+    onChange: () => {
+      invalidateClients()
+      invalidateCells()
+      invalidateColumns()
+      invalidateDropdowns()
+    },
+    shouldDefer: deferEdits,
+  })
+  useRealtime({
+    channel: 'yearly-year',
+    tables: ['crm_monthly_work', 'crm_art55_entries', 'crm_art55_quarter_status'],
+    onChange: () => loadYear(true),
+    shouldDefer: deferEdits,
   })
 
-  async function loadAll(silent = false) {
-    if (!silent) setLoading(true)
+  async function loadYear(silent = false) {
+    if (!silent) setYearLoading(true)
     try {
-      const [cls, cols, cvs, dds] = await Promise.all([
-        getClients(), getColumns(), getCellValues(), getDropdownOptions(),
-      ])
-      setClients(cls)
-      setColumns(cols)
-      setCells(cvs)
-      setDropdowns(dds)
-
       // Зареждаме ВСИЧКИ редове за годината с ЕДНА заявка (WHERE year = X)
       const allRows = await getMonthlyWorkForYear(year)
       const mwMap = new Map<string, Map<number, MonthlyWork>>()
@@ -106,7 +132,7 @@ export function YearlyViewPage() {
     } catch (err: any) {
       if (!silent) toast.error(err.message ?? 'Грешка при зареждане')
     }
-    if (!silent) setLoading(false)
+    if (!silent) setYearLoading(false)
   }
 
   // O(1) индекси — изграждат се веднъж при промяна на данните.
@@ -190,7 +216,7 @@ export function YearlyViewPage() {
       await upsertArt55QuarterStatus(clientId, year, quarter, final)
     } catch (err: any) {
       toast.error(err.message ?? 'Грешка при запис')
-      await loadAll()
+      await loadYear()
     }
   }
 
@@ -233,7 +259,7 @@ export function YearlyViewPage() {
       await upsertMonthlyWorkByKey(clientId, year, month, { result_amount: amount }, user?.id)
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при запис')
-      await loadAll()
+      await loadYear()
     }
   }
 
@@ -253,7 +279,7 @@ export function YearlyViewPage() {
       await upsertMonthlyWorkByKey(clientId, year, month, { advance_payment_amount: amount }, user?.id)
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при запис')
-      await loadAll()
+      await loadYear()
     }
   }
 

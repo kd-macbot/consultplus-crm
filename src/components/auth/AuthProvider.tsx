@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { AuthContext, signIn, signOut, getCurrentProfile, getCachedProfile, setCachedProfile } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
+import { queryClient } from '../../lib/queryClient'
 import { clearViewsCache } from '../../lib/views'
+import { attemptAutoReload } from '../../lib/recovery'
 import { timed } from '../../lib/perf'
 import type { Profile, Role } from '../../lib/types'
 
@@ -46,21 +48,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const timeout = setTimeout(() => setLoading(false), 5000)
 
-    // При връщане към таба след idle токенът може да е изтекъл, а застоялата
-    // връзка да виси. Опресняваме сесията проактивно (вече ограничено от
-    // timeout-а в supabase.ts), за да е свеж токенът преди заявките за данни и
-    // да не „забива" при смяна на страница.
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        supabase.auth.getSession().catch(() => {})
+    // Auto-recovery: два независими trigger-а, които довеждат до soft reload
+    // (с общ backoff от 60s да не loop-ват). И двата targetпат един и същ
+    // проблем — счупен HTTP/2 connection след idle, при който тежки заявки
+    // се забиват за десетки секунди.
+    //
+    // TRIGGER 1 (превантивен): tab idle > 30s → reload при връщане.
+    //   Малки заявки минават след reconnect, но 1MB+ отговори висят. Не
+    //   чакаме, превантивно reload-ваме при дълъг idle.
+    //
+    // TRIGGER 2 (реактивен): React Query заявка, която тегли > 12 секунди.
+    //   Дори да не сме били идле, но cells/моntly_work е забит — detect-
+    //   ваме и reload-ваме, без да чакаме 50-те секунди.
+    //
+    // Reload-ът е практически мигновен (persisted RQ кеш + кеширан профил
+    // → екран рисуван веднага, без login).
+    const IDLE_THRESHOLD_MS = 30_000
+    const STUCK_QUERY_THRESHOLD_MS = 12_000
+    let hiddenAt: number | null = null
+
+    // ── TRIGGER 1: tab visibility ───────────────────────────────
+    const onVisChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+        return
       }
+      if (!hiddenAt) return
+      const idleMs = Date.now() - hiddenAt
+      hiddenAt = null
+      if (idleMs < IDLE_THRESHOLD_MS) {
+        return
+      }
+      if (!getCachedProfile()) return
+      attemptAutoReload(`idle ${Math.round(idleMs / 1000)}s`)
     }
-    document.addEventListener('visibilitychange', onVisible)
+    document.addEventListener('visibilitychange', onVisChange)
+
+    // ── TRIGGER 2: stuck React Query ────────────────────────────
+    // Tracking fetch start time за всяка заявка. Ако някоя тегли > 12s,
+    // считаме я за забита.
+    const fetchStartTimes = new Map<string, number>()
+
+    const unsubQueryCache = queryClient.getQueryCache().subscribe((event) => {
+      const query = event.query
+      const key = JSON.stringify(query.queryKey)
+      if (query.state.fetchStatus === 'fetching') {
+        if (!fetchStartTimes.has(key)) fetchStartTimes.set(key, Date.now())
+      } else {
+        fetchStartTimes.delete(key)
+      }
+    })
+
+    const stuckCheckInterval = window.setInterval(() => {
+      if (!getCachedProfile()) return
+      const now = Date.now()
+      for (const [key, started] of fetchStartTimes) {
+        const ageMs = now - started
+        if (ageMs > STUCK_QUERY_THRESHOLD_MS) {
+          fetchStartTimes.delete(key)  // изчистваме веднага, за да не повторим
+          attemptAutoReload(`stuck query ${Math.round(ageMs / 1000)}s: ${key}`)
+          return
+        }
+      }
+    }, 2_000)
 
     return () => {
       subscription.unsubscribe()
       clearTimeout(timeout)
-      document.removeEventListener('visibilitychange', onVisible)
+      document.removeEventListener('visibilitychange', onVisChange)
+      unsubQueryCache()
+      clearInterval(stuckCheckInterval)
     }
   }, [])
 

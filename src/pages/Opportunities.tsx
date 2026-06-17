@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Search, RefreshCw, Loader2, Trash2, ArrowRight, AlertTriangle, X } from 'lucide-react'
@@ -8,9 +8,10 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '../lib/auth'
 import {
-  getOpportunities, addOpportunity, updateOpportunity, softDeleteOpportunity,
-  convertOpportunityToClient, getStaff, lookupByEik, lookupEikByName, type StaffMember,
+  addOpportunity, updateOpportunity, softDeleteOpportunity,
+  convertOpportunityToClient, lookupByEik, lookupEikByName,
 } from '../lib/storage'
+import { useOpportunities, useStaff, useInvalidateCrm } from '../lib/queries'
 import { OPPORTUNITY_STAGES, OPPORTUNITY_SOURCES, type Opportunity } from '../lib/types'
 
 const STAGE_VARIANT: Record<string, string> = {
@@ -57,9 +58,14 @@ function isOverdue(date: string | null): boolean {
 export function OpportunitiesPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [opps, setOpps] = useState<Opportunity[]>([])
-  const [loading, setLoading] = useState(true)
-  const [staffList, setStaffList] = useState<StaffMember[]>([])
+  // Възможностите и персоналът идват от споделения React Query кеш —
+  // повторно отваряне на страницата е МИГНОВЕНО.
+  const oppsQ = useOpportunities()
+  const staffQ = useStaff()
+  const { invalidateOpportunities } = useInvalidateCrm()
+  const opps = useMemo(() => oppsQ.data ?? [], [oppsQ.data])
+  const staffList = useMemo(() => staffQ.data ?? [], [staffQ.data])
+  const loading = !oppsQ.data || !staffQ.data
   const [stageFilter, setStageFilter] = useState<string>('')
   const [search, setSearch] = useState('')
 
@@ -80,21 +86,9 @@ export function OpportunitiesPage() {
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager'
 
-  useEffect(() => { void load() }, [])
-
-  async function load() {
-    setLoading(true)
-    try {
-      const [list, staff] = await Promise.all([
-        getOpportunities(),
-        getStaff().catch(() => [] as StaffMember[]),
-      ])
-      setOpps(list)
-      setStaffList(staff)
-    } catch (e: any) {
-      toast.error(e.message ?? 'Грешка при зареждане')
-    }
-    setLoading(false)
+  // refresh: след мутация → invalidate (без full reload, RQ refetch-ва на тиха).
+  function refresh() {
+    invalidateOpportunities()
   }
 
   const filtered = useMemo(() => {
@@ -213,7 +207,7 @@ export function OpportunitiesPage() {
         toast.success('Възможността е добавена')
       }
       setShowForm(false)
-      await load()
+      refresh()
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при запис')
     }
@@ -228,7 +222,7 @@ export function OpportunitiesPage() {
     }
     try {
       await updateOpportunity(o.id, { stage: newStage, lost_reason: newStage === 'Загубен' ? o.lost_reason : null })
-      await load()
+      refresh()
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка')
     }
@@ -241,7 +235,7 @@ export function OpportunitiesPage() {
       await updateOpportunity(lostTarget.id, { stage: 'Загубен', lost_reason: lostReason.trim() })
       setLostTarget(null)
       setLostReason('')
-      await load()
+      refresh()
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка')
     }
@@ -256,7 +250,7 @@ export function OpportunitiesPage() {
         action: { label: 'Виж', onClick: () => navigate(`/clients?focus=${clientId}`) },
       })
       setConvertTarget(null)
-      await load()
+      refresh()
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при конвертиране')
     }
@@ -268,7 +262,7 @@ export function OpportunitiesPage() {
     try {
       await softDeleteOpportunity(o.id)
       toast.success('Изтрита')
-      await load()
+      refresh()
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка')
     }

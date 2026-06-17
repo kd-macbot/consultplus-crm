@@ -5,17 +5,24 @@ import type { PersistQueryClientOptions } from '@tanstack/react-query-persist-cl
 // Глобален QueryClient.
 // retry: false — storage слоят вече прави retry с exponential backoff
 // (виж withRetry), затова тук не дублираме.
-// staleTime: 30s — данните се смятат за свежи 30 сек → навигацията между
-// страници не прави нов fetch (мигновено), но при focus/refetch се обновяват.
+// staleTime: 5 минути — данните се смятат за свежи дълго време → навигацията
+// между страници и връщане към таба показват кеша мигновено без re-fetch.
+// Реалните промени идват през Supabase Realtime, който invalidate-ва кеша
+// при event → следващото рендериране тегли свежи данни.
+// refetchOnWindowFocus: false — НЕ тегли при връщане към таба. Защо:
+//   - Връщане към таб = често време, когато HTTP/2 connection е счупен от
+//     idle. Тежки заявки (1MB+ cells) висят 50 секунди и блокират UI-то.
+//   - Кешираните данни + realtime invalidation покриват сценария по-чисто:
+//     показваме каквото имаме, обновяваме при реална промяна.
 // gcTime: 24ч — кешът трябва да живее поне колкото persist-а долу, иначе
 // заявките се изхвърлят от паметта и няма какво да се запише/възстанови.
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: false,
-      staleTime: 30_000,
+      staleTime: 5 * 60_000,
       gcTime: 24 * 60 * 60_000,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
     },
   },
 })

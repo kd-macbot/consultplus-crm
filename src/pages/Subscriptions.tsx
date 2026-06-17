@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getColumns, getCellValues, getClients, getDropdownOptions, addColumn, deleteColumn } from '../lib/storage'
+import { addColumn, deleteColumn } from '../lib/storage'
+import { useClients, useColumns, useCellValues, useDropdownOptions, useInvalidateCrm, qk } from '../lib/queries'
+import { queryClient } from '../lib/queryClient'
 import { CellEditor } from '../components/table/CellEditor'
 import { useAuth } from '../lib/auth'
-import type { Column, CellValue, Client, ColumnType, DropdownOption } from '../lib/types'
+import type { Column, ColumnType, CellValue, Client } from '../lib/types'
 import {
   buildCellIndex, buildDropdownIndex, cellKey,
   clientDisplayName, resolveDropdownText, resolveNumber,
@@ -31,11 +33,20 @@ function exportCellValue(col: Column, cell?: CellValue): string | number {
 
 export function SubscriptionsPage() {
   const { user } = useAuth()
-  const [allClients, setAllClients] = useState<Client[]>([])
-  const [allColumns, setAllColumns] = useState<Column[]>([])
-  const [allCells, setAllCells] = useState<CellValue[]>([])
-  const [allDropdowns, setAllDropdowns] = useState<DropdownOption[]>([])
-  const [loading, setLoading] = useState(true)
+  // Master данните идват от споделения React Query кеш — повторно отваряне
+  // на страницата е МИГНОВЕНО (без fetch, кешираните данни от localStorage).
+  const clientsQ = useClients()
+  const columnsQ = useColumns()
+  const cellsQ = useCellValues()
+  const dropdownsQ = useDropdownOptions()
+  const { invalidateColumns, invalidateCells } = useInvalidateCrm()
+
+  const allClients = useMemo(() => clientsQ.data ?? [], [clientsQ.data])
+  const allColumns = useMemo(() => columnsQ.data ?? [], [columnsQ.data])
+  const allCells = useMemo(() => cellsQ.data ?? [], [cellsQ.data])
+  const allDropdowns = useMemo(() => dropdownsQ.data ?? [], [dropdownsQ.data])
+  const loading = !clientsQ.data || !columnsQ.data || !cellsQ.data || !dropdownsQ.data
+
   const [editCell, setEditCell] = useState<{ clientId: string; columnId: string } | null>(null)
   const [showAddCol, setShowAddCol] = useState(false)
   const [confirmDeleteCol, setConfirmDeleteCol] = useState<Column | null>(null)
@@ -48,21 +59,9 @@ export function SubscriptionsPage() {
   const isAdmin = user?.role === 'admin'
   const canEdit = user?.role === 'admin' || user?.role === 'manager'
 
-  useEffect(() => { loadData() }, [])
-
-  async function loadData() {
-    setLoading(true)
-    try {
-      const [cls, cols, cells, dds] = await Promise.all([
-        getClients(), getColumns(), getCellValues(), getDropdownOptions()
-      ])
-      setAllClients(cls)
-      setAllColumns(cols)
-      setAllCells(cells)
-      setAllDropdowns(dds)
-    } finally {
-      setLoading(false)
-    }
+  // refresh: след добавяне/изтриване на колона → invalidate, без full reload.
+  async function refresh() {
+    await Promise.all([invalidateColumns(), invalidateCells()])
   }
 
   // O(1) индекси — изграждат се веднъж при промяна на данните.
@@ -245,7 +244,7 @@ export function SubscriptionsPage() {
     await addColumn(name, type, false, user?.id, { userId: user?.id, userName: user?.full_name ?? '' }, SUB_MARKER)
     setShowAddCol(false)
     toast.success(`Колона "${name}" е добавена`)
-    await loadData()
+    await refresh()
   }
 
   async function handleDeleteColumn(col: Column) {
@@ -253,7 +252,7 @@ export function SubscriptionsPage() {
     setConfirmDeleteCol(null)
     setColFilter(col.id, '')
     toast.success(`Колона "${col.name}" е изтрита`)
-    await loadData()
+    await refresh()
   }
 
   if (loading) return <div className="p-6 text-dark/50">Зареждане...</div>
@@ -512,7 +511,10 @@ export function SubscriptionsPage() {
                           oldDisplay={displayCell(col, cell)}
                           onSave={(patch) => {
                             setEditCell(null)
-                            setAllCells(prev => {
+                            // Оптимистичен update в споделения React Query кеш
+                            // → всички страници (Dashboard, Клиенти, …) виждат веднага.
+                            queryClient.setQueryData<CellValue[]>(qk.cells, (prev) => {
+                              if (!prev) return prev
                               const idx = prev.findIndex(cv => cv.client_id === client.id && cv.column_id === col.id)
                               if (idx >= 0) return prev.map((cv, i) => i === idx ? { ...cv, ...patch } : cv)
                               return [...prev, { id: '', client_id: client.id, column_id: col.id, ...patch } as CellValue]
