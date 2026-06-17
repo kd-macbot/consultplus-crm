@@ -115,6 +115,7 @@ export function WorkSheetPage() {
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [accountantFilter, setAccountantFilter] = useState<string>('')
   const [respFilter, setRespFilter] = useState<string>('')
+  const [onlyMissingSubmitted, setOnlyMissingSubmitted] = useState(false)
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
   const [art55ModalFor, setArt55ModalFor] = useState<{ client: Client; name: string } | null>(null)
 
@@ -281,10 +282,11 @@ export function WorkSheetPage() {
       if (statusFilter.length > 0 && !statusFilter.includes(r.status)) return false
       if (accountantFilter && r.accountant !== accountantFilter) return false
       if (respFilter && r.responsible !== respFilter) return false
+      if (onlyMissingSubmitted && r.work?.submitted_at) return false
       if (s && !r.name.toLowerCase().includes(s)) return false
       return true
     })
-  }, [tableRows, search, statusFilter, accountantFilter, respFilter])
+  }, [tableRows, search, statusFilter, accountantFilter, respFilter, onlyMissingSubmitted])
 
   const stats = useMemo(() => {
     let totalResult = 0
@@ -435,6 +437,25 @@ export function WorkSheetPage() {
             )}
           </div>
         )}
+
+        <div className="flex items-center gap-1.5 pl-2 border-l border-border">
+          <button
+            onClick={() => setOnlyMissingSubmitted(v => !v)}
+            title="Показва само редове БЕЗ дата „Подадено на"
+            className={`px-2 py-0.5 rounded-full font-semibold transition ${
+              onlyMissingSubmitted
+                ? 'bg-amber-200 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100'
+                : 'bg-muted/40 text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            Без подадено
+          </button>
+          {onlyMissingSubmitted && (
+            <button onClick={() => setOnlyMissingSubmitted(false)} className="text-muted-foreground hover:text-foreground">
+              ✕
+            </button>
+          )}
+        </div>
 
         <div className="ml-auto flex items-center gap-4">
           <span><strong className="text-foreground">{stats.total}</strong> клиента</span>
