@@ -77,7 +77,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const idleMs = Date.now() - hiddenAt
       hiddenAt = null
       if (idleMs < IDLE_THRESHOLD_MS) {
-        console.log(`[auth] tab return след ${Math.round(idleMs / 1000)}s — OK`)
         return
       }
       if (!getCachedProfile()) return
