@@ -255,6 +255,61 @@ export interface TrzWork {
   updated_at: string
 }
 
+// Личен чек лист (ДДС месечен чеклист) — 12 стъпки, ПРОДАЖБИ + ПОКУПКИ.
+export interface ChecklistRow {
+  id: string
+  client_id: string
+  year: number
+  month: number
+
+  // ПРОДАЖБИ
+  check_clients: boolean
+  check_invoice_numbers: boolean
+  check_missing_invoices: boolean
+  spo: boolean
+  check_income: boolean
+
+  // ПОКУПКИ
+  check_suppliers: boolean
+  otmyata: boolean
+  duplicate_invoices: boolean
+  rko: boolean
+  accounting_invoice: boolean
+  regular_invoices_art82: boolean
+  check_unfinished_docs: boolean
+
+  notes: string | null
+  // Атрибуция: за всяка отметната стъпка → кой я е маркирал и кога.
+  checked_by: Record<string, { name: string; at: string }>
+
+  created_at: string
+  created_by: string | null
+  updated_at: string
+}
+
+// Дефиниция на 12-те чек-стъпки (ред + етикет + група).
+export const CHECKLIST_FIELDS: Array<{
+  key: keyof Pick<ChecklistRow,
+    'check_clients' | 'check_invoice_numbers' | 'check_missing_invoices' | 'spo' | 'check_income' |
+    'check_suppliers' | 'otmyata' | 'duplicate_invoices' | 'rko' | 'accounting_invoice' |
+    'regular_invoices_art82' | 'check_unfinished_docs'>
+  label: string
+  group: 'sales' | 'purchases'
+}> = [
+  { key: 'check_clients',          label: 'Проверка Клиенти',        group: 'sales' },
+  { key: 'check_invoice_numbers',  label: 'Проверка № на ф-ри',      group: 'sales' },
+  { key: 'check_missing_invoices', label: 'Липсващи фактури',        group: 'sales' },
+  { key: 'spo',                    label: 'СПО',                     group: 'sales' },
+  { key: 'check_income',           label: 'Проверка приход',         group: 'sales' },
+  { key: 'check_suppliers',        label: 'Проверка Доставчици',     group: 'purchases' },
+  { key: 'otmyata',                label: 'Отмята',                  group: 'purchases' },
+  { key: 'duplicate_invoices',     label: 'Дублирани ф-ри',          group: 'purchases' },
+  { key: 'rko',                    label: 'РКО',                     group: 'purchases' },
+  { key: 'accounting_invoice',     label: 'Ф-ра счет. обслужване',   group: 'purchases' },
+  { key: 'regular_invoices_art82', label: 'Регулярни ф-ри чл.82',    group: 'purchases' },
+  { key: 'check_unfinished_docs',  label: 'Незавършени документи',   group: 'purchases' },
+]
+
 export interface Expense {
   id: string
   category: ExpenseCategory

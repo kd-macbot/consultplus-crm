@@ -196,6 +196,31 @@ interface ParsedCompany {
   owner_name: string | null
   manager_name: string | null
   public_url: string | null
+  // Дали regdata изобщо върна ДДС обект. Ако НЕ (нова фирма, чийто ДДС
+  // запис още не е синхронизиран в регистъра) → правим VIES fallback.
+  vat_data_present: boolean
+}
+
+// VIES (EU ДДС регистър) — fallback за нови фирми, които regdata още не е
+// синхронизирал. Връща true (валиден ДДС номер), false (невалиден) или
+// null (VIES недостъпен/грешка → не променяме нищо).
+async function checkVies(eik: string): Promise<boolean | null> {
+  try {
+    const r = await fetch(
+      `https://ec.europa.eu/taxation_customs/vies/rest-api/ms/BG/vat/${encodeURIComponent(eik)}`,
+      { headers: { Accept: "application/json" } },
+    )
+    if (!r.ok) return null
+    const data = await r.json() as { isValid?: boolean; valid?: boolean; userError?: string }
+    // userError „VALID"/„INVALID" или isValid/valid булеви — поддържаме и трите форми.
+    if (typeof data.isValid === "boolean") return data.isValid
+    if (typeof data.valid === "boolean") return data.valid
+    if (data.userError === "VALID") return true
+    if (data.userError === "INVALID") return false
+    return null
+  } catch {
+    return null
+  }
 }
 
 function parseDetails(d: any): ParsedCompany {
@@ -204,26 +229,39 @@ function parseDetails(d: any): ParsedCompany {
   // Сортираме по дата ascending → последния запис е актуалното състояние
   const sortedStates = [...states].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
 
-  // VAT state кодове от регистъра (regdata). Потвърдени от реални данни:
-  //   D14 = регистрация по ДДС, D15 = дерегистрация (отписване).
-  // D21 също е дерегистрационен код. Списъците се допълват при нови кодове.
-  const VAT_REGISTER_CODES = new Set(["D14"])
-  const VAT_DEREGISTER_CODES = new Set(["D15", "D21"])
+  // ДДС state кодове от регистъра (regdata), пълен списък от документацията.
+  // Чифт логика: всеки „Дата на РЕГИСТРАЦИЯ" код влиза в REGISTER,
+  // всеки „Дата на ДЕРЕГИСТРАЦИЯ" — в DEREGISTER.
+  //   чл.96 (D14,D26,D28), чл.97 (D16), чл.97а (D6), чл.97б (D8),
+  //   чл.98 (D18), чл.99 (D10,D30,D32), чл.100 (D12,D20,D22),
+  //   чл.156 OSS (D34,D36), друго основание (D1,D24).
+  const VAT_REGISTER_CODES = new Set([
+    "D1", "D6", "D8", "D10", "D12", "D14", "D16", "D18", "D20",
+    "D22", "D24", "D26", "D28", "D30", "D32", "D34", "D36",
+  ])
+  const VAT_DEREGISTER_CODES = new Set([
+    "D2", "D7", "D9", "D11", "D13", "D15", "D17", "D19", "D21",
+    "D23", "D25", "D27", "D29", "D31", "D33", "D35", "D37",
+  ])
+  // чл.151а (касова отчетност, D3/D4/D5) е ПОД-режим — не променя базовия ДДС
+  // статус (фирмата вече е регистрирана). Игнорираме тези събития.
+  const VAT_NEUTRAL_CODES = new Set(["D3", "D4", "D5"])
 
-  const lastCode = sortedStates[sortedStates.length - 1]?.code ?? ""
-  // Актуалният ДДС статус се определя от ПОСЛЕДНОТО събитие по дата.
+  // Актуалният статус се определя от ПОСЛЕДНОТО релевантно (не-неутрално) събитие.
+  const relevant = sortedStates.filter((s) => !VAT_NEUTRAL_CODES.has(s.code ?? ""))
+  const lastCode = relevant[relevant.length - 1]?.code ?? ""
   let vatActive: boolean
   if (VAT_DEREGISTER_CODES.has(lastCode)) vatActive = false
   else if (VAT_REGISTER_CODES.has(lastCode)) vatActive = true
-  else vatActive = sortedStates.length > 0 // непознат код → запазваме старото (консервативно) поведение
+  else vatActive = relevant.length > 0 // непознат код → консервативно: има събитие = активна
 
   const vat_number = vatActive && eik ? `BG${eik}` : null
 
-  // Дата на регистрация: датата на последното регистрационно събитие (при
-  // повторна регистрация е по-точно от „първото състояние"); fallback — първото.
+  // Дата на регистрация: датата на ПОСЛЕДНОТО регистрационно събитие
+  // (при повторна регистрация е по-точно); fallback — първото състояние.
   let vat_registered_at: string | null = null
   if (vatActive) {
-    const lastReg = [...sortedStates].reverse().find((s) => VAT_REGISTER_CODES.has(s.code ?? ""))
+    const lastReg = [...relevant].reverse().find((s) => VAT_REGISTER_CODES.has(s.code ?? ""))
     const regDate = lastReg?.date ?? sortedStates[0]?.date
     vat_registered_at = regDate ? regDate.split("T")[0] : null
   }
@@ -233,7 +271,19 @@ function parseDetails(d: any): ParsedCompany {
   const managers: string[] = (d?.managers ?? []).map((m: any) => m?.name).filter(Boolean)
   const manager_name = managers.length ? managers.slice(0, 3).join(", ") : null
   const public_url: string | null = typeof d?.url === "string" ? d.url : null
-  return { eik, vat_number, vat_registered_at, address, owner_name, manager_name, public_url }
+  const vat_data_present = !!d?.vat
+  return { eik, vat_number, vat_registered_at, address, owner_name, manager_name, public_url, vat_data_present }
+}
+
+// Ако regdata НЯМА ДДС данни (нова фирма), питаме VIES. Мутира fields на място.
+async function applyViesFallback(fields: ParsedCompany): Promise<void> {
+  if (fields.vat_number || fields.vat_data_present || !fields.eik) return
+  const valid = await checkVies(fields.eik)
+  if (valid === true) {
+    fields.vat_number = `BG${fields.eik}`
+    // VIES не дава дата на регистрация → оставяме null.
+    fields.vat_registered_at = null
+  }
 }
 
 Deno.serve(async (req) => {
@@ -270,6 +320,7 @@ Deno.serve(async (req) => {
           return json({ eik: null, caption: null, total: 0, candidates: [], fields: null, error: `ЕИК ${payload.eik} не е намерен в регистъра` })
         }
         const fields = parseDetails(details)
+        await applyViesFallback(fields)
         return json({
           eik: payload.eik,
           caption: details?.name ? `${details.name}${details.legalFormShort ? " " + details.legalFormShort : ""}` : null,
@@ -299,8 +350,9 @@ Deno.serve(async (req) => {
         const fetched = await fetchData(token, best.identifier, packetId)
         const details = Array.isArray(fetched) ? fetched[0] : fetched
         fields = parseDetails(details)
+        await applyViesFallback(fields)
       } catch {
-        fields = { eik: best.identifier, vat_number: null, vat_registered_at: null, address: null, owner_name: null, manager_name: null, public_url: null }
+        fields = { eik: best.identifier, vat_number: null, vat_registered_at: null, address: null, owner_name: null, manager_name: null, public_url: null, vat_data_present: false }
       }
     }
 

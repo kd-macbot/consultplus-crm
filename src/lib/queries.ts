@@ -3,7 +3,7 @@ import {
   getClients, getColumns, getCellValues, getDropdownOptions,
   getContactsWithClients, getExpenses, getOpportunities,
   getTags, getClientTags, getStaff, getAllContacts,
-  getMonthlyWork, getTrzWork, getArt55EntriesForPeriod,
+  getMonthlyWork, getTrzWork, getArt55EntriesForPeriod, getChecklist,
 } from './storage'
 import { timed } from './perf'
 
@@ -80,6 +80,13 @@ export function useArt55Entries(year: number, months: number[]) {
     enabled: year > 0 && months.length > 0,
   })
 }
+export function useChecklist(year: number, month: number) {
+  return useQuery({
+    queryKey: ['checklist', year, month] as const,
+    queryFn: () => getChecklist(year, month),
+    enabled: year > 0 && month > 0,
+  })
+}
 
 /**
  * Връща функция за invalidate на споделените данни — викай я след мутация
@@ -105,6 +112,8 @@ export function useInvalidateCrm() {
       qc.invalidateQueries({ queryKey: ['trzWork', year, month] }),
     invalidateArt55: (year: number, months: number[]) =>
       qc.invalidateQueries({ queryKey: ['art55Entries', year, months.join(',')] }),
+    invalidateChecklist: (year: number, month: number) =>
+      qc.invalidateQueries({ queryKey: ['checklist', year, month] }),
     invalidateAll: () => qc.invalidateQueries(),
   }
 }
