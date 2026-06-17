@@ -46,6 +46,29 @@ const RESULT_BADGE: Record<ResultStatus, { label: string; cls: string }> = {
   none:     { label: '—',         cls: 'bg-muted/40 text-muted-foreground' },
 }
 
+// ISO timestamp → „17.06 14:30" за tooltip-а на атрибуцията.
+function formatStamp(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+// Бележка — записва се при напускане на полето (onBlur), само ако е променена.
+function NoteCell({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const [draft, setDraft] = useState(value)
+  return (
+    <input
+      type="text"
+      value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={() => { if (draft !== value) onSave(draft) }}
+      placeholder="—"
+      className="w-full min-w-[160px] h-7 px-2 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
+    />
+  )
+}
+
 export function ChecklistPage() {
   const { user } = useAuth()
   const initial = previousMonth()
@@ -161,7 +184,12 @@ export function ChecklistPage() {
 
   async function toggle(clientId: string, key: keyof ChecklistRow, value: boolean) {
     lastEditRef.current = Date.now()
-    const patch = { [key]: value } as Partial<ChecklistRow>
+    // Атрибуция: при отмятане записваме кой и кога; при размаркиране — чистим.
+    const current = rows.get(clientId)
+    const nextCheckedBy = { ...(current?.checked_by ?? {}) }
+    if (value) nextCheckedBy[key as string] = { name: myName || 'неизвестен', at: new Date().toISOString() }
+    else delete nextCheckedBy[key as string]
+    const patch = { [key]: value, checked_by: nextCheckedBy } as Partial<ChecklistRow>
     // Оптимистичен update в RQ кеша
     queryClient.setQueryData<ChecklistRow[]>(['checklist', year, month], (prev) => {
       if (!prev) return prev
@@ -177,6 +205,23 @@ export function ChecklistPage() {
       invalidateChecklist(year, month)
     } finally {
       setSavingFor(prev => { const n = new Set(prev); n.delete(clientId); return n })
+    }
+  }
+
+  async function saveNotes(clientId: string, notes: string) {
+    lastEditRef.current = Date.now()
+    const patch = { notes: notes || null } as Partial<ChecklistRow>
+    queryClient.setQueryData<ChecklistRow[]>(['checklist', year, month], (prev) => {
+      if (!prev) return prev
+      const idx = prev.findIndex(r => r.client_id === clientId)
+      if (idx >= 0) return prev.map((r, i) => i === idx ? { ...r, ...patch } : r)
+      return [...prev, { client_id: clientId, year, month, ...patch } as ChecklistRow]
+    })
+    try {
+      await upsertChecklistByKey(clientId, year, month, patch, user?.id)
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при запис')
+      invalidateChecklist(year, month)
     }
   }
 
@@ -239,7 +284,8 @@ export function ChecklistPage() {
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap sticky left-0 z-40 bg-navy">Фирма</th>
                 <th className="px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider border-l-2 border-white/20" colSpan={SALES_FIELDS.length}>Продажби</th>
                 <th className="px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider border-l-2 border-white/20" colSpan={PURCHASE_FIELDS.length}>Покупки</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider border-l-2 border-white/20">Резултат</th>
+                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider border-l-2 border-white/20" rowSpan={2}>Резултат</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider border-l-2 border-white/20" rowSpan={2}>Бележка</th>
               </tr>
               <tr className="bg-navy/90">
                 <th></th>
@@ -251,7 +297,6 @@ export function ChecklistPage() {
                     <span className="block leading-tight whitespace-normal break-words">{f.label}</span>
                   </th>
                 ))}
-                <th className="border-l-2 border-white/20"></th>
               </tr>
             </thead>
             <tbody>
@@ -271,16 +316,28 @@ export function ChecklistPage() {
                       {row.name || <span className="text-muted-foreground/40 italic">(без име)</span>}
                       {isSaving && <Loader2 className="inline ml-1 h-3 w-3 animate-spin text-muted-foreground" />}
                     </td>
-                    {CHECKLIST_FIELDS.map((f, ci) => (
-                      <td key={f.key} className={`px-1 py-1.5 text-center ${ci === SALES_FIELDS.length ? 'border-l-2 border-border' : ''}`}>
-                        <input type="checkbox"
-                          checked={!!r?.[f.key]}
-                          onChange={e => toggle(row.client.id, f.key, e.target.checked)}
-                          className="h-4 w-4 cursor-pointer accent-emerald-600" />
-                      </td>
-                    ))}
+                    {CHECKLIST_FIELDS.map((f, ci) => {
+                      const checked = !!r?.[f.key]
+                      const by = checked ? r?.checked_by?.[f.key] : undefined
+                      const tip = by ? `${by.name} · ${formatStamp(by.at)}` : undefined
+                      return (
+                        <td key={f.key} className={`px-1 py-1.5 text-center ${ci === SALES_FIELDS.length ? 'border-l-2 border-border' : ''}`} title={tip}>
+                          <input type="checkbox"
+                            checked={checked}
+                            onChange={e => toggle(row.client.id, f.key, e.target.checked)}
+                            className="h-4 w-4 cursor-pointer accent-emerald-600" />
+                        </td>
+                      )
+                    })}
                     <td className="px-3 py-1.5 text-center border-l-2 border-border">
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${badge.cls}`}>{badge.label}</span>
+                    </td>
+                    <td className="px-2 py-1 border-l-2 border-border">
+                      <NoteCell
+                        key={`${row.client.id}-${year}-${month}`}
+                        value={r?.notes ?? ''}
+                        onSave={v => saveNotes(row.client.id, v)}
+                      />
                     </td>
                   </tr>
                 )
