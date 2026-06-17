@@ -233,17 +233,17 @@ export function ChecklistPage() {
           <div className="p-8 text-center text-sm text-muted-foreground">Няма зачислени фирми за този период.</div>
         ) : (
           <table className="w-full border-collapse text-sm">
-            <thead className="sticky top-0 z-10 bg-navy text-white">
+            <thead className="sticky top-0 z-30 bg-navy text-white">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-12">#</th>
-                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap sticky left-0 z-20 bg-navy">Фирма</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap sticky left-0 z-40 bg-navy">Фирма</th>
                 <th className="px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider border-l-2 border-white/20" colSpan={SALES_FIELDS.length}>Продажби</th>
                 <th className="px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider border-l-2 border-white/20" colSpan={PURCHASE_FIELDS.length}>Покупки</th>
                 <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider border-l-2 border-white/20">Резултат</th>
               </tr>
               <tr className="bg-navy/90">
                 <th></th>
-                <th className="sticky left-0 z-20 bg-navy/90"></th>
+                <th className="sticky left-0 z-40 bg-navy"></th>
                 {CHECKLIST_FIELDS.map((f, i) => (
                   <th key={f.key}
                     className={`px-1 py-2 text-center text-[10px] font-medium align-bottom ${i === SALES_FIELDS.length ? 'border-l-2 border-white/20' : ''}`}
