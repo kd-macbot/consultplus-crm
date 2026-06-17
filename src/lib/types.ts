@@ -279,6 +279,8 @@ export interface ChecklistRow {
   check_unfinished_docs: boolean
 
   notes: string | null
+  // Атрибуция: за всяка отметната стъпка → кой я е маркирал и кога.
+  checked_by: Record<string, { name: string; at: string }>
 
   created_at: string
   created_by: string | null
