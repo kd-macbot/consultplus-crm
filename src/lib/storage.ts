@@ -160,15 +160,24 @@ export interface StaffMember {
   id: string
   full_name: string
   department: string | null
+  additional_departments?: string[]
   is_active: boolean
 }
 
 export async function getStaff(department?: string): Promise<StaffMember[]> {
-  let query = supabase.from('crm_staff').select('id,full_name,department,is_active').eq('is_active', true).order('full_name')
-  if (department) query = query.eq('department', department)
-  const { data, error } = await query
+  const { data, error } = await supabase
+    .from('crm_staff')
+    .select('id,full_name,department,additional_departments,is_active')
+    .eq('is_active', true)
+    .order('full_name')
   if (error) throw error
-  return data ?? []
+  const all = (data ?? []) as StaffMember[]
+  if (!department) return all
+  // Служителят влиза в dropdown-а, ако ОСНОВНИЯТ или някой ДОПЪЛНИТЕЛЕН
+  // отдел съвпада. (Филтрираме клиентски — персоналът е малък.)
+  return all.filter(s =>
+    s.department === department || (s.additional_departments ?? []).includes(department),
+  )
 }
 
 export async function createStaffMember(

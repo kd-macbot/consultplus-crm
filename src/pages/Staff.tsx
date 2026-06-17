@@ -17,6 +17,7 @@ interface StaffMember {
   full_name: string
   position: string | null
   department: string | null
+  additional_departments: string[] | null
   email: string | null
   phone: string | null
   is_active: boolean
@@ -272,11 +273,18 @@ function StaffCard({ member, isAdmin, profile, onEdit, onToggle, onCreateAccount
               {member.position && <p className="text-xs text-muted-foreground leading-tight mt-0.5">{member.position}</p>}
             </div>
           </div>
-          {member.department && (
-            <Badge variant={DEPT_VARIANT[member.department] ?? 'muted'} className="text-[10px] shrink-0">
-              {member.department}
-            </Badge>
-          )}
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            {member.department && (
+              <Badge variant={DEPT_VARIANT[member.department] ?? 'muted'} className="text-[10px]">
+                {member.department}
+              </Badge>
+            )}
+            {(member.additional_departments ?? []).map(d => (
+              <Badge key={d} variant="muted" className="text-[10px] opacity-70">
+                +{d}
+              </Badge>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-1 mb-3">
@@ -332,6 +340,7 @@ function StaffForm({ open, member, onSave, onClose }: {
   const [name, setName] = useState(member?.full_name ?? '')
   const [position, setPosition] = useState(member?.position ?? '')
   const [department, setDepartment] = useState(member?.department ?? '')
+  const [additionalDepts, setAdditionalDepts] = useState<string[]>(member?.additional_departments ?? [])
   const [email, setEmail] = useState(member?.email ?? '')
   const [phone, setPhone] = useState(member?.phone ?? '')
 
@@ -340,10 +349,15 @@ function StaffForm({ open, member, onSave, onClose }: {
       setName(member?.full_name ?? '')
       setPosition(member?.position ?? '')
       setDepartment(member?.department ?? '')
+      setAdditionalDepts(member?.additional_departments ?? [])
       setEmail(member?.email ?? '')
       setPhone(member?.phone ?? '')
     }
   }, [open, member])
+
+  function toggleAdditional(d: string) {
+    setAdditionalDepts(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
+  }
 
   function handleSave() {
     if (!name.trim()) return
@@ -351,6 +365,8 @@ function StaffForm({ open, member, onSave, onClose }: {
       full_name: name.trim(),
       position: position.trim() || null,
       department: department || null,
+      // Допълнителните отдели не включват основния (без дублиране).
+      additional_departments: additionalDepts.filter(d => d !== department),
       email: email.trim() || null,
       phone: phone.trim() || null,
     })
@@ -385,6 +401,31 @@ function StaffForm({ open, member, onSave, onClose }: {
               <option value="">— Без отдел —</option>
               {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Допълнителни отдели</Label>
+            <p className="text-[11px] text-muted-foreground -mt-0.5">
+              Служителят се появява и в dropdown-ите на тези отдели (напр. тийм лийд като „Счетоводител").
+            </p>
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              {DEPARTMENTS.filter(d => d !== department).map(d => {
+                const active = additionalDepts.includes(d)
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => toggleAdditional(d)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition ${
+                      active
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background text-muted-foreground border-input hover:border-primary/50'
+                    }`}
+                  >
+                    {d}
+                  </button>
+                )
+              })}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
