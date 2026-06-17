@@ -246,9 +246,9 @@ export function ChecklistPage() {
                 <th className="sticky left-0 z-20 bg-navy/90"></th>
                 {CHECKLIST_FIELDS.map((f, i) => (
                   <th key={f.key}
-                    className={`px-1 py-1.5 text-center text-[10px] font-medium align-bottom whitespace-nowrap ${i === SALES_FIELDS.length ? 'border-l-2 border-white/20' : ''}`}
-                    style={{ minWidth: 56 }}>
-                    <span className="inline-block max-w-[64px] leading-tight">{f.label}</span>
+                    className={`px-1 py-2 text-center text-[10px] font-medium align-bottom ${i === SALES_FIELDS.length ? 'border-l-2 border-white/20' : ''}`}
+                    style={{ width: 72, minWidth: 72 }}>
+                    <span className="block leading-tight whitespace-normal break-words">{f.label}</span>
                   </th>
                 ))}
                 <th className="border-l-2 border-white/20"></th>
