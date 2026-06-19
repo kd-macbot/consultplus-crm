@@ -9,7 +9,7 @@ import {
   getArt55EntriesForPeriod, getArt55QuarterStatuses, upsertArt55QuarterStatus,
 } from '../lib/storage'
 import { useClients, useColumns, useCellValues, useDropdownOptions, useInvalidateCrm } from '../lib/queries'
-import { NOTIFICATION_METHODS, type MonthlyWork, type Client, type Art55Entry, type Art55QuarterStatus } from '../lib/types'
+import { NOTIFICATION_METHODS, ART55_INCOME_TYPES, type MonthlyWork, type Client, type Art55Entry, type Art55QuarterStatus } from '../lib/types'
 import {
   buildCellIndex, buildDropdownIndex,
   clientDisplayName, resolveDropdownText, resolveNumber,
@@ -416,6 +416,34 @@ function AdvanceTable({ rows, year, canEdit, onPatch }: {
   )
 }
 
+// Кратки етикети за типовете доход — за компактна разбивка в клетката.
+const ART55_SHORT_LABEL: Record<string, string> = {
+  'дивидент': 'Див',
+  'наем': 'Наем',
+  'лихва': 'Лих',
+  'хонорар': 'Хон',
+  'друго': 'Др',
+}
+
+type Art55Breakdown = { type: string; gross: number; tax: number; count: number }
+
+// Групира записите по income_type, подредено по ART55_INCOME_TYPES.
+// Връща само типове с ненулева сума (за да не претрупваме клетката).
+function groupArt55ByType(entries: Art55Entry[]): Art55Breakdown[] {
+  const m = new Map<string, Art55Breakdown>()
+  entries.forEach(e => {
+    const t = (e.income_type as string | null) || 'друго'
+    const acc = m.get(t) ?? { type: t, gross: 0, tax: 0, count: 0 }
+    acc.gross += e.gross_amount
+    acc.tax += e.tax_amount
+    acc.count += 1
+    m.set(t, acc)
+  })
+  return ART55_INCOME_TYPES
+    .map(t => m.get(t))
+    .filter((b): b is Art55Breakdown => !!b && (b.gross !== 0 || b.tax !== 0))
+}
+
 function Art55Table({ rows, year, canEdit, onPatchStatus }: {
   rows: {
     client: Client; name: string
@@ -463,14 +491,45 @@ function Art55Table({ rows, year, canEdit, onPatchStatus }: {
                 const tax = entries.reduce((s, e) => s + e.tax_amount, 0)
                 const status = r.statuses.get(q.q)
                 const hasEntries = entries.length > 0
+                const breakdown = groupArt55ByType(entries)
+                const showBreakdown = breakdown.length > 1
                 return (
                   <Fragment key={q.q}>
-                    <td className="px-2 py-1 text-right tabular-nums text-muted-foreground">{fmt(gross)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums font-semibold">{fmt(tax)}</td>
-                    <td className="px-2 py-1 text-center text-xs text-muted-foreground">
+                    {/* Бруто — при 2+ типа доход показваме разбивка с малък етикет; иначе само сумата. */}
+                    <td className="px-2 py-1 text-right tabular-nums text-muted-foreground align-top">
+                      {showBreakdown ? (
+                        <div className="space-y-0.5">
+                          {breakdown.map(b => (
+                            <div key={b.type} className="flex items-center justify-end gap-1.5 text-[10px] leading-tight">
+                              <span className="text-muted-foreground/60">{ART55_SHORT_LABEL[b.type] ?? b.type}</span>
+                              <span>{fmt(b.gross)}</span>
+                            </div>
+                          ))}
+                          <div className="border-t border-border/40 pt-0.5 text-xs">{fmt(gross)}</div>
+                        </div>
+                      ) : (
+                        fmt(gross)
+                      )}
+                    </td>
+                    {/* Данък — същата подредба по тип, но без етикет (подравнено с Бруто). */}
+                    <td className="px-2 py-1 text-right tabular-nums font-semibold align-top">
+                      {showBreakdown ? (
+                        <div className="space-y-0.5">
+                          {breakdown.map(b => (
+                            <div key={b.type} className="text-[10px] font-normal leading-tight text-foreground/80">
+                              {fmt(b.tax)}
+                            </div>
+                          ))}
+                          <div className="border-t border-border/40 pt-0.5 text-xs">{fmt(tax)}</div>
+                        </div>
+                      ) : (
+                        fmt(tax)
+                      )}
+                    </td>
+                    <td className="px-2 py-1 text-center text-xs text-muted-foreground align-top">
                       {entries.length > 0 ? entries.length : '—'}
                     </td>
-                    <td className="px-2 py-1 border-r border-border">
+                    <td className="px-2 py-1 border-r border-border align-top">
                       <Art55StatusCell
                         status={status}
                         hasEntries={hasEntries}
