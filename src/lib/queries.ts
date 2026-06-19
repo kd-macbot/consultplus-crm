@@ -4,6 +4,7 @@ import {
   getContactsWithClients, getExpenses, getOpportunities,
   getTags, getClientTags, getStaff, getAllContacts,
   getMonthlyWork, getTrzWork, getArt55EntriesForPeriod, getChecklist,
+  getClientProfiles,
 } from './storage'
 import { timed } from './perf'
 
@@ -20,6 +21,7 @@ export const qk = {
   clientTags: ['clientTags'] as const,
   staff: ['staff'] as const,
   allContacts: ['allContacts'] as const,
+  clientProfiles: ['clientProfiles'] as const,
 }
 
 export function useClients() {
@@ -54,6 +56,9 @@ export function useStaff() {
 }
 export function useAllContacts() {
   return useQuery({ queryKey: qk.allContacts, queryFn: getAllContacts })
+}
+export function useClientProfiles() {
+  return useQuery({ queryKey: qk.clientProfiles, queryFn: getClientProfiles })
 }
 
 // Месечни / годишни данни — параметризирани по year/month, така че RQ кешира
@@ -106,6 +111,7 @@ export function useInvalidateCrm() {
     invalidateClientTags: () => qc.invalidateQueries({ queryKey: qk.clientTags }),
     invalidateStaff: () => qc.invalidateQueries({ queryKey: qk.staff }),
     invalidateAllContacts: () => qc.invalidateQueries({ queryKey: qk.allContacts }),
+    invalidateClientProfiles: () => qc.invalidateQueries({ queryKey: qk.clientProfiles }),
     invalidateMonthlyWork: (year: number, month: number) =>
       qc.invalidateQueries({ queryKey: ['monthlyWork', year, month] }),
     invalidateTrzWork: (year: number, month: number) =>
