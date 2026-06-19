@@ -310,6 +310,15 @@ export const CHECKLIST_FIELDS: Array<{
   { key: 'check_unfinished_docs',  label: 'Незавършени документи',   group: 'purchases' },
 ]
 
+export interface ClientProfile {
+  client_id: string
+  business_activity: string | null   // „Дейност"
+  business_notes: string | null      // „Особености"
+  warnings: string | null            // „Внимавай"
+  updated_at: string
+  updated_by: string | null
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory

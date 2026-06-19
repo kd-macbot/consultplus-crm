@@ -24,6 +24,7 @@ const ExpensesPage = lazy(() => import('./pages/Expenses').then(m => ({ default:
 const SubscriptionsPage = lazy(() => import('./pages/Subscriptions').then(m => ({ default: m.SubscriptionsPage })))
 const TrzPage = lazy(() => import('./pages/Trz').then(m => ({ default: m.TrzPage })))
 const ChecklistPage = lazy(() => import('./pages/Checklist').then(m => ({ default: m.ChecklistPage })))
+const ClientProfilesPage = lazy(() => import('./pages/ClientProfiles').then(m => ({ default: m.ClientProfilesPage })))
 const ImportPage = lazy(() => import('./pages/Import').then(m => ({ default: m.ImportPage })))
 
 function PageFallback() {
@@ -60,6 +61,7 @@ export default function App() {
                 <Route path="/yearly" element={<YearlyViewPage />} />
                 <Route path="/trz" element={<TrzPage />} />
                 <Route path="/checklist" element={<ChecklistPage />} />
+                <Route path="/profiles" element={<ClientProfilesPage />} />
                 <Route path="/opportunities" element={
                   <ProtectedRoute allowedRoles={['admin']}><OpportunitiesPage /></ProtectedRoute>
                 } />
