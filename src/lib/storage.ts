@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -831,6 +831,39 @@ export async function deleteContact(id: string): Promise<void> {
     .from('crm_contacts')
     .delete()
     .eq('id', id)
+  if (error) throw error
+}
+
+// ============================================================
+// Профили на клиенти (бизнес контекст + червени флагове)
+// ============================================================
+
+export async function getClientProfiles(): Promise<ClientProfile[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_client_profile')
+      .select('client_id,business_activity,business_notes,warnings,updated_at,updated_by')
+    if (error) throw error
+    return (data ?? []) as ClientProfile[]
+  })
+}
+
+export async function upsertClientProfile(
+  clientId: string,
+  patch: Partial<Pick<ClientProfile, 'business_activity' | 'business_notes' | 'warnings'>>,
+  updatedBy?: string | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_client_profile')
+    .upsert(
+      {
+        client_id: clientId,
+        ...patch,
+        updated_at: new Date().toISOString(),
+        updated_by: updatedBy ?? null,
+      },
+      { onConflict: 'client_id' },
+    )
   if (error) throw error
 }
 
