@@ -1,11 +1,11 @@
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Search, AlertTriangle, Briefcase, FileText } from 'lucide-react'
+import { Search, AlertTriangle, Briefcase, FileText, Star } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import {
-  useClients, useColumns, useCellValues, useClientProfiles, useInvalidateCrm,
+  useClients, useColumns, useCellValues, useDropdownOptions, useClientProfiles, useInvalidateCrm,
 } from '../lib/queries'
-import { upsertClientProfile } from '../lib/storage'
+import { upsertClientProfile, setCellValue } from '../lib/storage'
 import type { ClientProfile } from '../lib/types'
 
 type ProfileField = 'business_activity' | 'business_notes' | 'warnings'
@@ -41,17 +41,56 @@ function ProfileCell({
   )
 }
 
+// Цвят за всяка стойност на оценката — еднакъв с този в Работен лист, за да
+// колегите разпознаят клиента и тук.
+const RATING_COLORS: Record<string, string> = {
+  'Ок':         'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
+  'Обемен':     'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
+  'Изискващ':   'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800',
+  'Проблемен':  'bg-red-100 text-red-800 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800',
+}
+
+// Dropdown за оценка на клиента — записва се директно в crm_cell_values
+// (същата колона, която се вижда и в Работен лист). Без миграция на данни.
+function RatingCell({
+  value, options, onSave,
+}: {
+  value: string  // option ID или ''
+  options: { id: string; value: string }[]
+  onSave: (optionId: string | null) => void
+}) {
+  const current = options.find(o => o.id === value)
+  const accent = current ? RATING_COLORS[current.value] ?? 'bg-muted text-foreground border-border' : ''
+  return (
+    <select
+      value={value}
+      onChange={e => onSave(e.target.value || null)}
+      className={
+        'w-full h-7 px-2 text-xs border rounded focus:border-primary focus:outline-none ' +
+        (current ? accent : 'bg-background border-border text-muted-foreground')
+      }
+    >
+      <option value="">—</option>
+      {options.map(o => (
+        <option key={o.id} value={o.id}>{o.value}</option>
+      ))}
+    </select>
+  )
+}
+
 export function ClientProfilesPage() {
   const { user } = useAuth()
   const clientsQ = useClients()
   const columnsQ = useColumns()
   const cellsQ = useCellValues()
+  const dropdownsQ = useDropdownOptions()
   const profilesQ = useClientProfiles()
-  const { invalidateClientProfiles } = useInvalidateCrm()
+  const { invalidateClientProfiles, invalidateCells } = useInvalidateCrm()
 
   const clients = useMemo(() => clientsQ.data ?? [], [clientsQ.data])
   const columns = useMemo(() => columnsQ.data ?? [], [columnsQ.data])
   const cells = useMemo(() => cellsQ.data ?? [], [cellsQ.data])
+  const dropdowns = useMemo(() => dropdownsQ.data ?? [], [dropdownsQ.data])
 
   // Името на фирмата е стойността от първата text колона (както на другите страници).
   const nameColId = useMemo(
@@ -66,6 +105,30 @@ export function ClientProfilesPage() {
     })
     return m
   }, [cells, nameColId])
+
+  // ============================================================
+  // „Оценка на клиент" — четем и пишем директно в crm_cell_values,
+  // т.е. ползваме съществуващата dropdown колона от Работен лист.
+  // Така няма дублиране на данни между двата екрана.
+  // ============================================================
+  const ratingCol = useMemo(
+    () => columns.find(c => c.name === 'Оценка на клиент' && c.type === 'dropdown'),
+    [columns],
+  )
+  const ratingOptions = useMemo(
+    () => dropdowns
+      .filter(o => o.column_id === ratingCol?.id)
+      .sort((a, b) => a.position - b.position),
+    [dropdowns, ratingCol?.id],
+  )
+  const ratingByClient = useMemo(() => {
+    const m = new Map<string, string>()  // client_id → option_id
+    if (!ratingCol) return m
+    cells.forEach(c => {
+      if (c.column_id === ratingCol.id && c.value_dropdown) m.set(c.client_id, c.value_dropdown)
+    })
+    return m
+  }, [cells, ratingCol])
 
   // Profile-ите по client_id за бърз lookup.
   const profileByClient = useMemo(() => {
@@ -83,15 +146,16 @@ export function ClientProfilesPage() {
       clientId: c.id,
       name: nameByClient.get(c.id) ?? '—',
       profile: profileByClient.get(c.id),
+      ratingOptionId: ratingByClient.get(c.id) ?? '',
     }))
     const q = search.trim().toLowerCase()
     const filtered = q
       ? all.filter(r => r.name.toLowerCase().includes(q))
       : all
     return filtered.sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, nameByClient, profileByClient, search])
+  }, [clients, nameByClient, profileByClient, ratingByClient, search])
 
-  const ready = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!profilesQ.data
+  const ready = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!dropdownsQ.data && !!profilesQ.data
 
   // ============================================================
   // Запис на едно поле — optimistic update в RQ кеша + invalidate.
@@ -111,6 +175,37 @@ export function ClientProfilesPage() {
       })
     }
   }, [user?.id, invalidateClientProfiles])
+
+  const saveRating = useCallback(async (clientId: string, optionId: string | null) => {
+    if (!ratingCol) return
+    setSavingFor(prev => new Set(prev).add(clientId + ':rating'))
+    try {
+      const oldOpt = ratingOptions.find(o => o.id === ratingByClient.get(clientId))
+      const newOpt = ratingOptions.find(o => o.id === optionId)
+      await setCellValue(
+        clientId,
+        ratingCol.id,
+        { value_dropdown: optionId },
+        {
+          userId: user?.id,
+          userName: user?.full_name,
+          clientName: nameByClient.get(clientId),
+          columnName: ratingCol.name,
+          oldDisplay: oldOpt?.value ?? '',
+          newDisplay: newOpt?.value ?? '',
+        },
+      )
+      await invalidateCells()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при запис')
+    } finally {
+      setSavingFor(prev => {
+        const next = new Set(prev)
+        next.delete(clientId + ':rating')
+        return next
+      })
+    }
+  }, [ratingCol, ratingOptions, ratingByClient, nameByClient, user?.id, user?.full_name, invalidateCells])
 
   // ============================================================
   // Брой попълнени профили (за статистика горе).
@@ -136,6 +231,8 @@ export function ClientProfilesPage() {
       </div>
     )
   }
+
+  const colCount = ratingCol ? 5 : 4
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
@@ -178,6 +275,14 @@ export function ClientProfilesPage() {
               <th className="text-left px-3 py-2 font-semibold text-foreground min-w-[200px] sticky left-0 bg-card z-20">
                 Фирма
               </th>
+              {ratingCol && (
+                <th className="text-left px-3 py-2 font-semibold text-foreground min-w-[130px]">
+                  <div className="flex items-center gap-1.5">
+                    <Star className="h-3.5 w-3.5 text-muted-foreground" />
+                    Оценка
+                  </div>
+                </th>
+              )}
               <th className="text-left px-3 py-2 font-semibold text-foreground min-w-[200px]">
                 <div className="flex items-center gap-1.5">
                   <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
@@ -201,15 +306,24 @@ export function ClientProfilesPage() {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={4} className="text-center py-12 text-muted-foreground">
+                <td colSpan={colCount} className="text-center py-12 text-muted-foreground">
                   {search ? 'Няма намерени фирми.' : 'Няма клиенти.'}
                 </td>
               </tr>
-            ) : rows.map(({ clientId, name, profile }) => (
+            ) : rows.map(({ clientId, name, profile, ratingOptionId }) => (
               <tr key={clientId} className="border-b border-border hover:bg-accent/30">
                 <td className="px-3 py-2 sticky left-0 bg-background z-10 border-r border-border align-top">
                   <div className="font-medium text-foreground">{name}</div>
                 </td>
+                {ratingCol && (
+                  <td className="px-3 py-2 align-top">
+                    <RatingCell
+                      value={ratingOptionId}
+                      options={ratingOptions}
+                      onSave={opt => saveRating(clientId, opt)}
+                    />
+                  </td>
+                )}
                 <td className="px-3 py-2 align-top">
                   <ProfileCell
                     value={profile?.business_activity ?? ''}
