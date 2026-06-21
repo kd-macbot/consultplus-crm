@@ -492,12 +492,16 @@ function Art55Table({ rows, year, canEdit, onPatchStatus }: {
                 const status = r.statuses.get(q.q)
                 const hasEntries = entries.length > 0
                 const breakdown = groupArt55ByType(entries)
-                const showBreakdown = breakdown.length > 1
+                // 0 типа → празна клетка; 1 тип → ред с етикет (без втори ред „общо");
+                // 2+ типа → редове по тип + сепаратор + ред с обща сума.
+                const showTotalRow = breakdown.length > 1
                 return (
                   <Fragment key={q.q}>
-                    {/* Бруто — при 2+ типа доход показваме разбивка с малък етикет; иначе само сумата. */}
+                    {/* Бруто — винаги с етикет на типа отляво (вкл. при 1 тип) за консистентност. */}
                     <td className="px-2 py-1 text-right tabular-nums text-muted-foreground align-top">
-                      {showBreakdown ? (
+                      {breakdown.length === 0 ? (
+                        fmt(gross)
+                      ) : (
                         <div className="space-y-0.5">
                           {breakdown.map(b => (
                             <div key={b.type} className="flex items-center justify-end gap-1.5 text-[10px] leading-tight">
@@ -505,25 +509,27 @@ function Art55Table({ rows, year, canEdit, onPatchStatus }: {
                               <span>{fmt(b.gross)}</span>
                             </div>
                           ))}
-                          <div className="border-t border-border/40 pt-0.5 text-xs">{fmt(gross)}</div>
+                          {showTotalRow && (
+                            <div className="border-t border-border/40 pt-0.5 text-xs">{fmt(gross)}</div>
+                          )}
                         </div>
-                      ) : (
-                        fmt(gross)
                       )}
                     </td>
-                    {/* Данък — същата подредба по тип, но без етикет (подравнено с Бруто). */}
+                    {/* Данък — същата подредба, без етикет (подравнено с Бруто). */}
                     <td className="px-2 py-1 text-right tabular-nums font-semibold align-top">
-                      {showBreakdown ? (
+                      {breakdown.length === 0 ? (
+                        fmt(tax)
+                      ) : (
                         <div className="space-y-0.5">
                           {breakdown.map(b => (
                             <div key={b.type} className="text-[10px] font-normal leading-tight text-foreground/80">
                               {fmt(b.tax)}
                             </div>
                           ))}
-                          <div className="border-t border-border/40 pt-0.5 text-xs">{fmt(tax)}</div>
+                          {showTotalRow && (
+                            <div className="border-t border-border/40 pt-0.5 text-xs">{fmt(tax)}</div>
+                          )}
                         </div>
-                      ) : (
-                        fmt(tax)
                       )}
                     </td>
                     <td className="px-2 py-1 text-center text-xs text-muted-foreground align-top">
