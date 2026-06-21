@@ -20,6 +20,7 @@ export interface Column {
   created_by: string
   created_at: string
   staff_department?: string // if set, dropdown pulls from crm_staff filtered by department
+  is_hidden?: boolean // ако true → не се рендерира в Работен лист/Клиенти, но данните остават
 }
 
 export interface DropdownOption {

@@ -151,6 +151,7 @@ export async function getColumns(): Promise<Column[]> {
       created_by: c.created_by,
       created_at: c.created_at,
       staff_department: c.staff_department,
+      is_hidden: c.is_hidden ?? false,
     }))
   })
 }
@@ -264,6 +265,19 @@ export async function updateColumn(id: string, updates: Partial<Column>) {
   const { error } = await supabase
     .from('crm_columns')
     .update(updates)
+    .eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * Скрива/показва колона в Работен лист и Клиенти. Не изтрива данни — само
+ * филтрира рендера. Може да се върне с set false. Колоната остава
+ * достъпна за други екрани (напр. Профили), които я търсят по име.
+ */
+export async function setColumnHidden(id: string, hidden: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('crm_columns')
+    .update({ is_hidden: hidden })
     .eq('id', id)
   if (error) throw error
 }

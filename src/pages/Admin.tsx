@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { getColumns, addColumn, deleteColumn, getDropdownOptions, addDropdownOption, deleteDropdownOption, clearAll, getTags, createTag, deleteTag, getAllProfiles, updateProfile, setColumnStaffDepartment } from '../lib/storage'
+import { getColumns, addColumn, deleteColumn, getDropdownOptions, addDropdownOption, deleteDropdownOption, clearAll, getTags, createTag, deleteTag, getAllProfiles, updateProfile, setColumnStaffDepartment, setColumnHidden } from '../lib/storage'
 import { adminCreateUser } from '../lib/auth'
 import type { Column, ColumnType, DropdownOption, Tag, Profile, Role } from '../lib/types'
 import { useAuth } from '../lib/auth'
-import { Plus, Trash2, ChevronDown, ChevronRight, UserPlus, Pencil, ShieldCheck, ShieldOff } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronRight, UserPlus, Pencil, ShieldCheck, ShieldOff, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -339,9 +339,12 @@ export function AdminPage() {
           <div className="space-y-1.5">
             {columns.map((col, i) => (
               <div key={col.id}>
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${editingDropdown === col.id ? 'bg-amber-50 ring-1 ring-amber-200' : 'hover:bg-muted/50'}`}>
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${editingDropdown === col.id ? 'bg-amber-50 ring-1 ring-amber-200' : 'hover:bg-muted/50'} ${col.is_hidden ? 'opacity-60' : ''}`}>
                   <span className="w-5 text-xs text-muted-foreground/50 shrink-0">{i + 1}</span>
                   <span className="flex-1 text-sm font-medium truncate">{col.name}</span>
+                  {col.is_hidden && (
+                    <Badge variant="muted" className="text-[10px] shrink-0">скрита</Badge>
+                  )}
                   <Badge variant="muted" className="text-[10px] shrink-0">{TYPE_LABELS[col.type]}</Badge>
                   {col.staff_department === '__sub__' && (
                     <Badge variant="success" className="text-[10px] shrink-0">абонаменти</Badge>
@@ -369,6 +372,19 @@ export function AdminPage() {
                       🔗 Отдел
                     </Button>
                   )}
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+                    title={col.is_hidden ? 'Покажи в Работен лист' : 'Скрий от Работен лист (данните остават)'}
+                    onClick={async () => {
+                      try {
+                        await setColumnHidden(col.id, !col.is_hidden)
+                        toast.success(col.is_hidden ? `Колона „${col.name}" е видима` : `Колона „${col.name}" е скрита`)
+                        await loadColumns()
+                      } catch (e: any) {
+                        toast.error(e.message ?? 'Грешка')
+                      }
+                    }}>
+                    {col.is_hidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </Button>
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive/60 hover:text-destructive shrink-0"
                     onClick={() => setConfirmDeleteCol({ id: col.id, name: col.name })}>
                     <Trash2 className="h-3.5 w-3.5" />
