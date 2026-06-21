@@ -3,6 +3,7 @@ import { getColumns, addColumn, deleteColumn, getDropdownOptions, addDropdownOpt
 import { adminCreateUser } from '../lib/auth'
 import type { Column, ColumnType, DropdownOption, Tag, Profile, Role } from '../lib/types'
 import { useAuth } from '../lib/auth'
+import { useInvalidateCrm } from '../lib/queries'
 import { Plus, Trash2, ChevronDown, ChevronRight, UserPlus, Pencil, ShieldCheck, ShieldOff, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -39,6 +40,7 @@ const selectClass = "h-9 rounded-md border border-input bg-background px-3 text-
 
 export function AdminPage() {
   const { user } = useAuth()
+  const { invalidateColumns } = useInvalidateCrm()
   const [columns, setColumns] = useState<Column[]>([])
   const [loading, setLoading] = useState(true)
   const [newColName, setNewColName] = useState('')
@@ -379,6 +381,8 @@ export function AdminPage() {
                         await setColumnHidden(col.id, !col.is_hidden)
                         toast.success(col.is_hidden ? `Колона „${col.name}" е видима` : `Колона „${col.name}" е скрита`)
                         await loadColumns()
+                        // Презареди и споделения RQ кеш, за да усетят Работен лист/Клиенти промяната веднага.
+                        await invalidateColumns()
                       } catch (e: any) {
                         toast.error(e.message ?? 'Грешка')
                       }
