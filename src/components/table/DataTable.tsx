@@ -213,9 +213,9 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const allClientTags = useMemo(() => clientTagsQ.data ?? [], [clientTagsQ.data])
   const staffList: StaffMember[] = useMemo(() => staffQ.data ?? [], [staffQ.data])
   const allContacts = useMemo(() => contactsQ.data ?? [], [contactsQ.data])
-  // Скриваме „Хонорар" и __sub__ системните колони от грида.
+  // Скриваме „Хонорар", __sub__ системните колони и ръчно скритите от admin.
   const columns = useMemo(
-    () => (columnsQ.data ?? []).filter((c: Column) => c.name !== 'Хонорар' && c.staff_department !== '__sub__'),
+    () => (columnsQ.data ?? []).filter((c: Column) => c.name !== 'Хонорар' && c.staff_department !== '__sub__' && !c.is_hidden),
     [columnsQ.data],
   )
 
