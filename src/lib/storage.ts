@@ -867,18 +867,20 @@ export async function upsertClientProfile(
   patch: Partial<Pick<ClientProfile, 'business_activity' | 'business_notes' | 'warnings'>>,
   updatedBy?: string | null,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('crm_client_profile')
-    .upsert(
-      {
-        client_id: clientId,
-        ...patch,
-        updated_at: new Date().toISOString(),
-        updated_by: updatedBy ?? null,
-      },
-      { onConflict: 'client_id' },
-    )
-  if (error) throw error
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_client_profile')
+      .upsert(
+        {
+          client_id: clientId,
+          ...patch,
+          updated_at: new Date().toISOString(),
+          updated_by: updatedBy ?? null,
+        },
+        { onConflict: 'client_id' },
+      )
+    if (error) throw error
+  })())
 }
 
 // ============================================================
@@ -900,30 +902,34 @@ export async function upsertPaymentConfig(
   patch: Partial<Pick<PaymentConfig, 'payment_types' | 'bank' | 'notes'>>,
   updatedBy?: string | null,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('crm_payment_config')
-    .upsert(
-      {
-        client_id: clientId,
-        ...patch,
-        updated_at: new Date().toISOString(),
-        updated_by: updatedBy ?? null,
-      },
-      { onConflict: 'client_id' },
-    )
-  if (error) throw error
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_payment_config')
+      .upsert(
+        {
+          client_id: clientId,
+          ...patch,
+          updated_at: new Date().toISOString(),
+          updated_by: updatedBy ?? null,
+        },
+        { onConflict: 'client_id' },
+      )
+    if (error) throw error
+  })())
 }
 
 export async function deletePaymentConfig(clientId: string): Promise<void> {
-  // Триене на конфигурацията изтрива и статусите (FK ON DELETE CASCADE).
-  const { error } = await supabase
-    .from('crm_payment_config')
-    .delete()
-    .eq('client_id', clientId)
-  if (error) throw error
-  // Освен това чистим всички свързани status редове за този клиент,
-  // защото те нямат FK към конфигурацията — само към client.
-  await supabase.from('crm_payment_status').delete().eq('client_id', clientId)
+  await trackSave((async () => {
+    // Триене на конфигурацията изтрива и статусите (FK ON DELETE CASCADE).
+    const { error } = await supabase
+      .from('crm_payment_config')
+      .delete()
+      .eq('client_id', clientId)
+    if (error) throw error
+    // Освен това чистим всички свързани status редове за този клиент,
+    // защото те нямат FK към конфигурацията — само към client.
+    await supabase.from('crm_payment_status').delete().eq('client_id', clientId)
+  })())
 }
 
 export async function getPaymentStatuses(year: number): Promise<PaymentStatus[]> {
@@ -945,23 +951,25 @@ export async function setPaymentStatus(
   paid: boolean,
   updatedBy?: string | null,
 ): Promise<void> {
-  const now = new Date().toISOString()
-  const { error } = await supabase
-    .from('crm_payment_status')
-    .upsert(
-      {
-        client_id: clientId,
-        payment_type: paymentType,
-        year,
-        month,
-        paid,
-        paid_at: paid ? now : null,
-        updated_at: now,
-        updated_by: updatedBy ?? null,
-      },
-      { onConflict: 'client_id,payment_type,year,month' },
-    )
-  if (error) throw error
+  await trackSave((async () => {
+    const now = new Date().toISOString()
+    const { error } = await supabase
+      .from('crm_payment_status')
+      .upsert(
+        {
+          client_id: clientId,
+          payment_type: paymentType,
+          year,
+          month,
+          paid,
+          paid_at: paid ? now : null,
+          updated_at: now,
+          updated_by: updatedBy ?? null,
+        },
+        { onConflict: 'client_id,payment_type,year,month' },
+      )
+    if (error) throw error
+  })())
 }
 
 export interface EikLookupFields {
