@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -998,6 +998,104 @@ export async function setPaymentStatusBulk(
     const { error } = await supabase
       .from('crm_payment_status')
       .upsert(payload, { onConflict: 'client_id,payment_type,year,month' })
+    if (error) throw error
+  })())
+}
+
+// ============================================================
+// Календар на присъствие — отсъствия и годишен баланс на отпуска
+// ============================================================
+
+export async function getAbsences(year: number): Promise<Absence[]> {
+  // Връща всички отсъствия, които се припокриват с дадената година.
+  // Един запис може да започне в дек. и продължи в ян. на следващата —
+  // и в двете години се връща.
+  return withRetry(async () => {
+    const yearStart = `${year}-01-01`
+    const yearEnd = `${year}-12-31`
+    const { data, error } = await supabase
+      .from('crm_absences')
+      .select('id,staff_id,start_date,end_date,type,notes,created_by,created_at,updated_at')
+      .lte('start_date', yearEnd)
+      .gte('end_date', yearStart)
+      .order('start_date')
+    if (error) throw error
+    return (data ?? []) as Absence[]
+  })
+}
+
+export async function addAbsence(
+  patch: Pick<Absence, 'staff_id' | 'start_date' | 'end_date' | 'type'> & { notes?: string | null },
+  createdBy?: string | null,
+): Promise<Absence> {
+  return await trackSave((async () => {
+    const { data, error } = await supabase
+      .from('crm_absences')
+      .insert([{
+        staff_id: patch.staff_id,
+        start_date: patch.start_date,
+        end_date: patch.end_date,
+        type: patch.type,
+        notes: patch.notes ?? null,
+        created_by: createdBy ?? null,
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data as Absence
+  })())
+}
+
+export async function updateAbsence(
+  id: string,
+  patch: Partial<Pick<Absence, 'start_date' | 'end_date' | 'type' | 'notes'>>,
+): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_absences')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function deleteAbsence(id: string): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase.from('crm_absences').delete().eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function getVacationQuotas(year: number): Promise<VacationQuota[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_vacation_quota')
+      .select('staff_id,year,prev_years_days,current_year_days,additional_days,daily_rate,insurance_pct,termination_date,compensation_days,updated_at,updated_by')
+      .eq('year', year)
+    if (error) throw error
+    return (data ?? []) as VacationQuota[]
+  })
+}
+
+export async function upsertVacationQuota(
+  staffId: string,
+  year: number,
+  patch: Partial<Pick<VacationQuota, 'prev_years_days' | 'current_year_days' | 'additional_days' | 'daily_rate' | 'insurance_pct' | 'termination_date' | 'compensation_days'>>,
+  updatedBy?: string | null,
+): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_vacation_quota')
+      .upsert(
+        {
+          staff_id: staffId,
+          year,
+          ...patch,
+          updated_at: new Date().toISOString(),
+          updated_by: updatedBy ?? null,
+        },
+        { onConflict: 'staff_id,year' },
+      )
     if (error) throw error
   })())
 }
