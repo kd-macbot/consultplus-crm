@@ -63,7 +63,9 @@ export default function App() {
                 <Route path="/trz" element={<TrzPage />} />
                 <Route path="/checklist" element={<ChecklistPage />} />
                 <Route path="/profiles" element={<ClientProfilesPage />} />
-                <Route path="/payments" element={<PaymentsPage />} />
+                <Route path="/payments" element={
+                  <ProtectedRoute allowedRoles={['admin', 'manager']}><PaymentsPage /></ProtectedRoute>
+                } />
                 <Route path="/opportunities" element={
                   <ProtectedRoute allowedRoles={['admin']}><OpportunitiesPage /></ProtectedRoute>
                 } />
