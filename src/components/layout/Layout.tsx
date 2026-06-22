@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useStaff, usePaymentConfigs, usePaymentStatuses } from '../../lib/queries'
+import { previousMonth } from '../../lib/utils'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
   ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote,
@@ -73,24 +74,24 @@ export function Layout() {
   )
 
   // ============================================================
-  // Бадж за „Плащания" — брой неплатени за текущия месец.
-  // Зареждаме само за admin/manager (те виждат страницата), за останалите
-  // потребители това би било излишен fetch. RQ хук-овете и без това
-  // кешират резултата, така че няма повторни заявки между страниците.
+  // Бадж за „Плащания" — брой неплатени за РАБОТНИЯ месец (предходния).
+  // В счетоводството „работен месец" = предходният календарен месец
+  // (напр. в март обработваме февруарските срокове). Това е същата
+  // конвенция като в Личен чек лист и работен лист за ДДС.
+  //
+  // Зареждаме само за admin/manager (те виждат страницата). RQ кешира.
   // ============================================================
   const showPaymentsBadge = user?.role === 'admin' || user?.role === 'manager'
-  const now = new Date()
-  const currentYear = now.getFullYear()
-  const currentMonth = now.getMonth() + 1
+  const work = useMemo(() => previousMonth(), [])
   const paymentConfigsQ = usePaymentConfigs()
-  const paymentStatusesQ = usePaymentStatuses(showPaymentsBadge ? currentYear : 0)
+  const paymentStatusesQ = usePaymentStatuses(showPaymentsBadge ? work.year : 0)
   const paymentsUnpaid = useMemo(() => {
     if (!showPaymentsBadge) return 0
     const configs = paymentConfigsQ.data ?? []
     const statuses = paymentStatusesQ.data ?? []
     const paidIdx = new Set<string>()
     statuses.forEach(s => {
-      if (s.month === currentMonth && s.paid) paidIdx.add(`${s.client_id}|${s.payment_type}`)
+      if (s.month === work.month && s.paid) paidIdx.add(`${s.client_id}|${s.payment_type}`)
     })
     let unpaid = 0
     configs.forEach(c => {
@@ -99,7 +100,7 @@ export function Layout() {
       })
     })
     return unpaid
-  }, [showPaymentsBadge, paymentConfigsQ.data, paymentStatusesQ.data, currentMonth])
+  }, [showPaymentsBadge, paymentConfigsQ.data, paymentStatusesQ.data, work.month])
 
   const badges: Record<string, number> = { paymentsUnpaid: paymentsUnpaid }
 
@@ -201,7 +202,7 @@ export function Layout() {
                           <span className="flex-1">{item.label}</span>
                           {badgeCount > 0 && (
                             <span
-                              title={`${badgeCount} неплатени за този месец`}
+                              title={`${badgeCount} неплатени за работния месец`}
                               className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold bg-amber-500 text-white shrink-0"
                             >
                               {badgeCount > 99 ? '99+' : badgeCount}
