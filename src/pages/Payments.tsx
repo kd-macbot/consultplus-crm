@@ -9,7 +9,7 @@ import {
 import {
   upsertPaymentConfig, deletePaymentConfig, setPaymentStatus,
 } from '../lib/storage'
-import { PAYMENT_TYPES, PAYMENT_TYPE_COLORS, type PaymentConfig, type PaymentStatus } from '../lib/types'
+import { PAYMENT_TYPES, PAYMENT_TYPE_COLORS, BANKS, type PaymentConfig, type PaymentStatus } from '../lib/types'
 
 const MONTHS = [
   'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни',
@@ -336,18 +336,23 @@ export function PaymentsPage() {
 // ============================================================
 // Inline cells
 // ============================================================
+// Банка — dropdown от списъка на БНБ. Запазва веднага при промяна.
+// Допуска и стойности извън списъка (наследени), за да не „пропаднат" стари
+// записи, ако някоя банка беше въведена ръчно преди.
 function BankCell({ value, onSave }: { value: string; onSave: (v: string) => void }) {
-  const [draft, setDraft] = useState(value)
-  useEffect(() => { setDraft(value) }, [value])
+  const isCustom = value && !BANKS.includes(value as typeof BANKS[number])
   return (
-    <input
-      type="text"
-      value={draft}
-      onChange={e => setDraft(e.target.value)}
-      onBlur={() => { if (draft !== value) onSave(draft) }}
-      placeholder="—"
-      className="w-full h-7 px-2 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
-    />
+    <select
+      value={value}
+      onChange={e => onSave(e.target.value)}
+      className="w-full h-7 px-1 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
+    >
+      <option value="">—</option>
+      {BANKS.map(b => (
+        <option key={b} value={b}>{b}</option>
+      ))}
+      {isCustom && <option value={value}>{value} (стара)</option>}
+    </select>
   )
 }
 
@@ -472,13 +477,16 @@ function AddClientModal({
           {/* Bank */}
           <div>
             <label className="text-xs font-medium text-foreground block mb-1">Банка</label>
-            <input
-              type="text"
+            <select
               value={bank}
               onChange={e => setBank(e.target.value)}
-              placeholder="напр. ПроКредит, УниКредит..."
               className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
-            />
+            >
+              <option value="">— избери банка —</option>
+              {BANKS.map(b => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
           </div>
 
           {/* Notes */}
