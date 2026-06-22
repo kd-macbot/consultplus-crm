@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
-import { useStaff } from '../../lib/queries'
+import { useStaff, usePaymentConfigs, usePaymentStatuses } from '../../lib/queries'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
   ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote,
@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean }
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKey?: 'paymentsUnpaid' }
 type NavSection = { title: string | null; items: NavItem[] }
 
 const NAV_SECTIONS: NavSection[] = [
@@ -32,7 +32,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/checklist', label: 'Личен чек лист', icon: ListChecks, roles: ['admin', 'manager', 'employee'], hideForTrz: true },
       { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
       { to: '/profiles', label: 'Профили', icon: IdCard, roles: ['admin', 'manager', 'employee'] },
-      { to: '/payments', label: 'Плащания', icon: Banknote, roles: ['admin', 'manager'] },
+      { to: '/payments', label: 'Плащания', icon: Banknote, roles: ['admin', 'manager'], badgeKey: 'paymentsUnpaid' },
     ],
   },
   {
@@ -71,6 +71,37 @@ export function Layout() {
     () => (staffQ.data ?? []).find(s => s.full_name === user?.full_name)?.department === 'ТРЗ',
     [staffQ.data, user?.full_name],
   )
+
+  // ============================================================
+  // Бадж за „Плащания" — брой неплатени за текущия месец.
+  // Зареждаме само за admin/manager (те виждат страницата), за останалите
+  // потребители това би било излишен fetch. RQ хук-овете и без това
+  // кешират резултата, така че няма повторни заявки между страниците.
+  // ============================================================
+  const showPaymentsBadge = user?.role === 'admin' || user?.role === 'manager'
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1
+  const paymentConfigsQ = usePaymentConfigs()
+  const paymentStatusesQ = usePaymentStatuses(showPaymentsBadge ? currentYear : 0)
+  const paymentsUnpaid = useMemo(() => {
+    if (!showPaymentsBadge) return 0
+    const configs = paymentConfigsQ.data ?? []
+    const statuses = paymentStatusesQ.data ?? []
+    const paidIdx = new Set<string>()
+    statuses.forEach(s => {
+      if (s.month === currentMonth && s.paid) paidIdx.add(`${s.client_id}|${s.payment_type}`)
+    })
+    let unpaid = 0
+    configs.forEach(c => {
+      c.payment_types.forEach(t => {
+        if (!paidIdx.has(`${c.client_id}|${t}`)) unpaid++
+      })
+    })
+    return unpaid
+  }, [showPaymentsBadge, paymentConfigsQ.data, paymentStatusesQ.data, currentMonth])
+
+  const badges: Record<string, number> = { paymentsUnpaid: paymentsUnpaid }
 
   const handleLogout = () => {
     logout()
@@ -150,6 +181,7 @@ export function Layout() {
                 )}
                 {visibleItems.map(item => {
                   const Icon = item.icon
+                  const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0
                   return (
                     <NavLink
                       key={item.to}
@@ -167,6 +199,14 @@ export function Layout() {
                         <>
                           <Icon className={cn('h-4 w-4 shrink-0 transition-colors', isActive ? 'text-white' : 'text-white/50 group-hover:text-white/80')} />
                           <span className="flex-1">{item.label}</span>
+                          {badgeCount > 0 && (
+                            <span
+                              title={`${badgeCount} неплатени за този месец`}
+                              className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold bg-amber-500 text-white shrink-0"
+                            >
+                              {badgeCount > 99 ? '99+' : badgeCount}
+                            </span>
+                          )}
                           {isActive && <ChevronRight className="h-3 w-3 text-white/40" />}
                         </>
                       )}
