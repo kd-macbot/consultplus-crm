@@ -382,6 +382,60 @@ export interface PaymentStatus {
   updated_by: string | null
 }
 
+// ============================================================
+// Календар на присъствие + Справка за отпуска
+// ============================================================
+export const ABSENCE_TYPES = ['vacation', 'sick', 'business', 'remote', 'maternity', 'study', 'unpaid'] as const
+export type AbsenceType = typeof ABSENCE_TYPES[number]
+
+export const ABSENCE_TYPE_LABELS: Record<AbsenceType, string> = {
+  vacation:  'Отпуска',
+  sick:      'Болничен',
+  business:  'Служебно',
+  remote:    'Дистанционно',
+  maternity: 'Майчинство',
+  study:     'Учебен',
+  unpaid:    'Без заплащане',
+}
+
+// Цветовете за календарната клетка. Vacation е зелено (платен отпуск),
+// болничен червен и т.н. Подравнени с тон от другите страници.
+export const ABSENCE_TYPE_COLORS: Record<AbsenceType, string> = {
+  vacation:  'bg-emerald-500 text-white',
+  sick:      'bg-red-500 text-white',
+  business:  'bg-amber-500 text-white',
+  remote:    'bg-violet-500 text-white',
+  maternity: 'bg-pink-500 text-white',
+  study:     'bg-blue-500 text-white',
+  unpaid:    'bg-gray-400 text-white',
+}
+
+export interface Absence {
+  id: string
+  staff_id: string
+  start_date: string  // ISO date (YYYY-MM-DD)
+  end_date: string
+  type: AbsenceType | string
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface VacationQuota {
+  staff_id: string
+  year: number
+  prev_years_days: number      // От минали години
+  current_year_days: number    // За текуща година
+  additional_days: number      // Допълнителен
+  daily_rate: number | null
+  insurance_pct: number | null
+  termination_date: string | null
+  compensation_days: number | null
+  updated_at: string
+  updated_by: string | null
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory

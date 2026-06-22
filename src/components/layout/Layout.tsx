@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
-import { useStaff, usePaymentConfigs, usePaymentStatuses } from '../../lib/queries'
+import { useStaff, usePaymentConfigs, usePaymentStatuses, useAbsences } from '../../lib/queries'
 import { previousMonth } from '../../lib/utils'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
-  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote,
+  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKey?: 'paymentsUnpaid' }
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKey?: 'paymentsUnpaid' | 'absentToday'; showOnlyForTrzOrAdmin?: boolean }
 type NavSection = { title: string | null; items: NavItem[] }
 
 const NAV_SECTIONS: NavSection[] = [
@@ -34,6 +34,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
       { to: '/profiles', label: 'Профили', icon: IdCard, roles: ['admin', 'manager', 'employee'] },
       { to: '/payments', label: 'Плащания', icon: Banknote, roles: ['admin', 'manager'], badgeKey: 'paymentsUnpaid' },
+      { to: '/calendar', label: 'Календар', icon: CalendarDays, roles: ['admin', 'manager', 'employee'], badgeKey: 'absentToday' },
     ],
   },
   {
@@ -48,6 +49,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Администрация',
     items: [
       { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },
+      { to: '/vacations', label: 'Справка отпуска', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
       { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin'] },
       { to: '/admin', label: 'Настройки', icon: Settings, roles: ['admin'] },
     ],
@@ -82,6 +84,7 @@ export function Layout() {
   // Зареждаме само за admin/manager (те виждат страницата). RQ кешира.
   // ============================================================
   const showPaymentsBadge = user?.role === 'admin' || user?.role === 'manager'
+  const now = useMemo(() => new Date(), [])
   const work = useMemo(() => previousMonth(), [])
   const paymentConfigsQ = usePaymentConfigs()
   const paymentStatusesQ = usePaymentStatuses(showPaymentsBadge ? work.year : 0)
@@ -102,7 +105,23 @@ export function Layout() {
     return unpaid
   }, [showPaymentsBadge, paymentConfigsQ.data, paymentStatusesQ.data, work.month])
 
-  const badges: Record<string, number> = { paymentsUnpaid: paymentsUnpaid }
+  // ============================================================
+  // Бадж за „Календар" — брой служители, отсъстващи ДНЕС.
+  // Зарежда абсенсиите за текущата година (RQ кешира).
+  // ============================================================
+  const todayYear = now.getFullYear()
+  const todayIso = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
+  const absencesQ = useAbsences(todayYear)
+  const absentToday = useMemo(() => {
+    const todays = (absencesQ.data ?? []).filter(a => a.start_date <= todayIso && a.end_date >= todayIso)
+    // Уникални staff_id-та (същ. служител може да има два припокриващи се записа).
+    return new Set(todays.map(a => a.staff_id)).size
+  }, [absencesQ.data, todayIso])
+
+  const badges: Record<string, number> = { paymentsUnpaid: paymentsUnpaid, absentToday }
 
   const handleLogout = () => {
     logout()
@@ -170,7 +189,9 @@ export function Layout() {
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {NAV_SECTIONS.map((section, secIdx) => {
             const visibleItems = section.items.filter(item =>
-              user && item.roles.includes(user.role) && !(item.hideForTrz && isTrz)
+              user && item.roles.includes(user.role)
+                && !(item.hideForTrz && isTrz)
+                && !(item.showOnlyForTrzOrAdmin && user.role !== 'admin' && !isTrz)
             )
             if (visibleItems.length === 0) return null
             return (
@@ -202,8 +223,13 @@ export function Layout() {
                           <span className="flex-1">{item.label}</span>
                           {badgeCount > 0 && (
                             <span
-                              title={`${badgeCount} неплатени за работния месец`}
-                              className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold bg-amber-500 text-white shrink-0"
+                              title={item.badgeKey === 'absentToday'
+                                ? `${badgeCount} ${badgeCount === 1 ? 'отсъстващ' : 'отсъстващи'} днес`
+                                : `${badgeCount} неплатени за работния месец`}
+                              className={cn(
+                                'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold text-white shrink-0',
+                                item.badgeKey === 'absentToday' ? 'bg-sky-500' : 'bg-amber-500',
+                              )}
                             >
                               {badgeCount > 99 ? '99+' : badgeCount}
                             </span>
