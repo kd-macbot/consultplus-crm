@@ -320,6 +320,40 @@ export interface ClientProfile {
   updated_by: string | null
 }
 
+// ============================================================
+// Плащания — банкови плащания, които правим за клиенти
+// ============================================================
+export const PAYMENT_TYPES = ['РЗ', 'осиг', 'ДДС'] as const
+export type PaymentType = typeof PAYMENT_TYPES[number]
+
+// Цветова легенда — синхронизирано с excel таблицата на колегите.
+export const PAYMENT_TYPE_COLORS: Record<string, string> = {
+  'РЗ':   'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800',
+  'осиг': 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
+  'ДДС':  'bg-red-100 text-red-800 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800',
+}
+
+export interface PaymentConfig {
+  client_id: string
+  payment_types: string[]   // [„РЗ", „осиг", „ДДС"]
+  bank: string | null
+  notes: string | null
+  updated_at: string
+  updated_by: string | null
+}
+
+export interface PaymentStatus {
+  id: string
+  client_id: string
+  payment_type: string
+  year: number
+  month: number
+  paid: boolean
+  paid_at: string | null
+  updated_at: string
+  updated_by: string | null
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory

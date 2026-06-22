@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -877,6 +877,89 @@ export async function upsertClientProfile(
         updated_by: updatedBy ?? null,
       },
       { onConflict: 'client_id' },
+    )
+  if (error) throw error
+}
+
+// ============================================================
+// Плащания — банкови плащания за клиенти
+// ============================================================
+
+export async function getPaymentConfigs(): Promise<PaymentConfig[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_payment_config')
+      .select('client_id,payment_types,bank,notes,updated_at,updated_by')
+    if (error) throw error
+    return (data ?? []) as PaymentConfig[]
+  })
+}
+
+export async function upsertPaymentConfig(
+  clientId: string,
+  patch: Partial<Pick<PaymentConfig, 'payment_types' | 'bank' | 'notes'>>,
+  updatedBy?: string | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_payment_config')
+    .upsert(
+      {
+        client_id: clientId,
+        ...patch,
+        updated_at: new Date().toISOString(),
+        updated_by: updatedBy ?? null,
+      },
+      { onConflict: 'client_id' },
+    )
+  if (error) throw error
+}
+
+export async function deletePaymentConfig(clientId: string): Promise<void> {
+  // Триене на конфигурацията изтрива и статусите (FK ON DELETE CASCADE).
+  const { error } = await supabase
+    .from('crm_payment_config')
+    .delete()
+    .eq('client_id', clientId)
+  if (error) throw error
+  // Освен това чистим всички свързани status редове за този клиент,
+  // защото те нямат FK към конфигурацията — само към client.
+  await supabase.from('crm_payment_status').delete().eq('client_id', clientId)
+}
+
+export async function getPaymentStatuses(year: number): Promise<PaymentStatus[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_payment_status')
+      .select('id,client_id,payment_type,year,month,paid,paid_at,updated_at,updated_by')
+      .eq('year', year)
+    if (error) throw error
+    return (data ?? []) as PaymentStatus[]
+  })
+}
+
+export async function setPaymentStatus(
+  clientId: string,
+  paymentType: string,
+  year: number,
+  month: number,
+  paid: boolean,
+  updatedBy?: string | null,
+): Promise<void> {
+  const now = new Date().toISOString()
+  const { error } = await supabase
+    .from('crm_payment_status')
+    .upsert(
+      {
+        client_id: clientId,
+        payment_type: paymentType,
+        year,
+        month,
+        paid,
+        paid_at: paid ? now : null,
+        updated_at: now,
+        updated_by: updatedBy ?? null,
+      },
+      { onConflict: 'client_id,payment_type,year,month' },
     )
   if (error) throw error
 }
