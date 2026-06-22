@@ -973,25 +973,23 @@ export async function setPaymentStatus(
 }
 
 /**
- * Bulk запис на статуси за един (клиент × тип) за множество месеци —
- * по-ефективно от 12 отделни upsert-а при „Маркирай всички" / „Изчисти".
+ * Generic bulk запис на статуси — приема списък от (client × type × year ×
+ * month) tuples и една обща стойност paid. Един batched upsert вместо N
+ * отделни записа. Ползва се за „Маркирай месец X за всички видими".
  */
 export async function setPaymentStatusBulk(
-  clientId: string,
-  paymentType: string,
-  year: number,
-  months: number[],
+  rows: { clientId: string; paymentType: string; year: number; month: number }[],
   paid: boolean,
   updatedBy?: string | null,
 ): Promise<void> {
-  if (months.length === 0) return
+  if (rows.length === 0) return
   await trackSave((async () => {
     const now = new Date().toISOString()
-    const rows = months.map(month => ({
-      client_id: clientId,
-      payment_type: paymentType,
-      year,
-      month,
+    const payload = rows.map(r => ({
+      client_id: r.clientId,
+      payment_type: r.paymentType,
+      year: r.year,
+      month: r.month,
       paid,
       paid_at: paid ? now : null,
       updated_at: now,
@@ -999,7 +997,7 @@ export async function setPaymentStatusBulk(
     }))
     const { error } = await supabase
       .from('crm_payment_status')
-      .upsert(rows, { onConflict: 'client_id,payment_type,year,month' })
+      .upsert(payload, { onConflict: 'client_id,payment_type,year,month' })
     if (error) throw error
   })())
 }
