@@ -32,7 +32,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/checklist', label: 'Личен чек лист', icon: ListChecks, roles: ['admin', 'manager', 'employee'], hideForTrz: true },
       { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
       { to: '/profiles', label: 'Профили', icon: IdCard, roles: ['admin', 'manager', 'employee'] },
-      { to: '/payments', label: 'Плащания', icon: Banknote, roles: ['admin', 'manager', 'employee'] },
+      { to: '/payments', label: 'Плащания', icon: Banknote, roles: ['admin', 'manager'] },
     ],
   },
   {
