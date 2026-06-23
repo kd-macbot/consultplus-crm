@@ -395,7 +395,7 @@ export const ABSENCE_TYPE_LABELS: Record<AbsenceType, string> = {
   remote:    'Дистанционно',
   maternity: 'Майчинство',
   study:     'Учебен',
-  unpaid:    'Без заплащане',
+  unpaid:    'Неплатен',
 }
 
 // Цветовете за календарната клетка. Vacation е зелено (платен отпуск),
