@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, CalendarDays, Plus, Trash2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, Plus, Trash2, X, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import {
@@ -13,6 +13,7 @@ import {
 } from '../lib/types'
 import type { StaffMember as StaffMemberType } from '../lib/storage'
 import { namesMatch } from '../lib/utils'
+import { exportRowsToExcel } from '../lib/export'
 
 const MONTH_NAMES = [
   'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни',
@@ -46,6 +47,36 @@ function workingDaysInYear(start: string, end: string, year: number): number {
     const dow = cur.getDay()
     if (dow !== 0 && dow !== 6) count++
     cur.setDate(cur.getDate() + 1)
+  }
+  return count
+}
+
+// Брой работни дни (Пн-Пт) в конкретен месец, които даден диапазон покрива.
+function workingDaysInMonth(start: string, end: string, year: number, month: number): number {
+  const monthStart = new Date(year, month - 1, 1)
+  const monthEnd = new Date(year, month, 0)
+  const a = new Date(start + 'T00:00:00')
+  const b = new Date(end + 'T00:00:00')
+  const from = a < monthStart ? monthStart : a
+  const to = b > monthEnd ? monthEnd : b
+  if (from > to) return 0
+  let count = 0
+  const cur = new Date(from)
+  while (cur <= to) {
+    const dow = cur.getDay()
+    if (dow !== 0 && dow !== 6) count++
+    cur.setDate(cur.getDate() + 1)
+  }
+  return count
+}
+
+// Брой работни дни (Пн-Пт) в целия месец — за колоната „Раб. дни".
+function workingDaysInMonthTotal(year: number, month: number): number {
+  const monthEnd = new Date(year, month, 0).getDate()
+  let count = 0
+  for (let d = 1; d <= monthEnd; d++) {
+    const dow = new Date(year, month - 1, d).getDay()
+    if (dow !== 0 && dow !== 6) count++
   }
   return count
 }
@@ -129,6 +160,64 @@ export function CalendarPage() {
   )
 
   // ============================================================
+  // Експорт за месеца — справка за ТРЗ (заплати).
+  // Само одобрени отсъствия, работни дни Пн-Пт, активни служители.
+  // Колони: Име | Длъжност | Отдел | Раб. дни | Отпуска | Болничен |
+  //         Служебно | Дистанционно | Майчинство | Учебен | Без запл. |
+  //         Σ Отсъствия | Присъствие
+  // ============================================================
+  const exportMonthly = useCallback(async () => {
+    const totalWorkDays = workingDaysInMonthTotal(year, month)
+    const headers = [
+      'Име', 'Длъжност', 'Отдел', 'Раб. дни',
+      'Отпуска', 'Болничен', 'Служебно', 'Дистанционно', 'Майчинство', 'Учебен', 'Без запл.',
+      'Σ отсъствия', 'Присъствие',
+    ]
+    const rows = staff.map(s => {
+      const perType: Record<string, number> = {
+        vacation: 0, sick: 0, business: 0, remote: 0, maternity: 0, study: 0, unpaid: 0,
+      }
+      absences.forEach(a => {
+        if (a.staff_id !== s.id || a.status !== 'approved') return
+        const days = workingDaysInMonth(a.start_date, a.end_date, year, month)
+        if (days > 0 && perType[a.type as string] !== undefined) {
+          perType[a.type as string] += days
+        }
+      })
+      const totalAbsent = Object.values(perType).reduce((s, x) => s + x, 0)
+      return [
+        s.full_name,
+        '',  // Длъжност — нямаме в crm_staff на текущия модел
+        s.department ?? '',
+        totalWorkDays,
+        perType.vacation, perType.sick, perType.business, perType.remote,
+        perType.maternity, perType.study, perType.unpaid,
+        totalAbsent,
+        Math.max(0, totalWorkDays - totalAbsent),
+      ] as (string | number)[]
+    })
+
+    // Σ ред в края
+    const sums: (string | number)[] = headers.map((_, i) => {
+      if (i < 3) return ''
+      if (i === 3) return staff.length > 0 ? totalWorkDays : 0  // Раб. дни — еднакво за всички
+      return rows.reduce((acc, r) => acc + (Number(r[i]) || 0), 0)
+    })
+    sums[0] = 'Σ'
+
+    const monthLabel = MONTH_NAMES[month - 1]
+    await exportRowsToExcel({
+      headers,
+      rows: [...rows, sums as (string | number)[]],
+      sheetName: `${monthLabel} ${year}`.slice(0, 31),
+      fileName: `Отпуски_${monthLabel}_${year}.xlsx`,
+    })
+    toast.success(`Експортът на ${monthLabel} ${year} е готов`)
+  }, [staff, absences, year, month])
+
+  const canExport = isAdmin || myStaff?.department === 'ТРЗ'
+
+  // ============================================================
   // Месечен grid: дни в месеца → колони. Cell-ите се рендерират в JSX.
   // ============================================================
   const daysCount = daysInMonth(year, month)
@@ -201,6 +290,17 @@ export function CalendarPage() {
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
+            {canExport && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportMonthly}
+                title="Excel справка за ТРЗ — отсъствия за месеца, разбити по тип"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Експорт</span>
+              </Button>
+            )}
           </div>
         </div>
 
