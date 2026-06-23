@@ -417,9 +417,6 @@ export function CalendarPage() {
                 <tr key={s.id} className={`border-b border-border ${rowBg}`}>
                   <td className={`px-3 py-1 font-medium sticky left-0 z-10 ${rowBg} border-r border-border whitespace-nowrap`}>
                     {s.full_name}
-                    {s.department && (
-                      <span className="ml-1 text-[10px] text-muted-foreground">· {s.department}</span>
-                    )}
                     {isMyRow && (
                       <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-sky-500 text-white">ТИ</span>
                     )}
