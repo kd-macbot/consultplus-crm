@@ -163,28 +163,51 @@ export function CalendarPage() {
   // Експорт за месеца — справка за ТРЗ (заплати).
   // Само одобрени отсъствия, работни дни Пн-Пт, активни служители.
   // Колони: Име | Длъжност | Отдел | Раб. дни | Отпуска | Болничен |
-  //         Служебно | Дистанционно | Майчинство | Учебен | Без запл. |
-  //         Σ Отсъствия | Присъствие
+  //         Служебно | Дистанционно | Майчинство | Учебен | Неплатен |
+  //         Σ Отсъствия | Присъствие | Дати на отсъствия
   // ============================================================
   const exportMonthly = useCallback(async () => {
     const totalWorkDays = workingDaysInMonthTotal(year, month)
     const headers = [
       'Име', 'Длъжност', 'Отдел', 'Раб. дни',
       'Отпуска', 'Болничен', 'Служебно', 'Дистанционно', 'Майчинство', 'Учебен', 'Неплатен',
-      'Σ отсъствия', 'Присъствие',
+      'Σ отсъствия', 'Присъствие', 'Дати на отсъствия',
     ]
     const rows = staff.map(s => {
       const perType: Record<string, number> = {
         vacation: 0, sick: 0, business: 0, remote: 0, maternity: 0, study: 0, unpaid: 0,
       }
+      // Списък с интервали per тип за форматиране в края.
+      const datesPerType: Record<string, string[]> = {
+        vacation: [], sick: [], business: [], remote: [], maternity: [], study: [], unpaid: [],
+      }
       absences.forEach(a => {
         if (a.staff_id !== s.id || a.status !== 'approved') return
         const days = workingDaysInMonth(a.start_date, a.end_date, year, month)
-        if (days > 0 && perType[a.type as string] !== undefined) {
-          perType[a.type as string] += days
-        }
+        if (days <= 0 || perType[a.type as string] === undefined) return
+        perType[a.type as string] += days
+        // Клипваме диапазона до границите на месеца, за да не „изтичаме" в съседен месец.
+        const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+        const lastDay = new Date(year, month, 0).getDate()
+        const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+        const start = a.start_date < monthStart ? monthStart : a.start_date
+        const end = a.end_date > monthEnd ? monthEnd : a.end_date
+        const sd = parseInt(start.slice(8, 10), 10)
+        const ed = parseInt(end.slice(8, 10), 10)
+        datesPerType[a.type as string].push(sd === ed ? String(sd) : `${sd}-${ed}`)
       })
       const totalAbsent = Object.values(perType).reduce((s, x) => s + x, 0)
+
+      // „Отпуска: 3-7; 15. Болничен: 12." — компактно, една клетка.
+      const dateLabels: Record<string, string> = {
+        vacation: 'Отпуска', sick: 'Болничен', business: 'Служебно', remote: 'Дистанционно',
+        maternity: 'Майчинство', study: 'Учебен', unpaid: 'Неплатен',
+      }
+      const dateSummary = Object.entries(datesPerType)
+        .filter(([, list]) => list.length > 0)
+        .map(([type, list]) => `${dateLabels[type]}: ${list.join(', ')}`)
+        .join('; ')
+
       return [
         s.full_name,
         '',  // Длъжност — нямаме в crm_staff на текущия модел
@@ -194,6 +217,7 @@ export function CalendarPage() {
         perType.maternity, perType.study, perType.unpaid,
         totalAbsent,
         Math.max(0, totalWorkDays - totalAbsent),
+        dateSummary,
       ] as (string | number)[]
     })
 
@@ -201,6 +225,7 @@ export function CalendarPage() {
     const sums: (string | number)[] = headers.map((_, i) => {
       if (i < 3) return ''
       if (i === 3) return staff.length > 0 ? totalWorkDays : 0  // Раб. дни — еднакво за всички
+      if (i === headers.length - 1) return ''  // „Дати" колона — не се сумира
       return rows.reduce((acc, r) => acc + (Number(r[i]) || 0), 0)
     })
     sums[0] = 'Σ'
