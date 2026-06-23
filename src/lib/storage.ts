@@ -1007,15 +1007,14 @@ export async function setPaymentStatusBulk(
 // ============================================================
 
 export async function getAbsences(year: number): Promise<Absence[]> {
-  // Връща всички отсъствия, които се припокриват с дадената година.
-  // Един запис може да започне в дек. и продължи в ян. на следващата —
-  // и в двете години се връща.
+  // Връща всички отсъствия, които се припокриват с дадената година,
+  // независимо от status (UI филтрира кой какво вижда).
   return withRetry(async () => {
     const yearStart = `${year}-01-01`
     const yearEnd = `${year}-12-31`
     const { data, error } = await supabase
       .from('crm_absences')
-      .select('id,staff_id,start_date,end_date,type,notes,created_by,created_at,updated_at')
+      .select('id,staff_id,start_date,end_date,type,notes,status,rejection_reason,approved_by,approved_at,created_by,created_at,updated_at')
       .lte('start_date', yearEnd)
       .gte('end_date', yearStart)
       .order('start_date')
@@ -1025,10 +1024,15 @@ export async function getAbsences(year: number): Promise<Absence[]> {
 }
 
 export async function addAbsence(
-  patch: Pick<Absence, 'staff_id' | 'start_date' | 'end_date' | 'type'> & { notes?: string | null },
+  patch: Pick<Absence, 'staff_id' | 'start_date' | 'end_date' | 'type'> & {
+    notes?: string | null
+    status?: 'pending' | 'approved' | 'rejected'
+    approved_by?: string | null
+  },
   createdBy?: string | null,
 ): Promise<Absence> {
   return await trackSave((async () => {
+    const status = patch.status ?? 'pending'
     const { data, error } = await supabase
       .from('crm_absences')
       .insert([{
@@ -1037,12 +1041,47 @@ export async function addAbsence(
         end_date: patch.end_date,
         type: patch.type,
         notes: patch.notes ?? null,
+        status,
+        approved_by: status === 'approved' ? (patch.approved_by ?? createdBy ?? null) : null,
+        approved_at: status === 'approved' ? new Date().toISOString() : null,
         created_by: createdBy ?? null,
       }])
       .select()
       .single()
     if (error) throw error
     return data as Absence
+  })())
+}
+
+export async function approveAbsence(id: string, approverId: string): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_absences')
+      .update({
+        status: 'approved',
+        approved_by: approverId,
+        approved_at: new Date().toISOString(),
+        rejection_reason: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function rejectAbsence(id: string, approverId: string, reason?: string | null): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_absences')
+      .update({
+        status: 'rejected',
+        approved_by: approverId,
+        approved_at: new Date().toISOString(),
+        rejection_reason: reason ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+    if (error) throw error
   })())
 }
 

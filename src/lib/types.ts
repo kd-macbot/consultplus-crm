@@ -417,6 +417,14 @@ export interface Absence {
   end_date: string
   type: AbsenceType | string
   notes: string | null
+
+  // Workflow: 'pending' → admin approves → 'approved' (видими в календара),
+  // или admin отказва → 'rejected' (видимо само на подателя).
+  status: 'pending' | 'approved' | 'rejected'
+  rejection_reason: string | null
+  approved_by: string | null
+  approved_at: string | null
+
   created_by: string | null
   created_at: string
   updated_at: string

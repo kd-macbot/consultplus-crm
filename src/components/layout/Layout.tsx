@@ -5,7 +5,7 @@ import { useStaff, usePaymentConfigs, usePaymentStatuses, useAbsences } from '..
 import { previousMonth } from '../../lib/utils'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
-  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet,
+  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKey?: 'paymentsUnpaid' | 'absentToday'; showOnlyForTrzOrAdmin?: boolean }
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKey?: 'paymentsUnpaid' | 'absentToday' | 'absenceRequests'; showOnlyForTrzOrAdmin?: boolean }
 type NavSection = { title: string | null; items: NavItem[] }
 
 const NAV_SECTIONS: NavSection[] = [
@@ -49,6 +49,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Администрация',
     items: [
       { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },
+      { to: '/absence-requests', label: 'Заявки за отпуска', icon: Inbox, roles: ['admin'], badgeKey: 'absenceRequests' },
       { to: '/vacations', label: 'Справка отпуска', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
       { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin'] },
       { to: '/admin', label: 'Настройки', icon: Settings, roles: ['admin'] },
@@ -116,12 +117,21 @@ export function Layout() {
   }, [])
   const absencesQ = useAbsences(todayYear)
   const absentToday = useMemo(() => {
-    const todays = (absencesQ.data ?? []).filter(a => a.start_date <= todayIso && a.end_date >= todayIso)
+    // Само одобрените се броят за „днес отсъстващи".
+    const todays = (absencesQ.data ?? []).filter(a =>
+      a.status === 'approved' && a.start_date <= todayIso && a.end_date >= todayIso,
+    )
     // Уникални staff_id-та (същ. служител може да има два припокриващи се записа).
     return new Set(todays.map(a => a.staff_id)).size
   }, [absencesQ.data, todayIso])
 
-  const badges: Record<string, number> = { paymentsUnpaid: paymentsUnpaid, absentToday }
+  // Заявки за одобрение (admin sidebar бадж).
+  const absenceRequests = useMemo(() => {
+    if (user?.role !== 'admin') return 0
+    return (absencesQ.data ?? []).filter(a => a.status === 'pending').length
+  }, [absencesQ.data, user?.role])
+
+  const badges: Record<string, number> = { paymentsUnpaid: paymentsUnpaid, absentToday, absenceRequests }
 
   const handleLogout = () => {
     logout()
@@ -223,12 +233,18 @@ export function Layout() {
                           <span className="flex-1">{item.label}</span>
                           {badgeCount > 0 && (
                             <span
-                              title={item.badgeKey === 'absentToday'
-                                ? `${badgeCount} ${badgeCount === 1 ? 'отсъстващ' : 'отсъстващи'} днес`
-                                : `${badgeCount} неплатени за работния месец`}
+                              title={
+                                item.badgeKey === 'absentToday'
+                                  ? `${badgeCount} ${badgeCount === 1 ? 'отсъстващ' : 'отсъстващи'} днес`
+                                  : item.badgeKey === 'absenceRequests'
+                                    ? `${badgeCount} ${badgeCount === 1 ? 'заявка' : 'заявки'} чакат одобрение`
+                                    : `${badgeCount} неплатени за работния месец`
+                              }
                               className={cn(
                                 'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold text-white shrink-0',
-                                item.badgeKey === 'absentToday' ? 'bg-sky-500' : 'bg-amber-500',
+                                item.badgeKey === 'absentToday' ? 'bg-sky-500'
+                                  : item.badgeKey === 'absenceRequests' ? 'bg-rose-500'
+                                  : 'bg-amber-500',
                               )}
                             >
                               {badgeCount > 99 ? '99+' : badgeCount}

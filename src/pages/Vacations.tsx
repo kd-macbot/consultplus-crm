@@ -86,11 +86,11 @@ export function VacationsPage() {
     return m
   }, [quotas])
 
-  // Използвани дни per (staff × месец) — само от тип vacation.
+  // Използвани дни per (staff × месец) — само от тип vacation, само одобрени.
   const usedByStaffMonth = useMemo(() => {
     const m = new Map<string, Map<number, number>>()  // staff_id → month → days
     absences.forEach(a => {
-      if (a.type !== 'vacation') return
+      if (a.type !== 'vacation' || a.status !== 'approved') return
       let inner = m.get(a.staff_id)
       if (!inner) { inner = new Map(); m.set(a.staff_id, inner) }
       for (let mo = 1; mo <= 12; mo++) {
