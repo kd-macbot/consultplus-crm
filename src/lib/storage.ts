@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -1134,6 +1134,58 @@ export async function upsertVacationQuota(
           updated_by: updatedBy ?? null,
         },
         { onConflict: 'staff_id,year' },
+      )
+    if (error) throw error
+  })())
+}
+
+// ============================================================
+// Форма 76 — override-и на отделни клетки в grid-а.
+// Дефолтите (8 за работен ден, код от absence-а за отсъствие) се
+// изчисляват в UI от crm_absences. Тук пишем САМО ръчно зададените.
+// ============================================================
+
+export async function getForm76Overrides(year: number, month: number): Promise<Form76Override[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_form76_overrides')
+      .select('staff_id,year,month,day,value,updated_at,updated_by')
+      .eq('year', year)
+      .eq('month', month)
+    if (error) throw error
+    return (data ?? []) as Form76Override[]
+  })
+}
+
+export async function setForm76Override(
+  staffId: string,
+  year: number,
+  month: number,
+  day: number,
+  value: string | null,  // null → изтрий override-а (върни към default)
+  updatedBy?: string | null,
+): Promise<void> {
+  await trackSave((async () => {
+    if (value === null) {
+      const { error } = await supabase
+        .from('crm_form76_overrides')
+        .delete()
+        .eq('staff_id', staffId)
+        .eq('year', year)
+        .eq('month', month)
+        .eq('day', day)
+      if (error) throw error
+      return
+    }
+    const { error } = await supabase
+      .from('crm_form76_overrides')
+      .upsert(
+        {
+          staff_id: staffId, year, month, day, value,
+          updated_at: new Date().toISOString(),
+          updated_by: updatedBy ?? null,
+        },
+        { onConflict: 'staff_id,year,month,day' },
       )
     if (error) throw error
   })())

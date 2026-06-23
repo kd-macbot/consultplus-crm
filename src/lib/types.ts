@@ -444,6 +444,62 @@ export interface VacationQuota {
   updated_by: string | null
 }
 
+// ============================================================
+// Форма 76 — ТРЗ образец „Отчитане явяване/неявяване"
+// ============================================================
+
+// Кодове, които могат да стоят в клетка на Форма 76. „8" значи
+// нормален работен ден (8 часа явяване). Останалите са буквени
+// кодове за различни видове неявяване.
+export const FORM76_CODES = ['8', 'О', 'Б', 'М', 'К', 'У', 'Н', '-', ''] as const
+
+// Етикети до кодовете (за popover-а при редакция).
+export const FORM76_CODE_LABELS: Record<string, string> = {
+  '8': '8 — Работен ден',
+  'О': 'О — Редовен отпуск',
+  'Б': 'Б — Болничен',
+  'М': 'М — Майчинство',
+  'К': 'К — Командировка / Държ.',
+  'У': 'У — Учебен / Адмист.',
+  'Н': 'Н — Неплатен',
+  '-': '— Прекратен договор',
+  '':  'Празно',
+}
+
+// Цвят на буквените кодове (визуално различими в grid-а).
+export const FORM76_CODE_COLORS: Record<string, string> = {
+  '8': '',  // По подразбиране (без цвят)
+  'О': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
+  'Б': 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
+  'М': 'bg-pink-100 text-pink-800 dark:bg-pink-950/40 dark:text-pink-300',
+  'К': 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
+  'У': 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+  'Н': 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+  '-': 'bg-gray-100 text-gray-500 dark:bg-gray-900 dark:text-gray-500',
+  '':  '',
+}
+
+// Мапване от crm_absences.type → Форма 76 код.
+export const ABSENCE_TYPE_TO_FORM76_CODE: Record<string, string> = {
+  vacation:  'О',
+  sick:      'Б',
+  maternity: 'М',
+  business:  'К',
+  remote:    '8',  // Дистанционно се брои като работа
+  study:     'У',
+  unpaid:    'Н',
+}
+
+export interface Form76Override {
+  staff_id: string
+  year: number
+  month: number
+  day: number
+  value: string  // един от FORM76_CODES
+  updated_at: string
+  updated_by: string | null
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory
