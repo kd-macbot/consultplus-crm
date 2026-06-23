@@ -133,6 +133,9 @@ export function Form76Page() {
 
   const goPrev = () => { if (month === 1) { setYear(year - 1); setMonth(12) } else setMonth(month - 1) }
   const goNext = () => { if (month === 12) { setYear(year + 1); setMonth(1) } else setMonth(month + 1) }
+  const goToday = () => { const t = new Date(); setYear(t.getFullYear()); setMonth(t.getMonth() + 1) }
+  const isViewingThisMonth = year === now.getFullYear() && month === now.getMonth() + 1
+  const todayDay = now.getDate()
 
   // ============================================================
   // Изчисление на summary колоните за всеки служител (агрегат на стойностите).
@@ -242,6 +245,7 @@ export function Form76Page() {
               <span className="px-2 text-sm font-semibold whitespace-nowrap">{MONTH_NAMES[month - 1]} {year}</span>
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goNext}><ChevronRight className="h-4 w-4" /></Button>
             </div>
+            <Button variant="outline" size="sm" onClick={goToday} title="Към текущия месец" disabled={isViewingThisMonth}>Днес</Button>
             <div className="text-xs text-muted-foreground whitespace-nowrap">
               {workingDaysTotal} раб. дни · {workingDaysTotal * 8} часа
             </div>
@@ -273,8 +277,9 @@ export function Form76Page() {
               {days.map(d => {
                 const dow = new Date(year, month - 1, d).getDay()
                 const isWeekend = dow === 0 || dow === 6
+                const isToday = isViewingThisMonth && d === todayDay
                 return (
-                  <th key={d} className={`text-center font-medium border-r border-navy-light/50 ${isWeekend ? 'bg-sky-700' : ''}`} style={{ minWidth: 28 }}>
+                  <th key={d} className={`text-center font-medium border-r border-navy-light/50 ${isToday ? 'bg-amber-500 text-navy font-bold' : isWeekend ? 'bg-sky-700' : ''}`} style={{ minWidth: 28 }}>
                     {d}
                   </th>
                 )
@@ -303,6 +308,7 @@ export function Form76Page() {
                   {days.map(d => {
                     const dow = new Date(year, month - 1, d).getDay()
                     const isWeekend = dow === 0 || dow === 6
+                    const isToday = isViewingThisMonth && d === todayDay
                     const value = computeCellValue(absences, overridesIdx, s.id, year, month, d)
                     const hasOverride = overridesIdx.has(`${s.id}|${d}`)
                     const colorClass = FORM76_CODE_COLORS[value] ?? ''
@@ -311,7 +317,7 @@ export function Form76Page() {
                       <td
                         key={d}
                         onClick={() => handleCellClick(s.id, d)}
-                        className={`relative text-center cursor-pointer border-r border-border/40 ${isWeekend ? 'bg-sky-100 dark:bg-sky-950/30' : ''} ${colorClass} ${hasOverride ? 'ring-1 ring-inset ring-primary/50' : ''} hover:ring-1 hover:ring-primary`}
+                        className={`relative text-center cursor-pointer border-r border-border/40 ${isToday ? 'bg-amber-100/60 dark:bg-amber-950/40' : isWeekend ? 'bg-sky-100 dark:bg-sky-950/30' : ''} ${colorClass} ${hasOverride ? 'ring-1 ring-inset ring-primary/50' : ''} hover:ring-1 hover:ring-primary`}
                         style={{ height: 28 }}
                         title={hasOverride ? 'Override (клик за смяна)' : 'Клик за override'}
                       >
