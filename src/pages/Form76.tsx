@@ -38,6 +38,10 @@ function findAbsenceForDay(absences: Absence[], staffId: string, year: number, m
 
 // Изчислява каква СТОЙНОСТ да покажем в клетка (default или override).
 // default: уикенд = '', работен ден + няма абсенс = '8', има абсенс = код по тип
+//
+// Termination propagation: ако в по-ранен ден от месеца има override '-'
+// (прекратен договор), всички следващи дни default-ват към '-' — освен ако
+// конкретният ден няма свой override.
 function computeCellValue(
   absences: Absence[],
   overridesIdx: Map<string, string>,
@@ -47,7 +51,10 @@ function computeCellValue(
   const key = `${staffId}|${day}`
   const override = overridesIdx.get(key)
   if (override !== undefined) return override
-  // Default — без override
+  // Default — провери първо за прекратяване в предходен ден.
+  for (let d = 1; d < day; d++) {
+    if (overridesIdx.get(`${staffId}|${d}`) === '-') return '-'
+  }
   const dow = new Date(year, month - 1, day).getDay()
   const isWeekend = dow === 0 || dow === 6
   if (isWeekend) return ''
@@ -150,6 +157,7 @@ export function Form76Page() {
         const dow = new Date(year, month - 1, d).getDay()
         const isWeekend = dow === 0 || dow === 6
         if (v === '8') { sum.hours += 8; sum.daysWorked += 1 }
+        else if (v === '4') { sum.hours += 4; sum.daysWorked += 0.5 }
         else if (v === 'О') sum.vacation += 1
         else if (v === 'Б') sum.sick += 1
         else if (v === 'М') sum.maternity += 1
@@ -246,7 +254,7 @@ export function Form76Page() {
 
         {/* Легенда */}
         <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-          {(['8', 'О', 'Б', 'М', 'К', 'У', 'Н'] as const).map(c => (
+          {(['8', '4', 'О', 'Б', 'М', 'К', 'У', 'Н', '-'] as const).map(c => (
             <span key={c} className="inline-flex items-center gap-1.5">
               <span className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold border border-border ${FORM76_CODE_COLORS[c]}`}>{c}</span>
               {FORM76_CODE_LABELS[c].replace(/^[^\s—]+\s—\s/, '')}

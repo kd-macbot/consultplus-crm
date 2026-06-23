@@ -449,13 +449,14 @@ export interface VacationQuota {
 // ============================================================
 
 // Кодове, които могат да стоят в клетка на Форма 76. „8" значи
-// нормален работен ден (8 часа явяване). Останалите са буквени
-// кодове за различни видове неявяване.
-export const FORM76_CODES = ['8', 'О', 'Б', 'М', 'К', 'У', 'Н', '-', ''] as const
+// нормален работен ден (8 часа явяване), „4" половин работен ден.
+// Останалите са буквени кодове за различни видове неявяване.
+export const FORM76_CODES = ['8', '4', 'О', 'Б', 'М', 'К', 'У', 'Н', '-', ''] as const
 
 // Етикети до кодовете (за popover-а при редакция).
 export const FORM76_CODE_LABELS: Record<string, string> = {
-  '8': '8 — Работен ден',
+  '8': '8 — Работен ден (8ч)',
+  '4': '4 — Половин ден (4ч)',
   'О': 'О — Редовен отпуск',
   'Б': 'Б — Болничен',
   'М': 'М — Майчинство',
@@ -469,6 +470,7 @@ export const FORM76_CODE_LABELS: Record<string, string> = {
 // Цвят на буквените кодове (визуално различими в grid-а).
 export const FORM76_CODE_COLORS: Record<string, string> = {
   '8': '',  // По подразбиране (без цвят)
+  '4': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300',
   'О': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
   'Б': 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
   'М': 'bg-pink-100 text-pink-800 dark:bg-pink-950/40 dark:text-pink-300',
