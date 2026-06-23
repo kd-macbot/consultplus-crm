@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth'
 import { useStaff, useAbsences, useInvalidateCrm } from '../lib/queries'
 import { approveAbsence, rejectAbsence } from '../lib/storage'
 import { ABSENCE_TYPE_LABELS, ABSENCE_TYPE_COLORS, type AbsenceType } from '../lib/types'
+import { namesMatch } from '../lib/utils'
 
 function formatDate(iso: string): string {
   const d = new Date(iso + 'T00:00:00')
@@ -54,7 +55,18 @@ export function AbsenceRequestsPage() {
     [absencesQ.data],
   )
 
-  if (user?.role !== 'admin') {
+  // Достъп — admin или manager-ТРЗ. Само admin може да одобрява/отказва;
+  // manager-ТРЗ е в read-only режим (вижда списъка, но без бутони).
+  const myStaff = useMemo(
+    () => (staffQ.data ?? []).find(s => namesMatch(s.full_name, user?.full_name)),
+    [staffQ.data, user?.full_name],
+  )
+  const isAdmin = user?.role === 'admin'
+  const isManagerTrz = user?.role === 'manager' && myStaff?.department === 'ТРЗ'
+  const canSee = isAdmin || isManagerTrz
+  const canApprove = isAdmin
+
+  if (!canSee) {
     return <Navigate to="/" replace />
   }
 
@@ -166,7 +178,7 @@ export function AbsenceRequestsPage() {
                     )}
                   </div>
                   <div className={`text-xs font-medium ${statusColor}`}>{statusLabel}</div>
-                  {r.status === 'pending' ? (
+                  {r.status === 'pending' && canApprove ? (
                     <div className="flex items-center gap-1.5">
                       <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => handleReject(r.id)}>
                         <X className="h-3.5 w-3.5" /> Откажи

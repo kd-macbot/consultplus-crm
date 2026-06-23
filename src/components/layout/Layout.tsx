@@ -49,7 +49,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Администрация',
     items: [
       { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },
-      { to: '/absence-requests', label: 'Заявки за отпуска', icon: Inbox, roles: ['admin'], badgeKey: 'absenceRequests' },
+      { to: '/absence-requests', label: 'Заявки за отпуска', icon: Inbox, roles: ['admin', 'manager'], badgeKey: 'absenceRequests', showOnlyForTrzOrAdmin: true },
       { to: '/vacations', label: 'Справка отпуска', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
       { to: '/form76', label: 'Форма 76', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
       { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin'] },
@@ -126,11 +126,13 @@ export function Layout() {
     return new Set(todays.map(a => a.staff_id)).size
   }, [absencesQ.data, todayIso])
 
-  // Заявки за одобрение (admin sidebar бадж).
+  // Заявки за одобрение — бадж за admin или manager-ТРЗ (виждат страницата).
   const absenceRequests = useMemo(() => {
-    if (user?.role !== 'admin') return 0
+    const isAdmin = user?.role === 'admin'
+    const isManagerTrz = user?.role === 'manager' && isTrz
+    if (!isAdmin && !isManagerTrz) return 0
     return (absencesQ.data ?? []).filter(a => a.status === 'pending').length
-  }, [absencesQ.data, user?.role])
+  }, [absencesQ.data, user?.role, isTrz])
 
   const badges: Record<string, number> = { paymentsUnpaid: paymentsUnpaid, absentToday, absenceRequests }
 
