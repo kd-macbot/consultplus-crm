@@ -15,7 +15,7 @@ import {
   buildCellIndex, buildDropdownIndex, clientDisplayName, resolveDropdownText, cellKey,
 } from '../lib/tableIndices'
 import { isHiddenStatus } from '../lib/statusBadge'
-import { MONTH_NAMES, previousMonth } from '../lib/utils'
+import { MONTH_NAMES, previousMonth, namesMatch } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
 
 const SALES_FIELDS = CHECKLIST_FIELDS.filter(f => f.group === 'sales')
@@ -105,7 +105,7 @@ export function ChecklistPage() {
 
   // Текущият потребител → staff запис (по име) → отдел.
   const myStaff = useMemo(
-    () => staff.find(s => s.full_name === user?.full_name),
+    () => staff.find(s => namesMatch(s.full_name, user?.full_name)),
     [staff, user?.full_name],
   )
   const isTrz = myStaff?.department === 'ТРЗ'

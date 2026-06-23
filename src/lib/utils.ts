@@ -5,6 +5,24 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * Нормализира име за сравняване (profile.full_name vs staff.full_name):
+ *   - trim
+ *   - collapse многократни whitespace до 1 интервал
+ *   - lowercase (case-insensitive match)
+ *
+ * Случвало се е staff името да е „Иван  Петров" (двоен интервал) или с
+ * различен casing. Без нормализация exact match връща false и потребителят
+ * не намира свой ред в календара / справките.
+ */
+export function normalizeName(name: string | null | undefined): string {
+  return (name ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+export function namesMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  return normalizeName(a) === normalizeName(b) && normalizeName(a).length > 0
+}
+
 export function formatCurrency(amount: number, currency = 'EUR') {
   return new Intl.NumberFormat('bg-BG', { style: 'currency', currency }).format(amount)
 }

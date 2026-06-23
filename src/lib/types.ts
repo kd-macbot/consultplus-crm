@@ -382,6 +382,126 @@ export interface PaymentStatus {
   updated_by: string | null
 }
 
+// ============================================================
+// Календар на присъствие + Справка за отпуска
+// ============================================================
+export const ABSENCE_TYPES = ['vacation', 'sick', 'business', 'remote', 'maternity', 'study', 'unpaid'] as const
+export type AbsenceType = typeof ABSENCE_TYPES[number]
+
+export const ABSENCE_TYPE_LABELS: Record<AbsenceType, string> = {
+  vacation:  'Отпуска',
+  sick:      'Болничен',
+  business:  'Служебно',
+  remote:    'Дистанционно',
+  maternity: 'Майчинство',
+  study:     'Учебен',
+  unpaid:    'Неплатен',
+}
+
+// Цветовете за календарната клетка. Vacation е зелено (платен отпуск),
+// болничен червен и т.н. Подравнени с тон от другите страници.
+export const ABSENCE_TYPE_COLORS: Record<AbsenceType, string> = {
+  vacation:  'bg-emerald-500 text-white',
+  sick:      'bg-red-500 text-white',
+  business:  'bg-amber-500 text-white',
+  remote:    'bg-violet-500 text-white',
+  maternity: 'bg-pink-500 text-white',
+  study:     'bg-blue-500 text-white',
+  unpaid:    'bg-gray-400 text-white',
+}
+
+export interface Absence {
+  id: string
+  staff_id: string
+  start_date: string  // ISO date (YYYY-MM-DD)
+  end_date: string
+  type: AbsenceType | string
+  notes: string | null
+
+  // Workflow: 'pending' → admin approves → 'approved' (видими в календара),
+  // или admin отказва → 'rejected' (видимо само на подателя).
+  status: 'pending' | 'approved' | 'rejected'
+  rejection_reason: string | null
+  approved_by: string | null
+  approved_at: string | null
+
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface VacationQuota {
+  staff_id: string
+  year: number
+  prev_years_days: number      // От минали години
+  current_year_days: number    // За текуща година
+  additional_days: number      // Допълнителен
+  daily_rate: number | null
+  insurance_pct: number | null
+  termination_date: string | null
+  compensation_days: number | null
+  updated_at: string
+  updated_by: string | null
+}
+
+// ============================================================
+// Форма 76 — ТРЗ образец „Отчитане явяване/неявяване"
+// ============================================================
+
+// Кодове, които могат да стоят в клетка на Форма 76. „8" значи
+// нормален работен ден (8 часа явяване), „4" половин работен ден.
+// Останалите са буквени кодове за различни видове неявяване.
+export const FORM76_CODES = ['8', '4', 'О', 'Б', 'М', 'К', 'У', 'Н', '-', ''] as const
+
+// Етикети до кодовете (за popover-а при редакция).
+export const FORM76_CODE_LABELS: Record<string, string> = {
+  '8': '8 — Работен ден (8ч)',
+  '4': '4 — Половин ден (4ч)',
+  'О': 'О — Редовен отпуск',
+  'Б': 'Б — Болничен',
+  'М': 'М — Майчинство',
+  'К': 'К — Командировка / Държ.',
+  'У': 'У — Учебен / Адмист.',
+  'Н': 'Н — Неплатен',
+  '-': '— Прекратен договор',
+  '':  'Празно',
+}
+
+// Цвят на буквените кодове (визуално различими в grid-а).
+export const FORM76_CODE_COLORS: Record<string, string> = {
+  '8': '',  // По подразбиране (без цвят)
+  '4': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300',
+  'О': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
+  'Б': 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300',
+  'М': 'bg-pink-100 text-pink-800 dark:bg-pink-950/40 dark:text-pink-300',
+  'К': 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
+  'У': 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+  'Н': 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+  '-': 'bg-gray-100 text-gray-500 dark:bg-gray-900 dark:text-gray-500',
+  '':  '',
+}
+
+// Мапване от crm_absences.type → Форма 76 код.
+export const ABSENCE_TYPE_TO_FORM76_CODE: Record<string, string> = {
+  vacation:  'О',
+  sick:      'Б',
+  maternity: 'М',
+  business:  'К',
+  remote:    '8',  // Дистанционно се брои като работа
+  study:     'У',
+  unpaid:    'Н',
+}
+
+export interface Form76Override {
+  staff_id: string
+  year: number
+  month: number
+  day: number
+  value: string  // един от FORM76_CODES
+  updated_at: string
+  updated_by: string | null
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory

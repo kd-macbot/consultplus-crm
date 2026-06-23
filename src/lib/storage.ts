@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -998,6 +998,195 @@ export async function setPaymentStatusBulk(
     const { error } = await supabase
       .from('crm_payment_status')
       .upsert(payload, { onConflict: 'client_id,payment_type,year,month' })
+    if (error) throw error
+  })())
+}
+
+// ============================================================
+// Календар на присъствие — отсъствия и годишен баланс на отпуска
+// ============================================================
+
+export async function getAbsences(year: number): Promise<Absence[]> {
+  // Връща всички отсъствия, които се припокриват с дадената година,
+  // независимо от status (UI филтрира кой какво вижда).
+  return withRetry(async () => {
+    const yearStart = `${year}-01-01`
+    const yearEnd = `${year}-12-31`
+    const { data, error } = await supabase
+      .from('crm_absences')
+      .select('id,staff_id,start_date,end_date,type,notes,status,rejection_reason,approved_by,approved_at,created_by,created_at,updated_at')
+      .lte('start_date', yearEnd)
+      .gte('end_date', yearStart)
+      .order('start_date')
+    if (error) throw error
+    return (data ?? []) as Absence[]
+  })
+}
+
+export async function addAbsence(
+  patch: Pick<Absence, 'staff_id' | 'start_date' | 'end_date' | 'type'> & {
+    notes?: string | null
+    status?: 'pending' | 'approved' | 'rejected'
+    approved_by?: string | null
+  },
+  createdBy?: string | null,
+): Promise<Absence> {
+  return await trackSave((async () => {
+    const status = patch.status ?? 'pending'
+    const { data, error } = await supabase
+      .from('crm_absences')
+      .insert([{
+        staff_id: patch.staff_id,
+        start_date: patch.start_date,
+        end_date: patch.end_date,
+        type: patch.type,
+        notes: patch.notes ?? null,
+        status,
+        approved_by: status === 'approved' ? (patch.approved_by ?? createdBy ?? null) : null,
+        approved_at: status === 'approved' ? new Date().toISOString() : null,
+        created_by: createdBy ?? null,
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data as Absence
+  })())
+}
+
+export async function approveAbsence(id: string, approverId: string): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_absences')
+      .update({
+        status: 'approved',
+        approved_by: approverId,
+        approved_at: new Date().toISOString(),
+        rejection_reason: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function rejectAbsence(id: string, approverId: string, reason?: string | null): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_absences')
+      .update({
+        status: 'rejected',
+        approved_by: approverId,
+        approved_at: new Date().toISOString(),
+        rejection_reason: reason ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function updateAbsence(
+  id: string,
+  patch: Partial<Pick<Absence, 'start_date' | 'end_date' | 'type' | 'notes'>>,
+): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_absences')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function deleteAbsence(id: string): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase.from('crm_absences').delete().eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function getVacationQuotas(year: number): Promise<VacationQuota[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_vacation_quota')
+      .select('staff_id,year,prev_years_days,current_year_days,additional_days,daily_rate,insurance_pct,termination_date,compensation_days,updated_at,updated_by')
+      .eq('year', year)
+    if (error) throw error
+    return (data ?? []) as VacationQuota[]
+  })
+}
+
+export async function upsertVacationQuota(
+  staffId: string,
+  year: number,
+  patch: Partial<Pick<VacationQuota, 'prev_years_days' | 'current_year_days' | 'additional_days' | 'daily_rate' | 'insurance_pct' | 'termination_date' | 'compensation_days'>>,
+  updatedBy?: string | null,
+): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_vacation_quota')
+      .upsert(
+        {
+          staff_id: staffId,
+          year,
+          ...patch,
+          updated_at: new Date().toISOString(),
+          updated_by: updatedBy ?? null,
+        },
+        { onConflict: 'staff_id,year' },
+      )
+    if (error) throw error
+  })())
+}
+
+// ============================================================
+// Форма 76 — override-и на отделни клетки в grid-а.
+// Дефолтите (8 за работен ден, код от absence-а за отсъствие) се
+// изчисляват в UI от crm_absences. Тук пишем САМО ръчно зададените.
+// ============================================================
+
+export async function getForm76Overrides(year: number, month: number): Promise<Form76Override[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_form76_overrides')
+      .select('staff_id,year,month,day,value,updated_at,updated_by')
+      .eq('year', year)
+      .eq('month', month)
+    if (error) throw error
+    return (data ?? []) as Form76Override[]
+  })
+}
+
+export async function setForm76Override(
+  staffId: string,
+  year: number,
+  month: number,
+  day: number,
+  value: string | null,  // null → изтрий override-а (върни към default)
+  updatedBy?: string | null,
+): Promise<void> {
+  await trackSave((async () => {
+    if (value === null) {
+      const { error } = await supabase
+        .from('crm_form76_overrides')
+        .delete()
+        .eq('staff_id', staffId)
+        .eq('year', year)
+        .eq('month', month)
+        .eq('day', day)
+      if (error) throw error
+      return
+    }
+    const { error } = await supabase
+      .from('crm_form76_overrides')
+      .upsert(
+        {
+          staff_id: staffId, year, month, day, value,
+          updated_at: new Date().toISOString(),
+          updated_by: updatedBy ?? null,
+        },
+        { onConflict: 'staff_id,year,month,day' },
+      )
     if (error) throw error
   })())
 }
