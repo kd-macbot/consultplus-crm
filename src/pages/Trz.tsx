@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, Search, X, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, X, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
 import {
-  getStaff, ensureTrzRows, upsertTrzWorkByKey,
+  getStaff, ensureTrzRows, upsertTrzWorkByKey, pullPrevMonthTrzNotes,
 } from '../lib/storage'
 import {
   useClients, useColumns, useCellValues, useDropdownOptions,
@@ -251,6 +251,28 @@ export function TrzPage() {
             </Button>
             <Button variant="ghost" size="sm" onClick={() => { const d = new Date(); setYear(d.getFullYear()); setMonth(d.getMonth() + 1) }}>
               Календарен месец
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              title="Извлича бележките от предходния месец и презаписва текущия"
+              onClick={async () => {
+                const prev = month === 1 ? `${MONTH_NAMES[11]} ${year - 1}` : `${MONTH_NAMES[month - 2]} ${year}`
+                const cur = `${MONTH_NAMES[month - 1]} ${year}`
+                if (!confirm(`Извличане на бележки от „${prev}" → ще презапишат бележките за „${cur}". Продължи?`)) return
+                try {
+                  const count = await pullPrevMonthTrzNotes(year, month)
+                  invalidateTrzWork(year, month)
+                  toast.success(count > 0
+                    ? `${count} бележки извлечени от „${prev}"`
+                    : `Няма промени — бележките съвпадат с „${prev}"`)
+                } catch (e: any) {
+                  toast.error(e.message ?? 'Грешка при извличане')
+                }
+              }}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Извлечи бележки
             </Button>
           </div>
         </div>

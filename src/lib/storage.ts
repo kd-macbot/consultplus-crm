@@ -1653,6 +1653,73 @@ export async function upsertTrzWorkByKey(
   })())
 }
 
+/**
+ * Извлича бележките от предходния месец → пренаписва ги в текущия за
+ * всички клиенти, които вече имат ред в текущия. Връща броя обновени.
+ *
+ * Use case: колегата е редактирал бележка в месец X-1 (Януари), но
+ * месец X (Февруари) вече е генериран → копира старата бележка. Този
+ * бутон обновява всички редове на Февруари с актуалните бележки от
+ * Януари. Презаписва — потвърждението е в UI.
+ */
+export async function pullPrevMonthTrzNotes(
+  year: number,
+  month: number,
+): Promise<number> {
+  return await trackSave((async () => {
+    const py = month === 1 ? year - 1 : year
+    const pm = month === 1 ? 12 : month - 1
+
+    // 1. Тек. месец → клиентски IDs, които имаме като ред.
+    const { data: cur, error: e1 } = await supabase
+      .from('crm_trz_work')
+      .select('client_id, notes')
+      .eq('year', year)
+      .eq('month', month)
+    if (e1) throw e1
+    if (!cur || cur.length === 0) return 0
+
+    // 2. Предходен месец → бележки за същите клиенти.
+    const clientIds = cur.map(r => r.client_id)
+    const { data: prev, error: e2 } = await supabase
+      .from('crm_trz_work')
+      .select('client_id, notes')
+      .eq('year', py)
+      .eq('month', pm)
+      .in('client_id', clientIds)
+    if (e2) throw e2
+
+    const prevNoteByClient = new Map<string, string | null>(
+      (prev ?? []).map(r => [r.client_id as string, (r.notes as string | null) ?? null]),
+    )
+
+    // 3. За всеки клиент → ако бележката се различава, update.
+    // Пропускаме, ако предходният месец няма ред ИЛИ бележката му е празна
+    // (защо: иначе случайно бихме изтрили съдържание в тек. месец, заместявайки
+    // го с празна стойност).
+    const updates = cur
+      .filter(r => {
+        const prevNote = prevNoteByClient.get(r.client_id as string)
+        if (prevNote === undefined) return false
+        if (!prevNote || prevNote.trim() === '') return false
+        return prevNote !== (r.notes ?? null)
+      })
+      .map(r => ({
+        client_id: r.client_id,
+        year, month,
+        notes: prevNoteByClient.get(r.client_id as string) ?? null,
+        updated_at: new Date().toISOString(),
+      }))
+    if (updates.length === 0) return 0
+
+    const { error: e3 } = await supabase
+      .from('crm_trz_work')
+      .upsert(updates, { onConflict: 'client_id,year,month' })
+    if (e3) throw e3
+    return updates.length
+  })())
+}
+
 // ==================== ЛИЧЕН ЧЕК ЛИСТ (ДДС) ====================
 
 export async function getChecklist(year: number, month: number): Promise<ChecklistRow[]> {
