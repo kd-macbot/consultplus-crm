@@ -214,12 +214,28 @@ export function CalendarPage() {
                 <span className="text-sm font-semibold text-amber-800 dark:text-amber-200">{myBalance.pendingDays} дни</span>
               </div>
             )}
+            {/* Видим бутон „Заяви отпуска" — основният path за служителите. */}
+            <Button
+              size="sm"
+              onClick={() => myStaff && setModal({ staffId: myStaff.id, staffName: myStaff.full_name })}
+              className="bg-primary text-primary-foreground hover:opacity-90"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {isAdmin ? 'Добави отсъствие' : 'Заяви отсъствие'}
+            </Button>
             {isAdmin && pendingTotal > 0 && (
               <a href="#/absence-requests" className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-sky-50 border border-sky-200 dark:bg-sky-950/30 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-950/50 transition-colors">
                 <span className="text-xs text-sky-700 dark:text-sky-300">⏳ Чакат одобрение:</span>
                 <span className="text-sm font-semibold text-sky-800 dark:text-sky-200">{pendingTotal}</span>
               </a>
             )}
+          </div>
+        )}
+
+        {/* Hint за служители БЕЗ staff запис — нямат как да заявят. */}
+        {!myStaff && !isAdmin && (
+          <div className="mt-2 px-3 py-1.5 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 rounded border border-amber-200 dark:border-amber-800">
+            Профилът ти не е свързан със служител в Персонал — обърни се към admin, за да може да заявяваш отсъствия.
           </div>
         )}
 
@@ -262,13 +278,20 @@ export function CalendarPage() {
                 </td>
               </tr>
             ) : staff.map((s, i) => {
+              const isMyRow = myStaff?.id === s.id
               const evenBg = i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
+              // Подчертаваме собствения ред със светъл sky-фон → очевидно
+              // на служителя кой е неговият ред.
+              const rowBg = isMyRow ? 'bg-sky-50 dark:bg-sky-950/30' : evenBg
               return (
-                <tr key={s.id} className={`border-b border-border ${evenBg}`}>
-                  <td className={`px-3 py-1 font-medium sticky left-0 z-10 ${evenBg} border-r border-border whitespace-nowrap`}>
+                <tr key={s.id} className={`border-b border-border ${rowBg}`}>
+                  <td className={`px-3 py-1 font-medium sticky left-0 z-10 ${rowBg} border-r border-border whitespace-nowrap`}>
                     {s.full_name}
                     {s.department && (
                       <span className="ml-1 text-[10px] text-muted-foreground">· {s.department}</span>
+                    )}
+                    {isMyRow && (
+                      <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-sky-500 text-white">ТИ</span>
                     )}
                   </td>
                   {days.map(d => {
