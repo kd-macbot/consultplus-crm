@@ -9,6 +9,7 @@ import {
 import { upsertVacationQuota } from '../lib/storage'
 import type { Absence, VacationQuota } from '../lib/types'
 import { Navigate } from 'react-router-dom'
+import { namesMatch } from '../lib/utils'
 
 // Брой работни дни от vacation в конкретен месец на годината.
 function workingDaysInMonth(start: string, end: string, year: number, month: number): number {
@@ -75,7 +76,7 @@ export function VacationsPage() {
 
   // Достъп — admin или ТРЗ отдел. (Това е финансова справка.)
   const myStaff = useMemo(
-    () => (staffQ.data ?? []).find(s => s.full_name === user?.full_name),
+    () => (staffQ.data ?? []).find(s => namesMatch(s.full_name, user?.full_name)),
     [staffQ.data, user?.full_name],
   )
   const canSee = user?.role === 'admin' || myStaff?.department === 'ТРЗ'
