@@ -209,7 +209,7 @@ export function VacationsPage() {
               return (
                 <tr key={s.id} className={`border-b border-border ${evenBg}`}>
                   <td className={`px-3 py-1 font-medium sticky left-0 z-10 ${evenBg} border-r border-border whitespace-nowrap`}>{s.full_name}</td>
-                  <td className="px-2 py-1 text-muted-foreground border-r border-border whitespace-nowrap">{s.department ?? '—'}</td>
+                  <td className="px-2 py-1 text-muted-foreground border-r border-border whitespace-nowrap">{s.position ?? s.department ?? '—'}</td>
                   <td className="px-1 py-1 text-right border-r border-border">
                     <NumCell value={prev} onSave={v => saveQuota(s.id, { prev_years_days: v ?? 0 })} />
                   </td>

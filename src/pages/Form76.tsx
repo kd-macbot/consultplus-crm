@@ -189,7 +189,7 @@ export function Form76Page() {
       }
       const sum = summaryByStaff.get(s.id)!
       return [
-        s.full_name, s.department ?? '',
+        s.full_name, s.position ?? s.department ?? '',
         ...cells,
         String(sum.hours), String(sum.daysWorked),
         String(sum.vacation), String(sum.sick), String(sum.maternity),
@@ -299,7 +299,7 @@ export function Form76Page() {
               return (
                 <tr key={s.id} className={`border-b border-border ${evenBg}`}>
                   <td className={`px-3 py-1 font-medium sticky left-0 z-10 ${evenBg} border-r border-border whitespace-nowrap`}>{s.full_name}</td>
-                  <td className="px-2 py-1 text-muted-foreground border-r border-border whitespace-nowrap text-[11px]">{s.department ?? '—'}</td>
+                  <td className="px-2 py-1 text-muted-foreground border-r border-border whitespace-nowrap text-[11px]">{s.position ?? s.department ?? '—'}</td>
                   {days.map(d => {
                     const dow = new Date(year, month - 1, d).getDay()
                     const isWeekend = dow === 0 || dow === 6
