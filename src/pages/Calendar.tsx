@@ -115,16 +115,19 @@ export function CalendarPage() {
     [allStaff, user?.full_name],
   )
   const isAdmin = user?.role === 'admin'
+  // Manager + отдел ТРЗ → разширен достъп: редактира чужди редове в
+  // календара и вижда чакащите заявки, но БЕЗ право да одобрява/отказва.
+  const isManagerTrz = user?.role === 'manager' && myStaff?.department === 'ТРЗ'
 
   // Видимост на отсъствие:
   //   - approved → всички виждат
-  //   - pending/rejected → само подателят (своя ред) + admin
+  //   - pending/rejected → подателят (свой ред) + admin + manager-ТРЗ
   const isAbsenceVisible = useCallback((a: Absence) => {
     if (a.status === 'approved') return true
-    if (isAdmin) return true
+    if (isAdmin || isManagerTrz) return true
     if (myStaff && a.staff_id === myStaff.id) return true
     return false
-  }, [isAdmin, myStaff])
+  }, [isAdmin, isManagerTrz, myStaff])
 
   const visibleAbsences = useMemo(
     () => absences.filter(isAbsenceVisible),
@@ -252,12 +255,13 @@ export function CalendarPage() {
   const [modal, setModal] = useState<null | { staffId: string; staffName: string; existing?: Absence; defaultDate?: string }>(null)
 
   // Кой ред може да редактира потребителят:
-  //   admin → всички
+  //   admin → всички (записът е одобрен директно)
+  //   manager-ТРЗ → всички (записът отива за одобрение от admin)
   //   служител → само своя
   const canEditRow = useCallback((staffId: string) => {
-    if (isAdmin) return true
+    if (isAdmin || isManagerTrz) return true
     return !!myStaff && myStaff.id === staffId
-  }, [isAdmin, myStaff])
+  }, [isAdmin, isManagerTrz, myStaff])
 
   const openCell = useCallback((staffId: string, staffName: string, dateIso: string) => {
     if (!canEditRow(staffId)) return
@@ -351,7 +355,7 @@ export function CalendarPage() {
               <Plus className="h-3.5 w-3.5" />
               {isAdmin ? 'Добави отсъствие' : 'Заяви отсъствие'}
             </Button>
-            {isAdmin && pendingTotal > 0 && (
+            {(isAdmin || isManagerTrz) && pendingTotal > 0 && (
               <a href="#/absence-requests" className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-sky-50 border border-sky-200 dark:bg-sky-950/30 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-950/50 transition-colors">
                 <span className="text-xs text-sky-700 dark:text-sky-300">⏳ Чакат одобрение:</span>
                 <span className="text-sm font-semibold text-sky-800 dark:text-sky-200">{pendingTotal}</span>

@@ -72,8 +72,9 @@ export default function App() {
                 } />
                 <Route path="/calendar" element={<CalendarPage />} />
                 <Route path="/vacations" element={<VacationsPage />} />
+                {/* manager-ТРЗ също има достъп — вътрешен gate в страницата. */}
                 <Route path="/absence-requests" element={
-                  <ProtectedRoute allowedRoles={['admin']}><AbsenceRequestsPage /></ProtectedRoute>
+                  <ProtectedRoute allowedRoles={['admin', 'manager']}><AbsenceRequestsPage /></ProtectedRoute>
                 } />
                 <Route path="/form76" element={<Form76Page />} />
                 <Route path="/opportunities" element={
