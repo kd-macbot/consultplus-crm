@@ -160,6 +160,7 @@ export async function getColumns(): Promise<Column[]> {
 export interface StaffMember {
   id: string
   full_name: string
+  position: string | null
   department: string | null
   additional_departments?: string[]
   is_active: boolean
@@ -168,7 +169,7 @@ export interface StaffMember {
 export async function getStaff(department?: string): Promise<StaffMember[]> {
   const { data, error } = await supabase
     .from('crm_staff')
-    .select('id,full_name,department,additional_departments,is_active')
+    .select('id,full_name,position,department,additional_departments,is_active')
     .eq('is_active', true)
     .order('full_name')
   if (error) throw error
