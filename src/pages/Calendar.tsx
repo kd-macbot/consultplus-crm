@@ -12,7 +12,7 @@ import {
   type AbsenceType, type Absence,
 } from '../lib/types'
 import type { StaffMember as StaffMemberType } from '../lib/storage'
-import { namesMatch } from '../lib/utils'
+import { namesMatch, formatDate } from '../lib/utils'
 import { exportRowsToExcel } from '../lib/export'
 
 const MONTH_NAMES = [
@@ -462,7 +462,7 @@ export function CalendarPage() {
                         key={d}
                         onClick={() => openCell(s.id, s.full_name, dateIso)}
                         title={abs
-                          ? `${ABSENCE_TYPE_LABELS[abs.type as AbsenceType] ?? abs.type}${abs.notes ? ': ' + abs.notes : ''} (${abs.start_date} → ${abs.end_date}) — ${
+                          ? `${ABSENCE_TYPE_LABELS[abs.type as AbsenceType] ?? abs.type}${abs.notes ? ': ' + abs.notes : ''} (${formatDate(abs.start_date)} → ${formatDate(abs.end_date)}) — ${
                               isPending ? 'чака одобрение' : isRejected ? 'отказана' : 'одобрена'
                             }${isRejected && abs.rejection_reason ? ' — ' + abs.rejection_reason : ''}`
                           : (rowEditable ? `Добави отсъствие за ${s.full_name}` : '')}
@@ -713,6 +713,7 @@ function AbsenceModal({
                 onChange={e => { setStart(e.target.value); if (!end || end < e.target.value) setEnd(e.target.value) }}
                 className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
               />
+              {start && <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(start)}</p>}
             </div>
             <div>
               <label className="text-xs font-medium text-foreground block mb-1">До</label>
@@ -723,6 +724,7 @@ function AbsenceModal({
                 onChange={e => setEnd(e.target.value)}
                 className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
               />
+              {end && <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(end)}</p>}
             </div>
           </div>
 
