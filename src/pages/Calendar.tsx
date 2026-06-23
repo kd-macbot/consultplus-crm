@@ -12,6 +12,7 @@ import {
   type AbsenceType, type Absence,
 } from '../lib/types'
 import type { StaffMember as StaffMemberType } from '../lib/storage'
+import { namesMatch } from '../lib/utils'
 
 const MONTH_NAMES = [
   'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни',
@@ -69,16 +70,18 @@ export function CalendarPage() {
   const quotasQ = useVacationQuotas(year)
   const { invalidateAbsences } = useInvalidateCrm()
 
-  const staff: StaffMemberType[] = useMemo(() => (staffQ.data ?? []).filter(s => s.is_active), [staffQ.data])
+  const allStaff: StaffMemberType[] = useMemo(() => (staffQ.data ?? []), [staffQ.data])
+  const staff: StaffMemberType[] = useMemo(() => allStaff.filter(s => s.is_active), [allStaff])
   const absences = useMemo(() => absencesQ.data ?? [], [absencesQ.data])
   const quotas = useMemo(() => quotasQ.data ?? [], [quotasQ.data])
 
-  // Текущият потребител → staff запис (по име). Admin кликва на всеки ред
-  // и записът става одобрен. Останалите кликват само своя ред — записът е
-  // „чакаща заявка" до admin одобрение.
+  // Текущият потребител → staff запис (с нормализирано сравнение по име,
+  // случвало се е да има тривиална разлика — главни/малки, двойни интервали).
+  // Търсим във ВСИЧКИ staff записи (active и inactive), за да не „загубим"
+  // потребител с временно деактивирана служебна позиция.
   const myStaff = useMemo(
-    () => staff.find(s => s.full_name === user?.full_name),
-    [staff, user?.full_name],
+    () => allStaff.find(s => namesMatch(s.full_name, user?.full_name)),
+    [allStaff, user?.full_name],
   )
   const isAdmin = user?.role === 'admin'
 
@@ -232,10 +235,12 @@ export function CalendarPage() {
           </div>
         )}
 
-        {/* Hint за служители БЕЗ staff запис — нямат как да заявят. */}
+        {/* Hint за служители БЕЗ staff запис — нямат как да заявят.
+            Показваме името на потребителя, за да види admin какъв lookup правим. */}
         {!myStaff && !isAdmin && (
           <div className="mt-2 px-3 py-1.5 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 rounded border border-amber-200 dark:border-amber-800">
-            Профилът ти не е свързан със служител в Персонал — обърни се към admin, за да може да заявяваш отсъствия.
+            Профилът ти („{user?.full_name ?? '—'}") не е свързан със служител в Персонал.
+            Admin трябва да добави запис с точно същото име в Персонал.
           </div>
         )}
 

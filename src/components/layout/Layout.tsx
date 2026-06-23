@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useStaff, usePaymentConfigs, usePaymentStatuses, useAbsences } from '../../lib/queries'
-import { previousMonth } from '../../lib/utils'
+import { previousMonth, namesMatch } from '../../lib/utils'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
   ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox,
@@ -72,7 +72,7 @@ export function Layout() {
   // staffList идва от споделения RQ кеш (без излишен fetch).
   const staffQ = useStaff()
   const isTrz = useMemo(
-    () => (staffQ.data ?? []).find(s => s.full_name === user?.full_name)?.department === 'ТРЗ',
+    () => (staffQ.data ?? []).find(s => namesMatch(s.full_name, user?.full_name))?.department === 'ТРЗ',
     [staffQ.data, user?.full_name],
   )
 
