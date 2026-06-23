@@ -57,6 +57,10 @@ export function TrzPage() {
   const [softwareFilter, setSoftwareFilter] = useState<string[]>([])
   const [respFilter, setRespFilter] = useState('')
   const [respStaff, setRespStaff] = useState<string[]>([])
+  // Филтри „без тикче" по трите статус полета — toggle всеки независимо.
+  const [missingFilter, setMissingFilter] = useState<{ salaries: boolean; insurance: boolean; payroll: boolean }>({
+    salaries: false, insurance: false, payroll: false,
+  })
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
 
   const loading = !masterReady || (trzWorkQ.isLoading && !trzWorkQ.data)
@@ -146,13 +150,14 @@ export function TrzPage() {
     return [...new Set(allDropdowns.filter(d => d.column_id === softwareCol.id).map(d => d.value))]
   }, [allDropdowns, softwareCol])
 
-  const hasFilters = search.trim() !== '' || formaFilter.length > 0 || softwareFilter.length > 0 || respFilter !== ''
+  const hasFilters = search.trim() !== '' || formaFilter.length > 0 || softwareFilter.length > 0 || respFilter !== '' || missingFilter.salaries || missingFilter.insurance || missingFilter.payroll
 
   function clearFilters() {
     setSearch('')
     setFormaFilter([])
     setSoftwareFilter([])
     setRespFilter('')
+    setMissingFilter({ salaries: false, insurance: false, payroll: false })
   }
 
   type TrzRow = { client: Client; name: string; forma: string; resp: string; software: string; work: TrzWork | undefined }
@@ -189,9 +194,13 @@ export function TrzPage() {
       if (formaFilter.length > 0 && !formaFilter.includes(r.forma)) return false
       if (softwareFilter.length > 0 && !softwareFilter.includes(r.software)) return false
       if (respFilter && r.resp !== respFilter) return false
+      // Филтри „без тикче" — показва само редовете, на които съответното поле НЕ е маркирано.
+      if (missingFilter.salaries && r.work?.salaries_prepared) return false
+      if (missingFilter.insurance && r.work?.insurance_submitted) return false
+      if (missingFilter.payroll && r.work?.payroll_sent) return false
       return true
     })
-  }, [tableRows, search, formaFilter, softwareFilter, respFilter])
+  }, [tableRows, search, formaFilter, softwareFilter, respFilter, missingFilter])
 
   async function patchRow(clientId: string, patch: Partial<TrzWork>) {
     lastEditRef.current = Date.now()
@@ -346,6 +355,30 @@ export function TrzPage() {
             )}
           </div>
         )}
+        {/* Бързи филтри „без тикче" — toggle по 3-те булеви полета. */}
+        <div className="flex items-center gap-1.5 pl-2 border-l border-border">
+          <span className="text-muted-foreground uppercase tracking-wider font-semibold">Без:</span>
+          {([
+            { key: 'salaries', label: 'Заплати' },
+            { key: 'insurance', label: 'Осиг.' },
+            { key: 'payroll', label: 'Д1/Д6' },
+          ] as const).map(f => {
+            const active = missingFilter[f.key]
+            return (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setMissingFilter(prev => ({ ...prev, [f.key]: !prev[f.key] }))}
+                title={`Покажи само без отметка „${f.label}"`}
+                className={`h-6 px-2 text-xs rounded border transition-colors ${
+                  active ? 'bg-amber-500 text-white border-amber-500' : 'bg-background border-border hover:bg-muted/30'
+                }`}
+              >
+                {f.label}
+              </button>
+            )
+          })}
+        </div>
         <div className="ml-auto text-muted-foreground">
           Готови: <span className="font-semibold text-foreground">{doneCount}</span> / {filteredRows.length}
           {isFiltered && <> (от {tableRows.length})</>}
