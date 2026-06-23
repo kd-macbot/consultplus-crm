@@ -497,6 +497,7 @@ export function CalendarPage() {
           existing={modal.existing}
           defaultDate={modal.defaultDate}
           isAdmin={isAdmin}
+          allAbsences={absences}
           onClose={() => setModal(null)}
           onSaved={async () => { await invalidateAbsences(year); setModal(null) }}
           userId={user?.id}
@@ -509,14 +510,39 @@ export function CalendarPage() {
 // ============================================================
 // Modal: Добави / редактирай отсъствие
 // ============================================================
+
+// Лимит дистанционна работа per месец per служител (без admin одобрение
+// сверх). Admin може да добавя без ограничение, тъй като той сам одобрява.
+const REMOTE_LIMIT_PER_MONTH = 2
+
+// Брой работни дни от един range в конкретен месец на годината.
+function rangeWorkingDaysInMonth(start: string, end: string, year: number, month: number): number {
+  const monthStart = new Date(year, month - 1, 1)
+  const monthEnd = new Date(year, month, 0)
+  const a = new Date(start + 'T00:00:00')
+  const b = new Date(end + 'T00:00:00')
+  const from = a < monthStart ? monthStart : a
+  const to = b > monthEnd ? monthEnd : b
+  if (from > to) return 0
+  let count = 0
+  const cur = new Date(from)
+  while (cur <= to) {
+    const dow = cur.getDay()
+    if (dow !== 0 && dow !== 6) count++
+    cur.setDate(cur.getDate() + 1)
+  }
+  return count
+}
+
 function AbsenceModal({
-  staffId, staffName, existing, defaultDate, isAdmin, onClose, onSaved, userId,
+  staffId, staffName, existing, defaultDate, isAdmin, allAbsences, onClose, onSaved, userId,
 }: {
   staffId: string
   staffName: string
   existing?: Absence
   defaultDate?: string
   isAdmin: boolean
+  allAbsences: Absence[]
   onClose: () => void
   onSaved: () => Promise<void>
   userId?: string
@@ -540,7 +566,46 @@ function AbsenceModal({
 
   const canSave = start && end && start <= end && !saving
 
+  // Лимит за дистанционна работа: служителят не може да заявява повече от
+  // 2 работни дни/месец без admin одобрение. Admin (auto-approved) е свободен.
+  // Existing approved/pending записи на същия служител се броят към лимита.
+  function checkRemoteLimit(): string | null {
+    if (isAdmin || type !== 'remote') return null
+    const a = new Date(start + 'T00:00:00')
+    const b = new Date(end + 'T00:00:00')
+    if (isNaN(a.getTime()) || isNaN(b.getTime()) || a > b) return null
+    // Списък от уникалните (year, month) комбинации, които range-ът покрива.
+    const months: { year: number; month: number }[] = []
+    const cur = new Date(a)
+    while (cur <= b) {
+      const ym = { year: cur.getFullYear(), month: cur.getMonth() + 1 }
+      if (!months.some(m => m.year === ym.year && m.month === ym.month)) months.push(ym)
+      cur.setMonth(cur.getMonth() + 1)
+    }
+    for (const { year, month } of months) {
+      const newDays = rangeWorkingDaysInMonth(start, end, year, month)
+      let existingDays = 0
+      allAbsences.forEach(abs => {
+        if (abs.staff_id !== staffId) return
+        if (abs.type !== 'remote') return
+        if (abs.status === 'rejected') return
+        if (existing && abs.id === existing.id) return  // не брой собствения запис
+        existingDays += rangeWorkingDaysInMonth(abs.start_date, abs.end_date, year, month)
+      })
+      if (newDays + existingDays > REMOTE_LIMIT_PER_MONTH) {
+        const monthName = ['Януари','Февруари','Март','Април','Май','Юни','Юли','Август','Септември','Октомври','Ноември','Декември'][month - 1]
+        return `Превишаваш лимита за дистанционна работа: ${REMOTE_LIMIT_PER_MONTH} работни дни в ${monthName} ${year}. Вече имаш ${existingDays}, заявяваш още ${newDays}. Помоли admin да добави ръчно.`
+      }
+    }
+    return null
+  }
+
   const save = async () => {
+    const limitError = checkRemoteLimit()
+    if (limitError) {
+      toast.error(limitError)
+      return
+    }
     setSaving(true)
     try {
       if (existing) {
