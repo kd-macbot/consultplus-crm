@@ -29,6 +29,7 @@ const PaymentsPage = lazy(() => import('./pages/Payments').then(m => ({ default:
 const CalendarPage = lazy(() => import('./pages/Calendar').then(m => ({ default: m.CalendarPage })))
 const VacationsPage = lazy(() => import('./pages/Vacations').then(m => ({ default: m.VacationsPage })))
 const AbsenceRequestsPage = lazy(() => import('./pages/AbsenceRequests').then(m => ({ default: m.AbsenceRequestsPage })))
+const Form76Page = lazy(() => import('./pages/Form76').then(m => ({ default: m.Form76Page })))
 const ImportPage = lazy(() => import('./pages/Import').then(m => ({ default: m.ImportPage })))
 
 function PageFallback() {
@@ -74,6 +75,7 @@ export default function App() {
                 <Route path="/absence-requests" element={
                   <ProtectedRoute allowedRoles={['admin']}><AbsenceRequestsPage /></ProtectedRoute>
                 } />
+                <Route path="/form76" element={<Form76Page />} />
                 <Route path="/opportunities" element={
                   <ProtectedRoute allowedRoles={['admin']}><OpportunitiesPage /></ProtectedRoute>
                 } />

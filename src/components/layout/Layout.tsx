@@ -51,6 +51,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },
       { to: '/absence-requests', label: 'Заявки за отпуска', icon: Inbox, roles: ['admin'], badgeKey: 'absenceRequests' },
       { to: '/vacations', label: 'Справка отпуска', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
+      { to: '/form76', label: 'Форма 76', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
       { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin'] },
       { to: '/admin', label: 'Настройки', icon: Settings, roles: ['admin'] },
     ],
