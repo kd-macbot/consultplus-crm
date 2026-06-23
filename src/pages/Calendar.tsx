@@ -277,6 +277,19 @@ export function CalendarPage() {
   const goNext = () => {
     if (month === 12) { setYear(year + 1); setMonth(1) } else setMonth(month + 1)
   }
+  const goToday = () => {
+    const t = new Date()
+    setYear(t.getFullYear())
+    setMonth(t.getMonth() + 1)
+  }
+
+  // ISO дата на днешния ден — за маркер „today" в grid-а.
+  const todayIso = useMemo(() => {
+    const t = new Date()
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+  }, [])
+  const isViewingThisMonth = year === now.getFullYear() && month === now.getMonth() + 1
+  const todayDay = now.getDate()
 
   if (!ready) {
     return (
@@ -319,6 +332,9 @@ export function CalendarPage() {
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
+            <Button variant="outline" size="sm" onClick={goToday} title="Към текущия месец" disabled={isViewingThisMonth}>
+              Днес
+            </Button>
             {canExport && (
               <Button
                 variant="outline"
@@ -349,7 +365,7 @@ export function CalendarPage() {
             {/* Видим бутон „Заяви отпуска" — основният path за служителите. */}
             <Button
               size="sm"
-              onClick={() => myStaff && setModal({ staffId: myStaff.id, staffName: myStaff.full_name })}
+              onClick={() => myStaff && setModal({ staffId: myStaff.id, staffName: myStaff.full_name, defaultDate: todayIso })}
               className="bg-primary text-primary-foreground hover:opacity-90"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -393,11 +409,12 @@ export function CalendarPage() {
               {days.map(d => {
                 const dow = new Date(year, month - 1, d).getDay()
                 const isWeekend = dow === 0 || dow === 6
+                const isToday = isViewingThisMonth && d === todayDay
                 return (
-                  <th key={d} className={`text-center px-0 py-1 font-medium border-r border-navy-light/50 ${isWeekend ? 'bg-navy/80' : ''}`} style={{ minWidth: 28 }}>
+                  <th key={d} className={`text-center px-0 py-1 font-medium border-r border-navy-light/50 ${isToday ? 'bg-amber-500 text-navy' : isWeekend ? 'bg-navy/80' : ''}`} style={{ minWidth: 28 }}>
                     <div className="leading-tight">
                       <div className="text-[10px] opacity-60">{WEEKDAY_SHORT[dow]}</div>
-                      <div className="text-[11px]">{d}</div>
+                      <div className={`text-[11px] ${isToday ? 'font-bold' : ''}`}>{d}</div>
                     </div>
                   </th>
                 )
@@ -432,6 +449,7 @@ export function CalendarPage() {
                     const dateIso = iso(year, month, d)
                     const dow = new Date(year, month - 1, d).getDay()
                     const isWeekend = dow === 0 || dow === 6
+                    const isToday = dateIso === todayIso
                     const abs = findAbsenceForDay(visibleAbsences, s.id, dateIso)
                     const color = abs ? ABSENCE_TYPE_COLORS[abs.type as AbsenceType] ?? 'bg-gray-400 text-white' : ''
                     // Pending → пунктирана рамка + opacity. Rejected → diagonal strip + ред е сив.
@@ -448,7 +466,7 @@ export function CalendarPage() {
                               isPending ? 'чака одобрение' : isRejected ? 'отказана' : 'одобрена'
                             }${isRejected && abs.rejection_reason ? ' — ' + abs.rejection_reason : ''}`
                           : (rowEditable ? `Добави отсъствие за ${s.full_name}` : '')}
-                        className={`border-r border-border/40 text-center align-middle ${isWeekend && !abs ? 'bg-muted/40' : ''} ${rowEditable ? 'cursor-pointer hover:ring-1 hover:ring-primary/40' : ''}`}
+                        className={`border-r border-border/40 text-center align-middle ${isToday ? 'bg-amber-100/60 dark:bg-amber-950/40' : isWeekend && !abs ? 'bg-muted/40' : ''} ${rowEditable ? 'cursor-pointer hover:ring-1 hover:ring-primary/40' : ''}`}
                         style={{ height: 28 }}
                       >
                         {abs && (
