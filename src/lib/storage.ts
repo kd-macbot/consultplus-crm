@@ -1694,10 +1694,14 @@ export async function pullPrevMonthTrzNotes(
     )
 
     // 3. За всеки клиент → ако бележката се различава, update.
+    // Пропускаме, ако предходният месец няма ред ИЛИ бележката му е празна
+    // (защо: иначе случайно бихме изтрили съдържание в тек. месец, заместявайки
+    // го с празна стойност).
     const updates = cur
       .filter(r => {
         const prevNote = prevNoteByClient.get(r.client_id as string)
-        if (prevNote === undefined) return false  // няма ред в предходния
+        if (prevNote === undefined) return false
+        if (!prevNote || prevNote.trim() === '') return false
         return prevNote !== (r.notes ?? null)
       })
       .map(r => ({
