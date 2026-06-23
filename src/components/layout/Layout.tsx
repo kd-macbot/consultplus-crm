@@ -18,9 +18,10 @@ type NavSection = { title: string | null; items: NavItem[] }
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: null,  // Табло — без заглавие, висне самостоятелно отгоре
+    title: null,  // Табло + Календар — без заглавие, най-отгоре в sidebar-а
     items: [
       { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
+      { to: '/calendar', label: 'Календар', icon: CalendarDays, roles: ['admin', 'manager', 'employee'], badgeKey: 'absentToday' },
     ],
   },
   {
@@ -34,7 +35,6 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
       { to: '/profiles', label: 'Профили', icon: IdCard, roles: ['admin', 'manager', 'employee'] },
       { to: '/payments', label: 'Плащания', icon: Banknote, roles: ['admin', 'manager'], badgeKey: 'paymentsUnpaid' },
-      { to: '/calendar', label: 'Календар', icon: CalendarDays, roles: ['admin', 'manager', 'employee'], badgeKey: 'absentToday' },
     ],
   },
   {
