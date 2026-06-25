@@ -163,13 +163,14 @@ export interface StaffMember {
   position: string | null
   department: string | null
   additional_departments?: string[]
+  hire_date: string | null  // ISO date YYYY-MM-DD
   is_active: boolean
 }
 
 export async function getStaff(department?: string): Promise<StaffMember[]> {
   const { data, error } = await supabase
     .from('crm_staff')
-    .select('id,full_name,position,department,additional_departments,is_active')
+    .select('id,full_name,position,department,additional_departments,hire_date,is_active')
     .eq('is_active', true)
     .order('full_name')
   if (error) throw error
