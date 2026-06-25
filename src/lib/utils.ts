@@ -32,6 +32,40 @@ export const MONTH_NAMES = [
   'Юли', 'Август', 'Септември', 'Октомври', 'Ноември', 'Декември',
 ]
 
+/**
+ * Стаж между две дати — години + месеци + дни. Връща обект и
+ * форматиран текст за UI. ISO формат (YYYY-MM-DD).
+ *
+ * Пример: hire=2023-03-15, today=2026-06-22 → { years: 3, months: 3, days: 7,
+ * label: '3 г. 3 м. 7 дни' }
+ */
+export function calcTenure(hireIso: string | null | undefined, asOf: Date = new Date()):
+  { years: number; months: number; days: number; totalMonths: number; label: string } | null
+{
+  if (!hireIso) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(hireIso)
+  if (!m) return null
+  const hire = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10))
+  if (isNaN(hire.getTime()) || hire > asOf) return null
+
+  let years = asOf.getFullYear() - hire.getFullYear()
+  let months = asOf.getMonth() - hire.getMonth()
+  let days = asOf.getDate() - hire.getDate()
+  if (days < 0) {
+    months -= 1
+    const prevMonthEnd = new Date(asOf.getFullYear(), asOf.getMonth(), 0).getDate()
+    days += prevMonthEnd
+  }
+  if (months < 0) { years -= 1; months += 12 }
+
+  const totalMonths = years * 12 + months
+  const parts: string[] = []
+  if (years > 0) parts.push(`${years} г.`)
+  if (months > 0) parts.push(`${months} м.`)
+  if (years === 0 && months === 0) parts.push(`${days} дни`)
+  return { years, months, days, totalMonths, label: parts.join(' ') }
+}
+
 /** ISO дата (YYYY-MM-DD) → DD.MM.YYYY. Празно → ''; невалидно → връща входа. */
 export function formatDate(v: string | null | undefined): string {
   if (!v) return ''
