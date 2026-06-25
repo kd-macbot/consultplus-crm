@@ -502,6 +502,43 @@ export interface Form76Override {
   updated_by: string | null
 }
 
+// ============================================================
+// Фирмени събития (Календар)
+// ============================================================
+export const EVENT_TYPES = ['meeting', 'teambuilding', 'holiday', 'training', 'other'] as const
+export type EventType = typeof EVENT_TYPES[number]
+
+export const EVENT_TYPE_LABELS: Record<EventType, string> = {
+  meeting:      'Среща',
+  teambuilding: 'Тиймбилдинг',
+  holiday:      'Празник',
+  training:     'Обучение',
+  other:        'Друго',
+}
+
+// Цвят за band-а в календара (наситен фон + бял текст).
+export const EVENT_TYPE_COLORS: Record<EventType, string> = {
+  meeting:      'bg-blue-500 text-white',
+  teambuilding: 'bg-emerald-500 text-white',
+  holiday:      'bg-red-500 text-white',
+  training:     'bg-violet-500 text-white',
+  other:        'bg-gray-500 text-white',
+}
+
+export interface CompanyEvent {
+  id: string
+  title: string
+  description: string | null
+  start_date: string  // ISO YYYY-MM-DD
+  end_date: string
+  start_time: string | null  // HH:MM:SS или null за all-day
+  end_time: string | null
+  type: EventType | string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory
