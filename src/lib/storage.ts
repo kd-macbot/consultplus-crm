@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -163,13 +163,14 @@ export interface StaffMember {
   position: string | null
   department: string | null
   additional_departments?: string[]
+  hire_date: string | null  // ISO date YYYY-MM-DD
   is_active: boolean
 }
 
 export async function getStaff(department?: string): Promise<StaffMember[]> {
   const { data, error } = await supabase
     .from('crm_staff')
-    .select('id,full_name,position,department,additional_departments,is_active')
+    .select('id,full_name,position,department,additional_departments,hire_date,is_active')
     .eq('is_active', true)
     .order('full_name')
   if (error) throw error
@@ -1188,6 +1189,73 @@ export async function setForm76Override(
         },
         { onConflict: 'staff_id,year,month,day' },
       )
+    if (error) throw error
+  })())
+}
+
+// ============================================================
+// Фирмени събития
+// ============================================================
+
+export async function getEvents(year: number): Promise<CompanyEvent[]> {
+  return withRetry(async () => {
+    const yearStart = `${year}-01-01`
+    const yearEnd = `${year}-12-31`
+    const { data, error } = await supabase
+      .from('crm_events')
+      .select('id,title,description,start_date,end_date,start_time,end_time,type,created_by,created_at,updated_at')
+      .lte('start_date', yearEnd)
+      .gte('end_date', yearStart)
+      .order('start_date')
+    if (error) throw error
+    return (data ?? []) as CompanyEvent[]
+  })
+}
+
+export async function addEvent(
+  patch: Pick<CompanyEvent, 'title' | 'start_date' | 'end_date' | 'type'> & {
+    description?: string | null
+    start_time?: string | null
+    end_time?: string | null
+  },
+  createdBy?: string | null,
+): Promise<CompanyEvent> {
+  return await trackSave((async () => {
+    const { data, error } = await supabase
+      .from('crm_events')
+      .insert([{
+        title: patch.title,
+        description: patch.description ?? null,
+        start_date: patch.start_date,
+        end_date: patch.end_date,
+        start_time: patch.start_time ?? null,
+        end_time: patch.end_time ?? null,
+        type: patch.type,
+        created_by: createdBy ?? null,
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data as CompanyEvent
+  })())
+}
+
+export async function updateEvent(
+  id: string,
+  patch: Partial<Pick<CompanyEvent, 'title' | 'description' | 'start_date' | 'end_date' | 'start_time' | 'end_time' | 'type'>>,
+): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_events')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function deleteEvent(id: string): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase.from('crm_events').delete().eq('id', id)
     if (error) throw error
   })())
 }

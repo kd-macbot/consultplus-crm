@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabase'
 import { createStaffMember, updateStaffMember, setStaffActive, getAllProfiles, withRetry } from '../lib/storage'
 import { useAuth, adminCreateUser } from '../lib/auth'
 import type { Profile, Role } from '../lib/types'
-import { Users, UserCheck, UserX, Pencil, Mail, Phone, Building2, Plus, KeyRound, ShieldCheck } from 'lucide-react'
+import { Users, UserCheck, UserX, Pencil, Mail, Phone, Building2, Plus, KeyRound, ShieldCheck, CalendarDays } from 'lucide-react'
+import { calcTenure, formatDate } from '../lib/utils'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,6 +21,7 @@ interface StaffMember {
   additional_departments: string[] | null
   email: string | null
   phone: string | null
+  hire_date: string | null
   is_active: boolean
   created_at: string
 }
@@ -300,6 +302,15 @@ function StaffCard({ member, isAdmin, profile, onEdit, onToggle, onCreateAccount
               <span>{member.phone}</span>
             </div>
           )}
+          {member.hire_date && (() => {
+            const t = calcTenure(member.hire_date)
+            return (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground" title={`Назначен на ${formatDate(member.hire_date)}`}>
+                <CalendarDays className="h-3 w-3 shrink-0" />
+                <span>Стаж: <span className="font-medium text-foreground">{t?.label ?? '—'}</span></span>
+              </div>
+            )
+          })()}
           {profile && (
             <div className="flex items-center gap-1.5 text-xs">
               <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-600" />
@@ -343,6 +354,7 @@ function StaffForm({ open, member, onSave, onClose }: {
   const [additionalDepts, setAdditionalDepts] = useState<string[]>(member?.additional_departments ?? [])
   const [email, setEmail] = useState(member?.email ?? '')
   const [phone, setPhone] = useState(member?.phone ?? '')
+  const [hireDate, setHireDate] = useState(member?.hire_date ?? '')
 
   useEffect(() => {
     if (open) {
@@ -352,6 +364,7 @@ function StaffForm({ open, member, onSave, onClose }: {
       setAdditionalDepts(member?.additional_departments ?? [])
       setEmail(member?.email ?? '')
       setPhone(member?.phone ?? '')
+      setHireDate(member?.hire_date ?? '')
     }
   }, [open, member])
 
@@ -369,6 +382,7 @@ function StaffForm({ open, member, onSave, onClose }: {
       additional_departments: additionalDepts.filter(d => d !== department),
       email: email.trim() || null,
       phone: phone.trim() || null,
+      hire_date: hireDate || null,
     })
   }
 
@@ -438,6 +452,13 @@ function StaffForm({ open, member, onSave, onClose }: {
               <Input id="sf-phone" value={phone} onChange={e => setPhone(e.target.value)}
                 placeholder="+359..." />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="sf-hire-date">Дата на назначаване</Label>
+            <Input id="sf-hire-date" type="date" value={hireDate} onChange={e => setHireDate(e.target.value)} />
+            <p className="text-[11px] text-muted-foreground">
+              Ще се ползва за изчисление на стаж и придобивки.
+            </p>
           </div>
         </div>
 
