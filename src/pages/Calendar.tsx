@@ -463,8 +463,14 @@ export function CalendarPage() {
                 const dayEvents = eventsForDay(dateIso)
                 const first = dayEvents[0]
                 const color = first ? EVENT_TYPE_COLORS[first.type as EventType] ?? 'bg-gray-500 text-white' : ''
+                const formatEventTime = (e: CompanyEvent) => e.start_time
+                  ? `${e.start_time.slice(0, 5)}${e.end_time ? '-' + e.end_time.slice(0, 5) : ''}`
+                  : 'цял ден'
                 const tooltip = dayEvents.length === 0 ? ''
-                  : dayEvents.map(e => `${EVENT_TYPE_LABELS[e.type as EventType] ?? e.type}: ${e.title}${e.description ? '\n' + e.description : ''}`).join('\n———\n')
+                  : dayEvents.map(e =>
+                      `${EVENT_TYPE_LABELS[e.type as EventType] ?? e.type}: ${e.title}\n${formatEventTime(e)}${e.description ? '\n' + e.description : ''}`,
+                    ).join('\n———\n')
+                const firstTime = first ? formatEventTime(first) : ''
                 return (
                   <td
                     key={d}
@@ -475,10 +481,15 @@ export function CalendarPage() {
                     }}
                     title={tooltip}
                     className={`relative text-center border-r border-border/40 ${first ? color : ''} ${isAdmin ? 'cursor-pointer hover:ring-1 hover:ring-primary/40' : ''}`}
-                    style={{ height: 22 }}
+                    style={{ height: 28 }}
                   >
                     {first && (
-                      <div className="text-[9px] font-medium truncate px-0.5 leading-none">{first.title}</div>
+                      <div className="leading-tight px-0.5">
+                        {first.start_time && (
+                          <div className="text-[8px] opacity-80 leading-none">{firstTime}</div>
+                        )}
+                        <div className="text-[9px] font-medium truncate leading-none">{first.title}</div>
+                      </div>
                     )}
                     {dayEvents.length > 1 && (
                       <span className="absolute top-0 right-0.5 text-[8px] opacity-80">+{dayEvents.length - 1}</span>
