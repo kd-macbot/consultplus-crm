@@ -1,15 +1,16 @@
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, CalendarDays, Plus, Trash2, X, Download } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, Plus, Trash2, X, Download, Sparkles, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import {
-  useStaff, useAbsences, useVacationQuotas, useInvalidateCrm,
+  useStaff, useAbsences, useVacationQuotas, useEvents, useInvalidateCrm,
 } from '../lib/queries'
-import { addAbsence, updateAbsence, deleteAbsence, approveAbsence, rejectAbsence } from '../lib/storage'
+import { addAbsence, updateAbsence, deleteAbsence, approveAbsence, rejectAbsence, addEvent, updateEvent, deleteEvent } from '../lib/storage'
 import {
   ABSENCE_TYPES, ABSENCE_TYPE_LABELS, ABSENCE_TYPE_COLORS,
-  type AbsenceType, type Absence,
+  EVENT_TYPES, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS,
+  type AbsenceType, type Absence, type EventType, type CompanyEvent,
 } from '../lib/types'
 import type { StaffMember as StaffMemberType } from '../lib/storage'
 import { namesMatch, formatDate } from '../lib/utils'
@@ -98,12 +99,14 @@ export function CalendarPage() {
 
   const staffQ = useStaff()
   const absencesQ = useAbsences(year)
+  const eventsQ = useEvents(year)
   const quotasQ = useVacationQuotas(year)
-  const { invalidateAbsences } = useInvalidateCrm()
+  const { invalidateAbsences, invalidateEvents } = useInvalidateCrm()
 
   const allStaff: StaffMemberType[] = useMemo(() => (staffQ.data ?? []), [staffQ.data])
   const staff: StaffMemberType[] = useMemo(() => allStaff.filter(s => s.is_active), [allStaff])
   const absences = useMemo(() => absencesQ.data ?? [], [absencesQ.data])
+  const events = useMemo(() => eventsQ.data ?? [], [eventsQ.data])
   const quotas = useMemo(() => quotasQ.data ?? [], [quotasQ.data])
 
   // Текущият потребител → staff запис (с нормализирано сравнение по име,
@@ -253,6 +256,17 @@ export function CalendarPage() {
 
   // Modal state (само ако canEdit).
   const [modal, setModal] = useState<null | { staffId: string; staffName: string; existing?: Absence; defaultDate?: string }>(null)
+  const [eventModal, setEventModal] = useState<null | { existing?: CompanyEvent; defaultDate?: string }>(null)
+  const [selectedDay, setSelectedDay] = useState<string>(() => {
+    const t = new Date()
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+  })
+
+  // Събития, които покриват даден ден.
+  const eventsForDay = useCallback((dateIso: string): CompanyEvent[] => {
+    return events.filter(e => dateIso >= e.start_date && dateIso <= e.end_date)
+  }, [events])
+  const selectedDayEvents = useMemo(() => eventsForDay(selectedDay), [eventsForDay, selectedDay])
 
   // Кой ред може да редактира потребителят:
   //   admin → всички (записът е одобрен директно)
@@ -264,12 +278,13 @@ export function CalendarPage() {
   }, [isAdmin, isManagerTrz, myStaff])
 
   const openCell = useCallback((staffId: string, staffName: string, dateIso: string) => {
+    setSelectedDay(dateIso)  // винаги обновявай избрания ден (за events panel)
     if (!canEditRow(staffId)) return
     const existing = findAbsenceForDay(visibleAbsences, staffId, dateIso)
     setModal({ staffId, staffName, existing: existing ?? undefined, defaultDate: dateIso })
   }, [canEditRow, visibleAbsences])
 
-  const ready = !!staffQ.data && !!absencesQ.data && !!quotasQ.data
+  const ready = !!staffQ.data && !!absencesQ.data && !!quotasQ.data && !!eventsQ.data
 
   const goPrev = () => {
     if (month === 1) { setYear(year - 1); setMonth(12) } else setMonth(month - 1)
@@ -335,6 +350,17 @@ export function CalendarPage() {
             <Button variant="outline" size="sm" onClick={goToday} title="Към текущия месец" disabled={isViewingThisMonth}>
               Днес
             </Button>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEventModal({ defaultDate: selectedDay })}
+                title="Добави фирмено събитие"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Ново събитие</span>
+              </Button>
+            )}
             {canExport && (
               <Button
                 variant="outline"
@@ -422,6 +448,45 @@ export function CalendarPage() {
             </tr>
           </thead>
           <tbody>
+            {/* Ред „Събития" — НАД списъка със служители. Click → отваря
+                модал за редакция (admin). Многодневни събития показват
+                title-а във всеки покрит ден. */}
+            <tr className="border-b-2 border-border bg-muted/30">
+              <td className="px-3 py-1.5 font-semibold text-[11px] uppercase tracking-wider sticky left-0 z-10 bg-muted/30 border-r border-border text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="h-3 w-3" />
+                  Събития
+                </div>
+              </td>
+              {days.map(d => {
+                const dateIso = iso(year, month, d)
+                const dayEvents = eventsForDay(dateIso)
+                const first = dayEvents[0]
+                const color = first ? EVENT_TYPE_COLORS[first.type as EventType] ?? 'bg-gray-500 text-white' : ''
+                const tooltip = dayEvents.length === 0 ? ''
+                  : dayEvents.map(e => `${EVENT_TYPE_LABELS[e.type as EventType] ?? e.type}: ${e.title}${e.description ? '\n' + e.description : ''}`).join('\n———\n')
+                return (
+                  <td
+                    key={d}
+                    onClick={() => {
+                      if (first && isAdmin) setEventModal({ existing: first })
+                      else if (isAdmin) setEventModal({ defaultDate: dateIso })
+                      setSelectedDay(dateIso)
+                    }}
+                    title={tooltip}
+                    className={`relative text-center border-r border-border/40 ${first ? color : ''} ${isAdmin ? 'cursor-pointer hover:ring-1 hover:ring-primary/40' : ''}`}
+                    style={{ height: 22 }}
+                  >
+                    {first && (
+                      <div className="text-[9px] font-medium truncate px-0.5 leading-none">{first.title}</div>
+                    )}
+                    {dayEvents.length > 1 && (
+                      <span className="absolute top-0 right-0.5 text-[8px] opacity-80">+{dayEvents.length - 1}</span>
+                    )}
+                  </td>
+                )
+              })}
+            </tr>
             {staff.length === 0 ? (
               <tr>
                 <td colSpan={1 + daysCount} className="text-center py-12 text-muted-foreground">
@@ -490,6 +555,56 @@ export function CalendarPage() {
         </table>
       </div>
 
+      {/* Footer panel: събития за избрания ден. */}
+      <div className="border-t border-border bg-card px-3 md:px-5 py-2">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-semibold text-foreground">{formatDate(selectedDay)}</span>
+            <span className="text-[11px] text-muted-foreground">
+              {selectedDayEvents.length === 0 ? 'няма събития' : `${selectedDayEvents.length} ${selectedDayEvents.length === 1 ? 'събитие' : 'събития'}`}
+            </span>
+          </div>
+          {isAdmin && (
+            <Button size="sm" variant="ghost" className="h-7" onClick={() => setEventModal({ defaultDate: selectedDay })}>
+              <Plus className="h-3 w-3" /> Добави
+            </Button>
+          )}
+        </div>
+        {selectedDayEvents.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {selectedDayEvents.map(e => {
+              const color = EVENT_TYPE_COLORS[e.type as EventType] ?? 'bg-gray-500 text-white'
+              const timeRange = e.start_time
+                ? `${e.start_time.slice(0, 5)}${e.end_time ? '-' + e.end_time.slice(0, 5) : ''}`
+                : 'цял ден'
+              const dateRange = e.start_date === e.end_date
+                ? formatDate(e.start_date)
+                : `${formatDate(e.start_date)} → ${formatDate(e.end_date)}`
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  onClick={() => isAdmin && setEventModal({ existing: e })}
+                  className={`text-left rounded-md px-2 py-1 max-w-[280px] ${color} ${isAdmin ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
+                  title={isAdmin ? 'Клик за редакция' : ''}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase opacity-80">{EVENT_TYPE_LABELS[e.type as EventType] ?? e.type}</span>
+                    <span className="text-[10px] opacity-70">· {timeRange}</span>
+                  </div>
+                  <div className="text-xs font-semibold leading-tight">{e.title}</div>
+                  {e.description && <div className="text-[10px] opacity-90 leading-tight mt-0.5 line-clamp-2">{e.description}</div>}
+                  {e.start_date !== e.end_date && (
+                    <div className="text-[9px] opacity-70 mt-0.5">{dateRange}</div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       {modal && (
         <AbsenceModal
           staffId={modal.staffId}
@@ -500,6 +615,16 @@ export function CalendarPage() {
           allAbsences={absences}
           onClose={() => setModal(null)}
           onSaved={async () => { await invalidateAbsences(year); setModal(null) }}
+          userId={user?.id}
+        />
+      )}
+
+      {eventModal && (
+        <EventModal
+          existing={eventModal.existing}
+          defaultDate={eventModal.defaultDate ?? selectedDay}
+          onClose={() => setEventModal(null)}
+          onSaved={async () => { await invalidateEvents(year); setEventModal(null) }}
           userId={user?.id}
         />
       )}
@@ -780,6 +905,184 @@ function AbsenceModal({
               {existing
                 ? 'Запиши'
                 : <><Plus className="h-3.5 w-3.5" />{isAdmin ? 'Добави' : 'Заяви'}</>}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// Modal: Добави / редактирай фирмено събитие
+// ============================================================
+function EventModal({
+  existing, defaultDate, onClose, onSaved, userId,
+}: {
+  existing?: CompanyEvent
+  defaultDate: string
+  onClose: () => void
+  onSaved: () => Promise<void>
+  userId?: string
+}) {
+  const [title, setTitle] = useState(existing?.title ?? '')
+  const [description, setDescription] = useState(existing?.description ?? '')
+  const [startDate, setStartDate] = useState(existing?.start_date ?? defaultDate)
+  const [endDate, setEndDate] = useState(existing?.end_date ?? defaultDate)
+  const [allDay, setAllDay] = useState(existing ? !existing.start_time : true)
+  const [startTime, setStartTime] = useState(existing?.start_time?.slice(0, 5) ?? '09:00')
+  const [endTime, setEndTime] = useState(existing?.end_time?.slice(0, 5) ?? '10:00')
+  const [type, setType] = useState<EventType>((existing?.type as EventType) ?? 'meeting')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [onClose])
+
+  const canSave = title.trim() && startDate && endDate && startDate <= endDate && !saving
+
+  async function save() {
+    setSaving(true)
+    try {
+      const payload = {
+        title: title.trim(),
+        description: description.trim() || null,
+        start_date: startDate,
+        end_date: endDate,
+        start_time: allDay ? null : startTime + ':00',
+        end_time: allDay ? null : endTime + ':00',
+        type,
+      }
+      if (existing) {
+        await updateEvent(existing.id, payload)
+      } else {
+        await addEvent(payload, userId)
+      }
+      toast.success(existing ? 'Събитието е обновено' : 'Събитието е добавено')
+      await onSaved()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при запис')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function remove() {
+    if (!existing) return
+    if (!confirm(`Да изтрия „${existing.title}"?`)) return
+    setSaving(true)
+    try {
+      await deleteEvent(existing.id)
+      toast.success('Изтрито')
+      await onSaved()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <h3 className="font-semibold text-foreground">{existing ? 'Редактирай събитие' : 'Ново събитие'}</h3>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-xs font-medium text-foreground block mb-1">Заглавие</label>
+            <input
+              type="text" value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="Тиймбилдинг, Среща, ..." autoFocus
+              className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-foreground block mb-1.5">Тип</label>
+            <div className="flex flex-wrap gap-1.5">
+              {EVENT_TYPES.map(t => (
+                <button
+                  key={t} type="button" onClick={() => setType(t)}
+                  className={`px-2.5 py-1 text-xs rounded border transition-all ${
+                    type === t
+                      ? `${EVENT_TYPE_COLORS[t]} border-transparent ring-2 ring-offset-1 ring-current/30`
+                      : 'bg-background border-border text-muted-foreground hover:bg-muted/30'
+                  }`}
+                >
+                  {EVENT_TYPE_LABELS[t]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-foreground block mb-1">От</label>
+              <input
+                type="date" value={startDate}
+                onChange={e => { setStartDate(e.target.value); if (!endDate || endDate < e.target.value) setEndDate(e.target.value) }}
+                className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
+              />
+              {startDate && <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(startDate)}</p>}
+            </div>
+            <div>
+              <label className="text-xs font-medium text-foreground block mb-1">До</label>
+              <input
+                type="date" value={endDate} min={startDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
+              />
+              {endDate && <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(endDate)}</p>}
+            </div>
+          </div>
+
+          <div>
+            <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" checked={allDay} onChange={e => setAllDay(e.target.checked)} className="h-3.5 w-3.5" />
+              Цял ден
+            </label>
+            {!allDay && (
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Начало</label>
+                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
+                    className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Край</label>
+                  <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
+                    className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-foreground block mb-1">Описание</label>
+            <textarea
+              value={description} onChange={e => setDescription(e.target.value)}
+              placeholder="място, програма, бележки..."
+              rows={2}
+              className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none resize-y"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border gap-2">
+          {existing ? (
+            <Button variant="ghost" className="text-destructive" onClick={remove} disabled={saving}>
+              <Trash2 className="h-3.5 w-3.5" /> Изтрий
+            </Button>
+          ) : <span />}
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onClose} disabled={saving}>Отказ</Button>
+            <Button onClick={save} disabled={!canSave}>
+              {existing ? <><Pencil className="h-3.5 w-3.5" />Запиши</> : <><Plus className="h-3.5 w-3.5" />Добави</>}
             </Button>
           </div>
         </div>

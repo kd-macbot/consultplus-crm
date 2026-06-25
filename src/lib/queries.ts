@@ -5,7 +5,7 @@ import {
   getTags, getClientTags, getStaff, getAllContacts,
   getMonthlyWork, getTrzWork, getArt55EntriesForPeriod, getChecklist,
   getClientProfiles, getPaymentConfigs, getPaymentStatuses,
-  getAbsences, getVacationQuotas, getForm76Overrides,
+  getAbsences, getVacationQuotas, getForm76Overrides, getEvents,
 } from './storage'
 import { timed } from './perf'
 
@@ -93,6 +93,13 @@ export function useForm76Overrides(year: number, month: number) {
     enabled: year > 0 && month > 0,
   })
 }
+export function useEvents(year: number) {
+  return useQuery({
+    queryKey: ['events', year] as const,
+    queryFn: () => getEvents(year),
+    enabled: year > 0,
+  })
+}
 
 // Месечни / годишни данни — параметризирани по year/month, така че RQ кешира
 // всеки месец отделно. След като user е посетил месец веднъж, повторното
@@ -154,6 +161,8 @@ export function useInvalidateCrm() {
       qc.invalidateQueries({ queryKey: ['vacationQuotas', year] }),
     invalidateForm76Overrides: (year: number, month: number) =>
       qc.invalidateQueries({ queryKey: ['form76Overrides', year, month] }),
+    invalidateEvents: (year: number) =>
+      qc.invalidateQueries({ queryKey: ['events', year] }),
     invalidateMonthlyWork: (year: number, month: number) =>
       qc.invalidateQueries({ queryKey: ['monthlyWork', year, month] }),
     invalidateTrzWork: (year: number, month: number) =>
