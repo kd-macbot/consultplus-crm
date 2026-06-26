@@ -435,11 +435,10 @@ export function CalendarPage() {
 
       {/* Grid */}
       <div className="flex-1 overflow-auto">
-        {/* Inner wrapper с width: max-content, така че И таблицата, И секция
-            Новини да заемат точно широчината на календарните дни (нито
-            повече, нито по-малко). Без този wrapper table-ът се сви до
-            съдържанието, а Новини секцията се разтегляше до viewport-а. */}
-        <div style={{ width: 'max-content', minWidth: '100%' }}>
+        {/* Inner wrapper с width: max-content — заемa точно колкото е
+            таблицата. Без minWidth 100% → когато viewport е по-широк от
+            календара, контейнерът НЕ се разтяга до края на екрана. */}
+        <div style={{ width: 'max-content' }}>
         <table className="text-xs border-collapse" style={{ minWidth: 200 + daysCount * 28 + 'px' }}>
           <thead className="sticky top-0 z-20 bg-navy text-white">
             <tr>
