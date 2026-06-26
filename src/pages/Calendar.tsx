@@ -1,19 +1,20 @@
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, CalendarDays, Plus, Trash2, X, Download, Sparkles, Pencil } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, Plus, Trash2, X, Download, Sparkles, Pencil, Newspaper, Pin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import {
-  useStaff, useAbsences, useVacationQuotas, useEvents, useInvalidateCrm,
+  useStaff, useAbsences, useVacationQuotas, useEvents, useNews, useInvalidateCrm,
 } from '../lib/queries'
-import { addAbsence, updateAbsence, deleteAbsence, approveAbsence, rejectAbsence, addEvent, updateEvent, deleteEvent } from '../lib/storage'
+import { addAbsence, updateAbsence, deleteAbsence, approveAbsence, rejectAbsence, addEvent, updateEvent, deleteEvent, addNews, updateNews, deleteNews } from '../lib/storage'
 import {
   ABSENCE_TYPES, ABSENCE_TYPE_LABELS, ABSENCE_TYPE_COLORS,
   EVENT_TYPES, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS,
-  type AbsenceType, type Absence, type EventType, type CompanyEvent,
+  NEWS_TYPES, NEWS_TYPE_LABELS, NEWS_TYPE_COLORS, NEWS_TYPE_ICONS,
+  type AbsenceType, type Absence, type EventType, type CompanyEvent, type NewsType, type NewsItem,
 } from '../lib/types'
 import type { StaffMember as StaffMemberType } from '../lib/storage'
-import { namesMatch, formatDate } from '../lib/utils'
+import { namesMatch, formatDate, formatDateTime } from '../lib/utils'
 import { exportRowsToExcel } from '../lib/export'
 
 const MONTH_NAMES = [
@@ -100,13 +101,15 @@ export function CalendarPage() {
   const staffQ = useStaff()
   const absencesQ = useAbsences(year)
   const eventsQ = useEvents(year)
+  const newsQ = useNews()
   const quotasQ = useVacationQuotas(year)
-  const { invalidateAbsences, invalidateEvents } = useInvalidateCrm()
+  const { invalidateAbsences, invalidateEvents, invalidateNews } = useInvalidateCrm()
 
   const allStaff: StaffMemberType[] = useMemo(() => (staffQ.data ?? []), [staffQ.data])
   const staff: StaffMemberType[] = useMemo(() => allStaff.filter(s => s.is_active), [allStaff])
   const absences = useMemo(() => absencesQ.data ?? [], [absencesQ.data])
   const events = useMemo(() => eventsQ.data ?? [], [eventsQ.data])
+  const news = useMemo(() => newsQ.data ?? [], [newsQ.data])
   const quotas = useMemo(() => quotasQ.data ?? [], [quotasQ.data])
 
   // Текущият потребител → staff запис (с нормализирано сравнение по име,
@@ -261,6 +264,7 @@ export function CalendarPage() {
   // Modal state (само ако canEdit).
   const [modal, setModal] = useState<null | { staffId: string; staffName: string; existing?: Absence; defaultDate?: string }>(null)
   const [eventModal, setEventModal] = useState<null | { existing?: CompanyEvent; defaultDate?: string }>(null)
+  const [newsModal, setNewsModal] = useState<null | { existing?: NewsItem }>(null)
   const [selectedDay, setSelectedDay] = useState<string>(() => {
     const t = new Date()
     return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
@@ -270,7 +274,6 @@ export function CalendarPage() {
   const eventsForDay = useCallback((dateIso: string): CompanyEvent[] => {
     return events.filter(e => dateIso >= e.start_date && dateIso <= e.end_date)
   }, [events])
-  const selectedDayEvents = useMemo(() => eventsForDay(selectedDay), [eventsForDay, selectedDay])
 
   // Кой ред може да редактира потребителят:
   //   admin → всички (записът е одобрен директно)
@@ -288,7 +291,7 @@ export function CalendarPage() {
     setModal({ staffId, staffName, existing: existing ?? undefined, defaultDate: dateIso })
   }, [canEditRow, visibleAbsences])
 
-  const ready = !!staffQ.data && !!absencesQ.data && !!quotasQ.data && !!eventsQ.data
+  const ready = !!staffQ.data && !!absencesQ.data && !!quotasQ.data && !!eventsQ.data && !!newsQ.data
 
   const goPrev = () => {
     if (month === 1) { setYear(year - 1); setMonth(12) } else setMonth(month - 1)
@@ -432,6 +435,10 @@ export function CalendarPage() {
 
       {/* Grid */}
       <div className="flex-1 overflow-auto">
+        {/* Inner wrapper с width: max-content — заемa точно колкото е
+            таблицата. Без minWidth 100% → когато viewport е по-широк от
+            календара, контейнерът НЕ се разтяга до края на екрана. */}
+        <div style={{ width: 'max-content' }}>
         <table className="text-xs border-collapse" style={{ minWidth: 200 + daysCount * 28 + 'px' }}>
           <thead className="sticky top-0 z-20 bg-navy text-white">
             <tr>
@@ -566,58 +573,21 @@ export function CalendarPage() {
                 </tr>
               )
             })}
+            {/* 2 празни „дишащи" реда между последния служител и
+                секция Новини — височина 28px, колкото е и редът. */}
+            <tr className="border-b border-transparent"><td colSpan={1 + daysCount} style={{ height: 28 }} /></tr>
+            <tr className="border-b border-transparent"><td colSpan={1 + daysCount} style={{ height: 28 }} /></tr>
           </tbody>
         </table>
-      </div>
 
-      {/* Footer panel: събития за избрания ден. */}
-      <div className="border-t border-border bg-card px-3 md:px-5 py-2">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-semibold text-foreground">{formatDate(selectedDay)}</span>
-            <span className="text-[11px] text-muted-foreground">
-              {selectedDayEvents.length === 0 ? 'няма събития' : `${selectedDayEvents.length} ${selectedDayEvents.length === 1 ? 'събитие' : 'събития'}`}
-            </span>
-          </div>
-          {canEditEvents && (
-            <Button size="sm" variant="ghost" className="h-7" onClick={() => setEventModal({ defaultDate: selectedDay })}>
-              <Plus className="h-3 w-3" /> Добави
-            </Button>
-          )}
+        {/* Секция Новини — наследява max-content широчината от родителя. */}
+        <NewsSection
+          news={news}
+          canEdit={canEditEvents}
+          onAdd={() => setNewsModal({})}
+          onEdit={(n) => setNewsModal({ existing: n })}
+        />
         </div>
-        {selectedDayEvents.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {selectedDayEvents.map(e => {
-              const color = EVENT_TYPE_COLORS[e.type as EventType] ?? 'bg-gray-500 text-white'
-              const timeRange = e.start_time
-                ? `${e.start_time.slice(0, 5)}${e.end_time ? '-' + e.end_time.slice(0, 5) : ''}`
-                : 'цял ден'
-              const dateRange = e.start_date === e.end_date
-                ? formatDate(e.start_date)
-                : `${formatDate(e.start_date)} → ${formatDate(e.end_date)}`
-              return (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => canEditEvents && setEventModal({ existing: e })}
-                  className={`text-left rounded-md px-2 py-1 max-w-[280px] ${color} ${canEditEvents ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
-                  title={canEditEvents ? 'Клик за редакция' : ''}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] uppercase opacity-80">{EVENT_TYPE_LABELS[e.type as EventType] ?? e.type}</span>
-                    <span className="text-[10px] opacity-70">· {timeRange}</span>
-                  </div>
-                  <div className="text-xs font-semibold leading-tight">{e.title}</div>
-                  {e.description && <div className="text-[10px] opacity-90 leading-tight mt-0.5 line-clamp-2">{e.description}</div>}
-                  {e.start_date !== e.end_date && (
-                    <div className="text-[9px] opacity-70 mt-0.5">{dateRange}</div>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        )}
       </div>
 
       {modal && (
@@ -641,6 +611,16 @@ export function CalendarPage() {
           onClose={() => setEventModal(null)}
           onSaved={async () => { await invalidateEvents(year); setEventModal(null) }}
           userId={user?.id}
+        />
+      )}
+
+      {newsModal && (
+        <NewsModal
+          existing={newsModal.existing}
+          onClose={() => setNewsModal(null)}
+          onSaved={async () => { await invalidateNews(); setNewsModal(null) }}
+          userId={user?.id}
+          authorName={user?.full_name ?? null}
         />
       )}
     </div>
@@ -1098,6 +1078,205 @@ function EventModal({
             <Button variant="ghost" onClick={onClose} disabled={saving}>Отказ</Button>
             <Button onClick={save} disabled={!canSave}>
               {existing ? <><Pencil className="h-3.5 w-3.5" />Запиши</> : <><Plus className="h-3.5 w-3.5" />Добави</>}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// Секция Новини — под Календара
+// ============================================================
+function NewsSection({
+  news, canEdit, onAdd, onEdit,
+}: {
+  news: NewsItem[]
+  canEdit: boolean
+  onAdd: () => void
+  onEdit: (n: NewsItem) => void
+}) {
+  const visible = news.slice(0, 15)
+
+  return (
+    <div className="border-t border-border bg-card px-3 md:px-5 py-2">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Newspaper className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-foreground">Новини</span>
+          <span className="text-[11px] text-muted-foreground">
+            {news.length === 0 ? 'все още няма' : `${news.length}`}
+          </span>
+        </div>
+        {canEdit && (
+          <Button size="sm" variant="ghost" className="h-7" onClick={onAdd}>
+            <Plus className="h-3 w-3" /> Нова
+          </Button>
+        )}
+      </div>
+      {visible.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground py-2">Все още няма публикувани новини.</p>
+      ) : (
+        // Точно 3 карти на ред — grid с 3 колони. Излишните се прехвърлят на нов ред.
+        <div className="grid grid-cols-3 gap-2">
+          {visible.map(n => {
+            const color = NEWS_TYPE_COLORS[n.type as NewsType] ?? NEWS_TYPE_COLORS.general
+            const icon = NEWS_TYPE_ICONS[n.type as NewsType] ?? '📰'
+            const label = NEWS_TYPE_LABELS[n.type as NewsType] ?? n.type
+            return (
+              <div
+                key={n.id}
+                className={`relative rounded-md border px-2.5 py-1.5 ${color} ${canEdit ? 'cursor-pointer hover:opacity-90' : ''}`}
+                onClick={() => canEdit && onEdit(n)}
+                title={canEdit ? 'Клик за редакция' : ''}
+              >
+                {n.pinned && (
+                  <Pin className="h-3 w-3 absolute top-1 right-1 opacity-70" />
+                )}
+                <div className="flex items-center gap-1.5 text-[10px] uppercase opacity-80 mb-0.5">
+                  <span>{icon}</span>
+                  <span>{label}</span>
+                </div>
+                <div className="text-xs font-semibold leading-tight">{n.title}</div>
+                {n.body && (
+                  <div className="text-[11px] opacity-90 leading-tight mt-0.5 whitespace-pre-wrap line-clamp-3">{n.body}</div>
+                )}
+                <div className="text-[9px] opacity-70 mt-1 flex items-center gap-1.5">
+                  {n.author_name && <span>{n.author_name}</span>}
+                  <span>·</span>
+                  <span>{formatDateTime(n.created_at)}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// Modal: Нова / редактирай новина
+// ============================================================
+function NewsModal({
+  existing, onClose, onSaved, userId, authorName,
+}: {
+  existing?: NewsItem
+  onClose: () => void
+  onSaved: () => Promise<void>
+  userId?: string
+  authorName: string | null
+}) {
+  const [title, setTitle] = useState(existing?.title ?? '')
+  const [body, setBody] = useState(existing?.body ?? '')
+  const [type, setType] = useState<NewsType>((existing?.type as NewsType) ?? 'general')
+  const [pinned, setPinned] = useState(existing?.pinned ?? false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [onClose])
+
+  const canSave = title.trim() && !saving
+
+  async function save() {
+    setSaving(true)
+    try {
+      if (existing) {
+        await updateNews(existing.id, { title: title.trim(), body: body.trim() || null, type, pinned })
+      } else {
+        await addNews({ title: title.trim(), body: body.trim() || null, type, pinned, author_name: authorName }, userId)
+      }
+      toast.success(existing ? 'Новината е обновена' : 'Публикувано')
+      await onSaved()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при запис')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function remove() {
+    if (!existing) return
+    if (!confirm(`Да изтрия „${existing.title}"?`)) return
+    setSaving(true)
+    try {
+      await deleteNews(existing.id)
+      toast.success('Изтрито')
+      await onSaved()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <h3 className="font-semibold text-foreground">{existing ? 'Редактирай новина' : 'Нова новина'}</h3>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-xs font-medium text-foreground block mb-1.5">Тип</label>
+            <div className="flex flex-wrap gap-1.5">
+              {NEWS_TYPES.map(t => (
+                <button
+                  key={t} type="button" onClick={() => setType(t)}
+                  className={`px-2.5 py-1 text-xs rounded border transition-all ${
+                    type === t
+                      ? `${NEWS_TYPE_COLORS[t]} ring-2 ring-offset-1 ring-current/30`
+                      : 'bg-background border-border text-muted-foreground hover:bg-muted/30'
+                  }`}
+                >
+                  {NEWS_TYPE_ICONS[t]} {NEWS_TYPE_LABELS[t]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-foreground block mb-1">Заглавие</label>
+            <input
+              type="text" value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="Кратко и ясно" autoFocus
+              className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-foreground block mb-1">Описание</label>
+            <textarea
+              value={body} onChange={e => setBody(e.target.value)}
+              placeholder="Подробности — незадължително"
+              rows={4}
+              className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none resize-y"
+            />
+          </div>
+
+          <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} className="h-3.5 w-3.5" />
+            <Pin className="h-3 w-3" />
+            Закачи отгоре
+          </label>
+        </div>
+
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border gap-2">
+          {existing ? (
+            <Button variant="ghost" className="text-destructive" onClick={remove} disabled={saving}>
+              <Trash2 className="h-3.5 w-3.5" /> Изтрий
+            </Button>
+          ) : <span />}
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onClose} disabled={saving}>Отказ</Button>
+            <Button onClick={save} disabled={!canSave}>
+              {existing ? <><Pencil className="h-3.5 w-3.5" />Запиши</> : <><Plus className="h-3.5 w-3.5" />Публикувай</>}
             </Button>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
-import { useStaff, usePaymentConfigs, usePaymentStatuses, useAbsences } from '../../lib/queries'
+import { useStaff, usePaymentConfigs, usePaymentStatuses, useAbsences, useNews } from '../../lib/queries'
 import { previousMonth, namesMatch } from '../../lib/utils'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKey?: 'paymentsUnpaid' | 'absentToday' | 'absenceRequests'; showOnlyForTrzOrAdmin?: boolean }
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKey?: 'paymentsUnpaid' | 'absentToday' | 'absenceRequests' | 'recentNews'; showOnlyForTrzOrAdmin?: boolean }
 type NavSection = { title: string | null; items: NavItem[] }
 
 const NAV_SECTIONS: NavSection[] = [
@@ -21,7 +21,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: null,  // Табло + Календар — без заглавие, най-отгоре в sidebar-а
     items: [
       { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
-      { to: '/calendar', label: 'Календар', icon: CalendarDays, roles: ['admin', 'manager', 'employee'], badgeKey: 'absentToday' },
+      { to: '/calendar', label: 'Календар', icon: CalendarDays, roles: ['admin', 'manager', 'employee'], badgeKey: 'recentNews' },
     ],
   },
   {
@@ -134,7 +134,14 @@ export function Layout() {
     return (absencesQ.data ?? []).filter(a => a.status === 'pending').length
   }, [absencesQ.data, user?.role, isTrz])
 
-  const badges: Record<string, number> = { paymentsUnpaid: paymentsUnpaid, absentToday, absenceRequests }
+  // Нови новини (последните 24 часа) — бадж на Календар.
+  const newsQ = useNews()
+  const recentNews = useMemo(() => {
+    const cutoff = Date.now() - 24 * 60 * 60_000
+    return (newsQ.data ?? []).filter(n => new Date(n.created_at).getTime() >= cutoff).length
+  }, [newsQ.data])
+
+  const badges: Record<string, number> = { paymentsUnpaid: paymentsUnpaid, absentToday, absenceRequests, recentNews }
 
   const handleLogout = () => {
     logout()
@@ -241,12 +248,15 @@ export function Layout() {
                                   ? `${badgeCount} ${badgeCount === 1 ? 'отсъстващ' : 'отсъстващи'} днес`
                                   : item.badgeKey === 'absenceRequests'
                                     ? `${badgeCount} ${badgeCount === 1 ? 'заявка' : 'заявки'} чакат одобрение`
-                                    : `${badgeCount} неплатени за работния месец`
+                                    : item.badgeKey === 'recentNews'
+                                      ? `${badgeCount} ${badgeCount === 1 ? 'нова новина' : 'нови новини'} в последните 24 ч.`
+                                      : `${badgeCount} неплатени за работния месец`
                               }
                               className={cn(
                                 'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold text-white shrink-0',
                                 item.badgeKey === 'absentToday' ? 'bg-sky-500'
                                   : item.badgeKey === 'absenceRequests' ? 'bg-rose-500'
+                                  : item.badgeKey === 'recentNews' ? 'bg-emerald-500'
                                   : 'bg-amber-500',
                               )}
                             >
