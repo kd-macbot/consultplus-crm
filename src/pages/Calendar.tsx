@@ -1119,7 +1119,8 @@ function NewsSection({
       {visible.length === 0 ? (
         <p className="text-[11px] text-muted-foreground py-2">Все още няма публикувани новини.</p>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        // Точно 3 карти на ред — grid с 3 колони. Излишните се прехвърлят на нов ред.
+        <div className="grid grid-cols-3 gap-2">
           {visible.map(n => {
             const color = NEWS_TYPE_COLORS[n.type as NewsType] ?? NEWS_TYPE_COLORS.general
             const icon = NEWS_TYPE_ICONS[n.type as NewsType] ?? '📰'
@@ -1127,7 +1128,7 @@ function NewsSection({
             return (
               <div
                 key={n.id}
-                className={`relative rounded-md border px-2.5 py-1.5 max-w-[300px] flex-1 min-w-[220px] ${color} ${canEdit ? 'cursor-pointer hover:opacity-90' : ''}`}
+                className={`relative rounded-md border px-2.5 py-1.5 ${color} ${canEdit ? 'cursor-pointer hover:opacity-90' : ''}`}
                 onClick={() => canEdit && onEdit(n)}
                 title={canEdit ? 'Клик за редакция' : ''}
               >
