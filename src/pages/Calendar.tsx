@@ -576,15 +576,16 @@ export function CalendarPage() {
           </tbody>
         </table>
 
-        {/* Секция Новини — в същия scroll контейнер като календара,
-            така че се появява точно под grid-а (не на отделен sticky
-            footer като преди). */}
-        <NewsSection
-          news={news}
-          canEdit={canEditEvents}
-          onAdd={() => setNewsModal({})}
-          onEdit={(n) => setNewsModal({ existing: n })}
-        />
+        {/* Секция Новини — широчината се изравнява с тази на календарната
+            таблица, за да изглежда като част от същия „лист". */}
+        <div style={{ minWidth: 200 + daysCount * 28 + 'px' }}>
+          <NewsSection
+            news={news}
+            canEdit={canEditEvents}
+            onAdd={() => setNewsModal({})}
+            onEdit={(n) => setNewsModal({ existing: n })}
+          />
+        </div>
       </div>
 
       {modal && (
