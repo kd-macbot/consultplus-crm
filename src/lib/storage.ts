@@ -1265,10 +1265,15 @@ export async function deleteEvent(id: string): Promise<void> {
 // ============================================================
 
 export async function getNews(limit = 30): Promise<NewsItem[]> {
+  // Auto-expire: непиннатите новини изчезват след 5 дни от публикуване;
+  // пиннатите се пазят, докато admin не свали pin-а. Записите остават в БД
+  // (не се изтриват) — просто не се връщат от заявката.
   return withRetry(async () => {
+    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60_000).toISOString()
     const { data, error } = await supabase
       .from('crm_news')
       .select('id,title,body,type,pinned,author_name,created_by,created_at,updated_at')
+      .or(`pinned.eq.true,created_at.gte.${cutoff}`)
       .order('pinned', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(limit)
