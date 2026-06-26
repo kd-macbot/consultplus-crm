@@ -14,7 +14,7 @@ import {
   type AbsenceType, type Absence, type EventType, type CompanyEvent, type NewsType, type NewsItem,
 } from '../lib/types'
 import type { StaffMember as StaffMemberType } from '../lib/storage'
-import { namesMatch, formatDate, timeAgo } from '../lib/utils'
+import { namesMatch, formatDate, formatDateTime } from '../lib/utils'
 import { exportRowsToExcel } from '../lib/export'
 
 const MONTH_NAMES = [
@@ -1145,7 +1145,7 @@ function NewsSection({
                 <div className="text-[9px] opacity-70 mt-1 flex items-center gap-1.5">
                   {n.author_name && <span>{n.author_name}</span>}
                   <span>·</span>
-                  <span>{timeAgo(n.created_at)}</span>
+                  <span>{formatDateTime(n.created_at)}</span>
                 </div>
               </div>
             )
