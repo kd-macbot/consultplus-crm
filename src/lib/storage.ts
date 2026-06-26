@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -1256,6 +1256,69 @@ export async function updateEvent(
 export async function deleteEvent(id: string): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase.from('crm_events').delete().eq('id', id)
+    if (error) throw error
+  })())
+}
+
+// ============================================================
+// Новини
+// ============================================================
+
+export async function getNews(limit = 30): Promise<NewsItem[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_news')
+      .select('id,title,body,type,pinned,author_name,created_by,created_at,updated_at')
+      .order('pinned', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return (data ?? []) as NewsItem[]
+  })
+}
+
+export async function addNews(
+  patch: Pick<NewsItem, 'title' | 'type'> & {
+    body?: string | null
+    pinned?: boolean
+    author_name?: string | null
+  },
+  createdBy?: string | null,
+): Promise<NewsItem> {
+  return await trackSave((async () => {
+    const { data, error } = await supabase
+      .from('crm_news')
+      .insert([{
+        title: patch.title,
+        body: patch.body ?? null,
+        type: patch.type,
+        pinned: patch.pinned ?? false,
+        author_name: patch.author_name ?? null,
+        created_by: createdBy ?? null,
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data as NewsItem
+  })())
+}
+
+export async function updateNews(
+  id: string,
+  patch: Partial<Pick<NewsItem, 'title' | 'body' | 'type' | 'pinned'>>,
+): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_news')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function deleteNews(id: string): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase.from('crm_news').delete().eq('id', id)
     if (error) throw error
   })())
 }
