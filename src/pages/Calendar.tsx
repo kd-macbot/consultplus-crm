@@ -121,6 +121,10 @@ export function CalendarPage() {
   // Manager + отдел ТРЗ → разширен достъп: редактира чужди редове в
   // календара и вижда чакащите заявки, но БЕЗ право да одобрява/отказва.
   const isManagerTrz = user?.role === 'manager' && myStaff?.department === 'ТРЗ'
+  // Manager + отдел Управление → може да добавя/редактира фирмени събития
+  // (събрания, тиймбилдинг, обучения и т.н.). Без други права над календара.
+  const isManagerMgmt = user?.role === 'manager' && myStaff?.department === 'Управление'
+  const canEditEvents = isAdmin || isManagerMgmt
 
   // Видимост на отсъствие:
   //   - approved → всички виждат
@@ -350,7 +354,7 @@ export function CalendarPage() {
             <Button variant="outline" size="sm" onClick={goToday} title="Към текущия месец" disabled={isViewingThisMonth}>
               Днес
             </Button>
-            {isAdmin && (
+            {canEditEvents && (
               <Button
                 variant="outline"
                 size="sm"
@@ -475,12 +479,12 @@ export function CalendarPage() {
                   <td
                     key={d}
                     onClick={() => {
-                      if (first && isAdmin) setEventModal({ existing: first })
-                      else if (isAdmin) setEventModal({ defaultDate: dateIso })
+                      if (first && canEditEvents) setEventModal({ existing: first })
+                      else if (canEditEvents) setEventModal({ defaultDate: dateIso })
                       setSelectedDay(dateIso)
                     }}
                     title={tooltip}
-                    className={`relative text-center border-r border-border/40 ${first ? color : ''} ${isAdmin ? 'cursor-pointer hover:ring-1 hover:ring-primary/40' : ''}`}
+                    className={`relative text-center border-r border-border/40 ${first ? color : ''} ${canEditEvents ? 'cursor-pointer hover:ring-1 hover:ring-primary/40' : ''}`}
                     style={{ height: 28 }}
                   >
                     {first && (
@@ -576,7 +580,7 @@ export function CalendarPage() {
               {selectedDayEvents.length === 0 ? 'няма събития' : `${selectedDayEvents.length} ${selectedDayEvents.length === 1 ? 'събитие' : 'събития'}`}
             </span>
           </div>
-          {isAdmin && (
+          {canEditEvents && (
             <Button size="sm" variant="ghost" className="h-7" onClick={() => setEventModal({ defaultDate: selectedDay })}>
               <Plus className="h-3 w-3" /> Добави
             </Button>
@@ -596,9 +600,9 @@ export function CalendarPage() {
                 <button
                   key={e.id}
                   type="button"
-                  onClick={() => isAdmin && setEventModal({ existing: e })}
-                  className={`text-left rounded-md px-2 py-1 max-w-[280px] ${color} ${isAdmin ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
-                  title={isAdmin ? 'Клик за редакция' : ''}
+                  onClick={() => canEditEvents && setEventModal({ existing: e })}
+                  className={`text-left rounded-md px-2 py-1 max-w-[280px] ${color} ${canEditEvents ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
+                  title={canEditEvents ? 'Клик за редакция' : ''}
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] uppercase opacity-80">{EVENT_TYPE_LABELS[e.type as EventType] ?? e.type}</span>
