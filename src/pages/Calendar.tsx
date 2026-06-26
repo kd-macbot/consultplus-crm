@@ -274,7 +274,6 @@ export function CalendarPage() {
   const eventsForDay = useCallback((dateIso: string): CompanyEvent[] => {
     return events.filter(e => dateIso >= e.start_date && dateIso <= e.end_date)
   }, [events])
-  const selectedDayEvents = useMemo(() => eventsForDay(selectedDay), [eventsForDay, selectedDay])
 
   // Кой ред може да редактира потребителят:
   //   admin → всички (записът е одобрен директно)
@@ -574,57 +573,8 @@ export function CalendarPage() {
         </table>
       </div>
 
-      {/* Footer panel: събития за избрания ден. */}
-      <div className="border-t border-border bg-card px-3 md:px-5 py-2">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-semibold text-foreground">{formatDate(selectedDay)}</span>
-            <span className="text-[11px] text-muted-foreground">
-              {selectedDayEvents.length === 0 ? 'няма събития' : `${selectedDayEvents.length} ${selectedDayEvents.length === 1 ? 'събитие' : 'събития'}`}
-            </span>
-          </div>
-          {canEditEvents && (
-            <Button size="sm" variant="ghost" className="h-7" onClick={() => setEventModal({ defaultDate: selectedDay })}>
-              <Plus className="h-3 w-3" /> Добави
-            </Button>
-          )}
-        </div>
-        {selectedDayEvents.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {selectedDayEvents.map(e => {
-              const color = EVENT_TYPE_COLORS[e.type as EventType] ?? 'bg-gray-500 text-white'
-              const timeRange = e.start_time
-                ? `${e.start_time.slice(0, 5)}${e.end_time ? '-' + e.end_time.slice(0, 5) : ''}`
-                : 'цял ден'
-              const dateRange = e.start_date === e.end_date
-                ? formatDate(e.start_date)
-                : `${formatDate(e.start_date)} → ${formatDate(e.end_date)}`
-              return (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => canEditEvents && setEventModal({ existing: e })}
-                  className={`text-left rounded-md px-2 py-1 max-w-[280px] ${color} ${canEditEvents ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
-                  title={canEditEvents ? 'Клик за редакция' : ''}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] uppercase opacity-80">{EVENT_TYPE_LABELS[e.type as EventType] ?? e.type}</span>
-                    <span className="text-[10px] opacity-70">· {timeRange}</span>
-                  </div>
-                  <div className="text-xs font-semibold leading-tight">{e.title}</div>
-                  {e.description && <div className="text-[10px] opacity-90 leading-tight mt-0.5 line-clamp-2">{e.description}</div>}
-                  {e.start_date !== e.end_date && (
-                    <div className="text-[9px] opacity-70 mt-0.5">{dateRange}</div>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Секция Новини */}
+      {/* Секция Новини — директно под Календара. Детайлите на събитията
+          се виждат от tooltip-а на band-а в самия календар. */}
       <NewsSection
         news={news}
         canEdit={canEditEvents}
