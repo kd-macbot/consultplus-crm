@@ -569,6 +569,10 @@ export function CalendarPage() {
                 </tr>
               )
             })}
+            {/* 2 празни „дишащи" реда между последния служител и
+                секция Новини — височина 28px, колкото е и редът. */}
+            <tr className="border-b border-transparent"><td colSpan={1 + daysCount} style={{ height: 28 }} /></tr>
+            <tr className="border-b border-transparent"><td colSpan={1 + daysCount} style={{ height: 28 }} /></tr>
           </tbody>
         </table>
 
