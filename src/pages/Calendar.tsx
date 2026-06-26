@@ -571,16 +571,17 @@ export function CalendarPage() {
             })}
           </tbody>
         </table>
-      </div>
 
-      {/* Секция Новини — директно под Календара. Детайлите на събитията
-          се виждат от tooltip-а на band-а в самия календар. */}
-      <NewsSection
-        news={news}
-        canEdit={canEditEvents}
-        onAdd={() => setNewsModal({})}
-        onEdit={(n) => setNewsModal({ existing: n })}
-      />
+        {/* Секция Новини — в същия scroll контейнер като календара,
+            така че се появява точно под grid-а (не на отделен sticky
+            footer като преди). */}
+        <NewsSection
+          news={news}
+          canEdit={canEditEvents}
+          onAdd={() => setNewsModal({})}
+          onEdit={(n) => setNewsModal({ existing: n })}
+        />
+      </div>
 
       {modal && (
         <AbsenceModal
