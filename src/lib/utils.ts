@@ -66,6 +66,34 @@ export function calcTenure(hireIso: string | null | undefined, asOf: Date = new 
   return { years, months, days, totalMonths, label: parts.join(' ') }
 }
 
+/**
+ * „Преди X" формат за timestamps (ISO). Връща компактен текст:
+ *   < 1 мин → „току-що"
+ *   < 60 мин → „преди X мин."
+ *   < 24 ч → „преди X ч."
+ *   < 7 дни → „преди X дни"
+ *   иначе → „DD.MM.YYYY HH:MM"
+ */
+export function timeAgo(iso: string | null | undefined, now: Date = new Date()): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const diffMs = now.getTime() - d.getTime()
+  const diffMin = Math.floor(diffMs / 60_000)
+  if (diffMin < 1) return 'току-що'
+  if (diffMin < 60) return `преди ${diffMin} мин.`
+  const diffH = Math.floor(diffMin / 60)
+  if (diffH < 24) return `преди ${diffH} ч.`
+  const diffD = Math.floor(diffH / 24)
+  if (diffD < 7) return `преди ${diffD} ${diffD === 1 ? 'ден' : 'дни'}`
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yy = d.getFullYear()
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mn = String(d.getMinutes()).padStart(2, '0')
+  return `${dd}.${mm}.${yy} ${hh}:${mn}`
+}
+
 /** ISO дата (YYYY-MM-DD) → DD.MM.YYYY. Празно → ''; невалидно → връща входа. */
 export function formatDate(v: string | null | undefined): string {
   if (!v) return ''
