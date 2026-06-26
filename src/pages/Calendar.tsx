@@ -435,6 +435,11 @@ export function CalendarPage() {
 
       {/* Grid */}
       <div className="flex-1 overflow-auto">
+        {/* Inner wrapper с width: max-content, така че И таблицата, И секция
+            Новини да заемат точно широчината на календарните дни (нито
+            повече, нито по-малко). Без този wrapper table-ът се сви до
+            съдържанието, а Новини секцията се разтегляше до viewport-а. */}
+        <div style={{ width: 'max-content', minWidth: '100%' }}>
         <table className="text-xs border-collapse" style={{ minWidth: 200 + daysCount * 28 + 'px' }}>
           <thead className="sticky top-0 z-20 bg-navy text-white">
             <tr>
@@ -576,15 +581,13 @@ export function CalendarPage() {
           </tbody>
         </table>
 
-        {/* Секция Новини — широчината се изравнява с тази на календарната
-            таблица, за да изглежда като част от същия „лист". */}
-        <div style={{ minWidth: 200 + daysCount * 28 + 'px' }}>
-          <NewsSection
-            news={news}
-            canEdit={canEditEvents}
-            onAdd={() => setNewsModal({})}
-            onEdit={(n) => setNewsModal({ existing: n })}
-          />
+        {/* Секция Новини — наследява max-content широчината от родителя. */}
+        <NewsSection
+          news={news}
+          canEdit={canEditEvents}
+          onAdd={() => setNewsModal({})}
+          onEdit={(n) => setNewsModal({ existing: n })}
+        />
         </div>
       </div>
 
