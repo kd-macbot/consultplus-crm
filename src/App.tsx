@@ -30,6 +30,7 @@ const CalendarPage = lazy(() => import('./pages/Calendar').then(m => ({ default:
 const VacationsPage = lazy(() => import('./pages/Vacations').then(m => ({ default: m.VacationsPage })))
 const AbsenceRequestsPage = lazy(() => import('./pages/AbsenceRequests').then(m => ({ default: m.AbsenceRequestsPage })))
 const Form76Page = lazy(() => import('./pages/Form76').then(m => ({ default: m.Form76Page })))
+const BankAccessPage = lazy(() => import('./pages/BankAccess').then(m => ({ default: m.BankAccessPage })))
 const ImportPage = lazy(() => import('./pages/Import').then(m => ({ default: m.ImportPage })))
 
 function PageFallback() {
@@ -77,6 +78,8 @@ export default function App() {
                   <ProtectedRoute allowedRoles={['admin', 'manager']}><AbsenceRequestsPage /></ProtectedRoute>
                 } />
                 <Route path="/form76" element={<Form76Page />} />
+                {/* Достъп по отдел (Тийм Лийд/Управление) е вътрешен gate в страницата. */}
+                <Route path="/bank-access" element={<BankAccessPage />} />
                 <Route path="/opportunities" element={
                   <ProtectedRoute allowedRoles={['admin']}><OpportunitiesPage /></ProtectedRoute>
                 } />

@@ -5,7 +5,7 @@ import { useStaff, usePaymentConfigs, usePaymentStatuses, useAbsences, useNews }
 import { previousMonth, namesMatch } from '../../lib/utils'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
-  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox,
+  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKey?: 'paymentsUnpaid' | 'absentToday' | 'absenceRequests' | 'recentNews'; showOnlyForTrzOrAdmin?: boolean }
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKey?: 'paymentsUnpaid' | 'absentToday' | 'absenceRequests' | 'recentNews'; showOnlyForTrzOrAdmin?: boolean; showOnlyForBankDepts?: boolean }
 type NavSection = { title: string | null; items: NavItem[] }
 
 const NAV_SECTIONS: NavSection[] = [
@@ -49,6 +49,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Администрация',
     items: [
       { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },
+      { to: '/bank-access', label: 'Банков достъп', icon: Landmark, roles: ['admin', 'manager', 'employee'], showOnlyForBankDepts: true },
       { to: '/absence-requests', label: 'Заявки за отпуска', icon: Inbox, roles: ['admin', 'manager'], badgeKey: 'absenceRequests', showOnlyForTrzOrAdmin: true },
       { to: '/vacations', label: 'Справка отпуска', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
       { to: '/form76', label: 'Форма 76', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
@@ -72,10 +73,15 @@ export function Layout() {
   // Дали потребителят е от ТРЗ отдела — за скриване на „Личен чек лист".
   // staffList идва от споделения RQ кеш (без излишен fetch).
   const staffQ = useStaff()
-  const isTrz = useMemo(
-    () => (staffQ.data ?? []).find(s => namesMatch(s.full_name, user?.full_name))?.department === 'ТРЗ',
+  const myStaff = useMemo(
+    () => (staffQ.data ?? []).find(s => namesMatch(s.full_name, user?.full_name)),
     [staffQ.data, user?.full_name],
   )
+  const inDept = (dept: string) =>
+    myStaff?.department === dept || (myStaff?.additional_departments ?? []).includes(dept)
+  const isTrz = inDept('ТРЗ')
+  // Банков достъп се вижда от Тийм Лийд / Управление (+ admin).
+  const canSeeBankAccess = user?.role === 'admin' || inDept('Тийм Лийд') || inDept('Управление')
 
   // ============================================================
   // Бадж за „Плащания" — брой неплатени за РАБОТНИЯ месец (предходния).
@@ -212,6 +218,7 @@ export function Layout() {
               user && item.roles.includes(user.role)
                 && !(item.hideForTrz && isTrz)
                 && !(item.showOnlyForTrzOrAdmin && user.role !== 'admin' && !isTrz)
+                && !(item.showOnlyForBankDepts && !canSeeBankAccess)
             )
             if (visibleItems.length === 0) return null
             return (

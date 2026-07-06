@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -1324,6 +1324,48 @@ export async function updateNews(
 export async function deleteNews(id: string): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase.from('crm_news').delete().eq('id', id)
+    if (error) throw error
+  })())
+}
+
+// ============================================================
+// Банков достъп
+// ============================================================
+
+export async function getBankAccess(): Promise<BankAccess[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_bank_access')
+      .select('client_id,bank,url,username,password,access_type,has_2fa,we_pay,notes,updated_at,updated_by')
+    if (error) throw error
+    return (data ?? []) as BankAccess[]
+  })
+}
+
+export async function upsertBankAccess(
+  clientId: string,
+  patch: Partial<Pick<BankAccess, 'bank' | 'url' | 'username' | 'password' | 'access_type' | 'has_2fa' | 'we_pay' | 'notes'>>,
+  updatedBy?: string | null,
+): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_bank_access')
+      .upsert(
+        {
+          client_id: clientId,
+          ...patch,
+          updated_at: new Date().toISOString(),
+          updated_by: updatedBy ?? null,
+        },
+        { onConflict: 'client_id' },
+      )
+    if (error) throw error
+  })())
+}
+
+export async function deleteBankAccess(clientId: string): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase.from('crm_bank_access').delete().eq('client_id', clientId)
     if (error) throw error
   })())
 }
