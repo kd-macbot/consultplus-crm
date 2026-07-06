@@ -217,6 +217,7 @@ export function BankAccessPage() {
               <th className="text-left px-2 py-2 font-semibold uppercase tracking-wider min-w-[120px]">URL</th>
               <th className="text-left px-2 py-2 font-semibold uppercase tracking-wider min-w-[120px]">Потребител</th>
               <th className="text-left px-2 py-2 font-semibold uppercase tracking-wider min-w-[130px]">Парола</th>
+              <th className="text-left px-2 py-2 font-semibold uppercase tracking-wider min-w-[130px]">2FA код</th>
               <th className="text-center px-2 py-2 font-semibold uppercase tracking-wider min-w-[80px]">Достъп</th>
               <th className="text-center px-2 py-2 font-semibold uppercase tracking-wider">2FA</th>
               <th className="text-center px-2 py-2 font-semibold uppercase tracking-wider">Плащаме</th>
@@ -227,7 +228,7 @@ export function BankAccessPage() {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={canEdit ? 10 : 9} className="text-center py-12 text-muted-foreground">
+                <td colSpan={canEdit ? 11 : 10} className="text-center py-12 text-muted-foreground">
                   {search || bankFilter || typeFilter ? 'Няма намерени фирми.' : 'Няма добавени фирми. Натисни „Добави клиент".'}
                 </td>
               </tr>
@@ -250,6 +251,7 @@ export function BankAccessPage() {
                   </td>
                   <td className="px-2 py-1.5"><CopyText value={r.username} /></td>
                   <td className="px-2 py-1.5"><PasswordCell value={r.password} /></td>
+                  <td className="px-2 py-1.5"><PasswordCell value={r.app_code} /></td>
                   <td className="px-2 py-1.5 text-center">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-medium ${
                       r.access_type === 'individual'
@@ -325,6 +327,8 @@ function BankAccessModal({
   const [url, setUrl] = useState(editExisting?.url ?? '')
   const [username, setUsername] = useState(editExisting?.username ?? '')
   const [password, setPassword] = useState(editExisting?.password ?? '')
+  const [appCode, setAppCode] = useState(editExisting?.app_code ?? '')
+  const [showAppCode, setShowAppCode] = useState(false)
   const [accessType, setAccessType] = useState<BankAccessType>((editExisting?.access_type as BankAccessType) ?? 'shared')
   const [has2fa, setHas2fa] = useState(editExisting?.has_2fa ?? false)
   const [wePay, setWePay] = useState(editExisting?.we_pay ?? false)
@@ -359,6 +363,7 @@ function BankAccessModal({
         url: url || null,
         username: username || null,
         password: password || null,
+        app_code: appCode || null,
         access_type: accessType,
         has_2fa: has2fa,
         we_pay: wePay,
@@ -450,6 +455,19 @@ function BankAccessModal({
                   {showPass ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                 </button>
               </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-foreground block mb-1">2FA / код за приложението</label>
+            <div className="relative">
+              <input type={showAppCode ? 'text' : 'password'} value={appCode} onChange={e => setAppCode(e.target.value)}
+                placeholder="незадължително — само ако има отделен код"
+                className="w-full px-3 py-2 pr-8 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none" />
+              <button type="button" onClick={() => setShowAppCode(s => !s)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                {showAppCode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
             </div>
           </div>
 

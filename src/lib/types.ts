@@ -598,6 +598,7 @@ export interface BankAccess {
   url: string | null
   username: string | null
   password: string | null
+  app_code: string | null   // таен код/сийд за 2FA приложението
   access_type: BankAccessType | string
   has_2fa: boolean
   we_pay: boolean
