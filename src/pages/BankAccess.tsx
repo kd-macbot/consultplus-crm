@@ -16,6 +16,36 @@ import {
 } from '../lib/types'
 import { namesMatch } from '../lib/utils'
 
+// ============================================================
+// Draft persistence — пази въведеното в „Добави клиент" в sessionStorage,
+// за да не се губи при F5 (при stale connection / Web Lock hang, когато
+// записът увисне и потребителят презарежда страницата).
+// ============================================================
+const DRAFT_KEY = 'bankAccessAddDraft'
+type BankDraft = {
+  clientId: string | null; bank: string; url: string; username: string
+  password: string; appCode: string; accessType: string; has2fa: boolean
+  wePay: boolean; notes: string
+}
+function readDraft(): BankDraft | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY)
+    return raw ? (JSON.parse(raw) as BankDraft) : null
+  } catch { return null }
+}
+function writeDraft(d: BankDraft) {
+  try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d)) } catch { /* quota */ }
+}
+function clearDraft() {
+  try { sessionStorage.removeItem(DRAFT_KEY) } catch { /* noop */ }
+}
+// Има ли чернова с реално попълнени полета (не празна)?
+function hasNonEmptyDraft(): boolean {
+  const d = readDraft()
+  if (!d) return false
+  return !!(d.clientId || d.bank || d.url || d.username || d.password || d.appCode || d.notes)
+}
+
 // Клетка за парола — masked по подразбиране, с бутон „покажи" + copy.
 function PasswordCell({ value }: { value: string | null }) {
   const [shown, setShown] = useState(false)
@@ -110,7 +140,9 @@ export function BankAccessPage() {
   const [search, setSearch] = useState('')
   const [bankFilter, setBankFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState<'' | BankAccessType>('')
-  const [addOpen, setAddOpen] = useState(false)
+  // Ако при предишно посещение е останала незапазена чернова (F5 при висене),
+  // отваряме модала автоматично, за да я възстановим.
+  const [addOpen, setAddOpen] = useState(() => hasNonEmptyDraft())
   const [editFor, setEditFor] = useState<BankAccess | null>(null)
 
   const configByClient = useMemo(() => {
@@ -135,6 +167,13 @@ export function BankAccessPage() {
   )
 
   const ready = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!staffQ.data && !!bankQ.data
+
+  // Еднократно уведомление, ако сме възстановили чернова след F5.
+  useEffect(() => {
+    if (hasNonEmptyDraft()) {
+      toast.info('Възстановена е незапазена чернова от предишен опит.')
+    }
+  }, [])
 
   const removeClient = useCallback(async (clientId: string, name: string) => {
     if (!confirm(`Да премахна „${name}" от банков достъп?\n\nЩе се изтрият всички данни за достъпа (парола и т.н.).`)) return
@@ -287,7 +326,7 @@ export function BankAccessPage() {
           clients={clients}
           nameByClient={nameByClient}
           existingConfigs={configByClient}
-          onClose={() => setAddOpen(false)}
+          onClose={() => { clearDraft(); setAddOpen(false) }}
           onSaved={async () => { await invalidateBankAccess(); setAddOpen(false) }}
           userId={user?.id}
         />
@@ -321,20 +360,29 @@ function BankAccessModal({
   onSaved: () => Promise<void>
   userId?: string
 }) {
-  const [clientId, setClientId] = useState<string | null>(editExisting?.client_id ?? null)
+  // При add mode (без editExisting) — възстанови чернова от sessionStorage,
+  // ако има. При edit mode ползваме реалните данни.
+  const draft = editExisting ? null : readDraft()
+  const [clientId, setClientId] = useState<string | null>(editExisting?.client_id ?? draft?.clientId ?? null)
   const [clientSearch, setClientSearch] = useState('')
-  const [bank, setBank] = useState(editExisting?.bank ?? '')
-  const [url, setUrl] = useState(editExisting?.url ?? '')
-  const [username, setUsername] = useState(editExisting?.username ?? '')
-  const [password, setPassword] = useState(editExisting?.password ?? '')
-  const [appCode, setAppCode] = useState(editExisting?.app_code ?? '')
+  const [bank, setBank] = useState(editExisting?.bank ?? draft?.bank ?? '')
+  const [url, setUrl] = useState(editExisting?.url ?? draft?.url ?? '')
+  const [username, setUsername] = useState(editExisting?.username ?? draft?.username ?? '')
+  const [password, setPassword] = useState(editExisting?.password ?? draft?.password ?? '')
+  const [appCode, setAppCode] = useState(editExisting?.app_code ?? draft?.appCode ?? '')
   const [showAppCode, setShowAppCode] = useState(false)
-  const [accessType, setAccessType] = useState<BankAccessType>((editExisting?.access_type as BankAccessType) ?? 'shared')
-  const [has2fa, setHas2fa] = useState(editExisting?.has_2fa ?? false)
-  const [wePay, setWePay] = useState(editExisting?.we_pay ?? false)
-  const [notes, setNotes] = useState(editExisting?.notes ?? '')
+  const [accessType, setAccessType] = useState<BankAccessType>((editExisting?.access_type as BankAccessType) ?? (draft?.accessType as BankAccessType) ?? 'shared')
+  const [has2fa, setHas2fa] = useState(editExisting?.has_2fa ?? draft?.has2fa ?? false)
+  const [wePay, setWePay] = useState(editExisting?.we_pay ?? draft?.wePay ?? false)
+  const [notes, setNotes] = useState(editExisting?.notes ?? draft?.notes ?? '')
   const [showPass, setShowPass] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  // Persist чернова при всяка промяна (само add mode).
+  useEffect(() => {
+    if (editExisting) return
+    writeDraft({ clientId, bank, url, username, password, appCode, accessType, has2fa, wePay, notes })
+  }, [editExisting, clientId, bank, url, username, password, appCode, accessType, has2fa, wePay, notes])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -369,9 +417,11 @@ function BankAccessModal({
         we_pay: wePay,
         notes: notes || null,
       }, userId)
+      clearDraft()  // успешен запис → черновата вече не трябва
       toast.success(editExisting ? 'Обновено' : 'Добавено')
       await onSaved()
     } catch (e: any) {
+      // При грешка/висене НЕ чистим черновата — данните остават за след F5.
       toast.error(e.message ?? 'Грешка при запис')
     } finally {
       setSaving(false)
