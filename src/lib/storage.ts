@@ -1336,7 +1336,7 @@ export async function getBankAccess(): Promise<BankAccess[]> {
   return withRetry(async () => {
     const { data, error } = await supabase
       .from('crm_bank_access')
-      .select('client_id,bank,url,username,password,access_type,has_2fa,we_pay,notes,updated_at,updated_by')
+      .select('client_id,bank,url,username,password,app_code,access_type,has_2fa,we_pay,notes,updated_at,updated_by')
     if (error) throw error
     return (data ?? []) as BankAccess[]
   })
@@ -1344,7 +1344,7 @@ export async function getBankAccess(): Promise<BankAccess[]> {
 
 export async function upsertBankAccess(
   clientId: string,
-  patch: Partial<Pick<BankAccess, 'bank' | 'url' | 'username' | 'password' | 'access_type' | 'has_2fa' | 'we_pay' | 'notes'>>,
+  patch: Partial<Pick<BankAccess, 'bank' | 'url' | 'username' | 'password' | 'app_code' | 'access_type' | 'has_2fa' | 'we_pay' | 'notes'>>,
   updatedBy?: string | null,
 ): Promise<void> {
   await trackSave((async () => {
