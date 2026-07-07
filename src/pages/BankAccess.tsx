@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Navigate } from 'react-router-dom'
 import {
-  Landmark, Search, Plus, Trash2, X, Eye, EyeOff, Copy, ExternalLink, ShieldCheck,
+  Landmark, Search, Plus, Trash2, X, Eye, EyeOff, Copy, CopyPlus, ExternalLink, ShieldCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
@@ -144,6 +144,8 @@ export function BankAccessPage() {
   // отваряме модала автоматично, за да я възстановим.
   const [addOpen, setAddOpen] = useState(() => hasNonEmptyDraft())
   const [editFor, setEditFor] = useState<BankAccess | null>(null)
+  // Кредите за пред-попълване при „дублирай" от съществуващ ред.
+  const [prefill, setPrefill] = useState<BankAccess | null>(null)
 
   const configByClient = useMemo(() => {
     const m = new Map<string, BankAccess>()
@@ -309,9 +311,14 @@ export function BankAccessPage() {
                   <td className="px-2 py-1.5 text-muted-foreground">{r.notes ?? <span className="text-muted-foreground/40">—</span>}</td>
                   {canEdit && (
                     <td className="px-1 py-1.5">
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/60 hover:text-destructive" onClick={() => removeClient(r.client_id, r.name)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <div className="flex items-center gap-0.5">
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" title="Дублирай достъпа за друга фирма" onClick={() => { setPrefill(configByClient.get(r.client_id) ?? null); setAddOpen(true) }}>
+                          <CopyPlus className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/60 hover:text-destructive" title="Премахни" onClick={() => removeClient(r.client_id, r.name)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -326,8 +333,9 @@ export function BankAccessPage() {
           clients={clients}
           nameByClient={nameByClient}
           existingConfigs={configByClient}
-          onClose={() => { clearDraft(); setAddOpen(false) }}
-          onSaved={async () => { await invalidateBankAccess(); setAddOpen(false) }}
+          prefill={prefill}
+          onClose={() => { clearDraft(); setPrefill(null); setAddOpen(false) }}
+          onSaved={async () => { await invalidateBankAccess(); setPrefill(null); setAddOpen(false) }}
           userId={user?.id}
         />
       )}
@@ -350,29 +358,32 @@ export function BankAccessPage() {
 // Modal: Добави / редактирай банков достъп
 // ============================================================
 function BankAccessModal({
-  clients, nameByClient, existingConfigs, editExisting, onClose, onSaved, userId,
+  clients, nameByClient, existingConfigs, editExisting, prefill, onClose, onSaved, userId,
 }: {
   clients: { id: string }[]
   nameByClient: Map<string, string>
   existingConfigs: Map<string, BankAccess>
   editExisting?: BankAccess
+  prefill?: BankAccess | null
   onClose: () => void
   onSaved: () => Promise<void>
   userId?: string
 }) {
   // При add mode (без editExisting) — възстанови чернова от sessionStorage,
-  // ако има. При edit mode ползваме реалните данни.
-  const draft = editExisting ? null : readDraft()
+  // ако има. При edit mode ползваме реалните данни. При „дублирай" (prefill)
+  // → кредите идват от източника, но клиентът е нов (не наследяваме).
+  // prefill има приоритет пред черновата.
+  const draft = (editExisting || prefill) ? null : readDraft()
   const [clientId, setClientId] = useState<string | null>(editExisting?.client_id ?? draft?.clientId ?? null)
   const [clientSearch, setClientSearch] = useState('')
-  const [bank, setBank] = useState(editExisting?.bank ?? draft?.bank ?? '')
-  const [url, setUrl] = useState(editExisting?.url ?? draft?.url ?? '')
-  const [username, setUsername] = useState(editExisting?.username ?? draft?.username ?? '')
-  const [password, setPassword] = useState(editExisting?.password ?? draft?.password ?? '')
-  const [appCode, setAppCode] = useState(editExisting?.app_code ?? draft?.appCode ?? '')
+  const [bank, setBank] = useState(editExisting?.bank ?? prefill?.bank ?? draft?.bank ?? '')
+  const [url, setUrl] = useState(editExisting?.url ?? prefill?.url ?? draft?.url ?? '')
+  const [username, setUsername] = useState(editExisting?.username ?? prefill?.username ?? draft?.username ?? '')
+  const [password, setPassword] = useState(editExisting?.password ?? prefill?.password ?? draft?.password ?? '')
+  const [appCode, setAppCode] = useState(editExisting?.app_code ?? prefill?.app_code ?? draft?.appCode ?? '')
   const [showAppCode, setShowAppCode] = useState(false)
-  const [accessType, setAccessType] = useState<BankAccessType>((editExisting?.access_type as BankAccessType) ?? (draft?.accessType as BankAccessType) ?? 'shared')
-  const [has2fa, setHas2fa] = useState(editExisting?.has_2fa ?? draft?.has2fa ?? false)
+  const [accessType, setAccessType] = useState<BankAccessType>((editExisting?.access_type as BankAccessType) ?? (prefill?.access_type as BankAccessType) ?? (draft?.accessType as BankAccessType) ?? 'shared')
+  const [has2fa, setHas2fa] = useState(editExisting?.has_2fa ?? prefill?.has_2fa ?? draft?.has2fa ?? false)
   const [wePay, setWePay] = useState(editExisting?.we_pay ?? draft?.wePay ?? false)
   const [notes, setNotes] = useState(editExisting?.notes ?? draft?.notes ?? '')
   const [showPass, setShowPass] = useState(false)
@@ -470,6 +481,37 @@ function BankAccessModal({
           {editExisting && (
             <div className="px-3 py-2 border border-border rounded-md bg-muted/30 text-sm font-medium">
               {nameByClient.get(editExisting.client_id)}
+            </div>
+          )}
+
+          {/* Копирай достъп от друга фирма (само add mode) — за общ достъп. */}
+          {!editExisting && existingConfigs.size > 0 && (
+            <div className="rounded-md border border-dashed border-primary/40 bg-primary/5 p-2">
+              <label className="text-xs font-medium text-primary block mb-1 flex items-center gap-1.5">
+                <Copy className="h-3 w-3" /> Копирай достъп от друга фирма
+              </label>
+              <select
+                defaultValue=""
+                onChange={e => {
+                  const src = existingConfigs.get(e.target.value)
+                  if (!src) return
+                  setBank(src.bank ?? '')
+                  setUrl(src.url ?? '')
+                  setUsername(src.username ?? '')
+                  setPassword(src.password ?? '')
+                  setAppCode(src.app_code ?? '')
+                  setAccessType(src.access_type as BankAccessType)
+                  setHas2fa(src.has_2fa)
+                  toast.success('Данните са копирани — избери фирма и запиши')
+                }}
+                className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
+              >
+                <option value="">— избери фирма да копираш —</option>
+                {[...existingConfigs.values()]
+                  .map(c => ({ id: c.client_id, name: nameByClient.get(c.client_id) ?? '—' }))
+                  .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
+                  .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
           )}
 
