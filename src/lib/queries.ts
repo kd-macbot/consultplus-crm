@@ -6,6 +6,7 @@ import {
   getMonthlyWork, getTrzWork, getArt55EntriesForPeriod, getChecklist,
   getClientProfiles, getPaymentConfigs, getPaymentStatuses,
   getAbsences, getVacationQuotas, getForm76Overrides, getEvents, getNews,
+  getBankAccess,
 } from './storage'
 import { timed } from './perf'
 
@@ -106,6 +107,12 @@ export function useNews() {
     queryFn: () => getNews(30),
   })
 }
+export function useBankAccess() {
+  return useQuery({
+    queryKey: ['bankAccess'] as const,
+    queryFn: getBankAccess,
+  })
+}
 
 // Месечни / годишни данни — параметризирани по year/month, така че RQ кешира
 // всеки месец отделно. След като user е посетил месец веднъж, повторното
@@ -170,6 +177,7 @@ export function useInvalidateCrm() {
     invalidateEvents: (year: number) =>
       qc.invalidateQueries({ queryKey: ['events', year] }),
     invalidateNews: () => qc.invalidateQueries({ queryKey: ['news'] }),
+    invalidateBankAccess: () => qc.invalidateQueries({ queryKey: ['bankAccess'] }),
     invalidateMonthlyWork: (year: number, month: number) =>
       qc.invalidateQueries({ queryKey: ['monthlyWork', year, month] }),
     invalidateTrzWork: (year: number, month: number) =>

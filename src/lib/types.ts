@@ -581,6 +581,32 @@ export interface NewsItem {
   updated_at: string
 }
 
+// ============================================================
+// Банков достъп
+// ============================================================
+export const BANK_ACCESS_TYPES = ['shared', 'individual'] as const
+export type BankAccessType = typeof BANK_ACCESS_TYPES[number]
+
+export const BANK_ACCESS_TYPE_LABELS: Record<BankAccessType, string> = {
+  shared:     'Общ',
+  individual: 'Отделен',
+}
+
+export interface BankAccess {
+  client_id: string
+  bank: string | null
+  url: string | null
+  username: string | null
+  password: string | null
+  app_code: string | null   // таен код/сийд за 2FA приложението
+  access_type: BankAccessType | string
+  has_2fa: boolean
+  we_pay: boolean
+  notes: string | null
+  updated_at: string
+  updated_by: string | null
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory
