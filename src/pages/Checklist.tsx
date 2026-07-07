@@ -234,8 +234,16 @@ export function ChecklistPage() {
     else delete nextCheckedBy[key as string]
     const patch = { [key]: value, checked_by: nextCheckedBy } as Partial<ChecklistRow>
 
-    // Optimistic → в pending (устойчив слой). Наслагва се над RQ данните и
-    // ОЦЕЛЯВА refetch/reload, докато записът реално не мине.
+    // Оптимистичен update в RQ кеша — веднага обновява показаната стойност
+    // (без визуална дупка). Pending слоят долу е ДОПЪЛНИТЕЛНА durable защита,
+    // която оцелява refetch/reload.
+    queryClient.setQueryData<ChecklistRow[]>(['checklist', year, month], (prev) => {
+      if (!prev) return prev
+      const idx = prev.findIndex(r => r.client_id === clientId)
+      if (idx >= 0) return prev.map((r, i) => i === idx ? { ...r, ...patch } : r)
+      return [...prev, { client_id: clientId, year, month, ...patch } as ChecklistRow]
+    })
+    // Durable pending — наслагва се над RQ данните и оцелява reload.
     setPending(prev => {
       const next = new Map(prev)
       const existing = next.get(clientId) ?? {}
@@ -246,8 +254,8 @@ export function ChecklistPage() {
     setSavingFor(prev => new Set(prev).add(clientId))
     try {
       await upsertChecklistByKey(clientId, year, month, patch, user?.id)
-      // Успех → махаме ключа от pending (запазваме други чакащи ключове на
-      // същия клиент). Realtime/invalidate ще донесе потвърдената стойност.
+      // Успех → махаме ключа от pending. Базата (setQueryData) вече показва
+      // стойността, така че НЯМА визуална дупка. Realtime после потвърждава.
       setPending(prev => {
         const next = new Map(prev)
         const existing = { ...(next.get(clientId) ?? {}) } as Record<string, unknown>
