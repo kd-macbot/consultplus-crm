@@ -18,6 +18,29 @@ import { isHiddenStatus } from '../lib/statusBadge'
 import { MONTH_NAMES, previousMonth, namesMatch } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
 
+// ============================================================
+// Pending маркировки — устойчивост срещу „загубена отметка" при stale
+// връзка/idle таб. Всяка отметка се пази локално (localStorage), докато
+// НЕ се потвърди реален запис в базата. Така:
+//   - неуспешен/увиснал запис НЕ отмаркира клетката (не се invalidate-ва)
+//   - маркировката оцелява reload (авто-recovery) и се опитва пак
+// Ключ per (година, месец), за да не се смесват месеците.
+// ============================================================
+type PendingMap = Record<string, Partial<ChecklistRow>>  // clientId → patch
+function pendingStoreKey(year: number, month: number) { return `checklist-pending-${year}-${month}` }
+function readPending(year: number, month: number): PendingMap {
+  try {
+    const raw = localStorage.getItem(pendingStoreKey(year, month))
+    return raw ? (JSON.parse(raw) as PendingMap) : {}
+  } catch { return {} }
+}
+function writePending(year: number, month: number, map: PendingMap) {
+  try {
+    if (Object.keys(map).length === 0) localStorage.removeItem(pendingStoreKey(year, month))
+    else localStorage.setItem(pendingStoreKey(year, month), JSON.stringify(map))
+  } catch { /* quota */ }
+}
+
 const SALES_FIELDS = CHECKLIST_FIELDS.filter(f => f.group === 'sales')
 const PURCHASE_FIELDS = CHECKLIST_FIELDS.filter(f => f.group === 'purchases')
 
@@ -90,11 +113,31 @@ export function ChecklistPage() {
   const masterReady = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!dropdownsQ.data && !!staffQ.data
 
   const checklistQ = useChecklist(year, month)
+
+  // Pending (незапотвърдени) маркировки — hydrate от localStorage per месец.
+  const [pending, setPending] = useState<Map<string, Partial<ChecklistRow>>>(
+    () => new Map(Object.entries(readPending(year, month))),
+  )
+  // При смяна на месец → зареди pending за новия месец.
+  useEffect(() => {
+    setPending(new Map(Object.entries(readPending(year, month))))
+  }, [year, month])
+  // Persist pending при всяка промяна.
+  useEffect(() => {
+    writePending(year, month, Object.fromEntries(pending))
+  }, [pending, year, month])
+
   const rows = useMemo(() => {
     const m = new Map<string, ChecklistRow>()
     ;(checklistQ.data ?? []).forEach(r => m.set(r.client_id, r))
+    // Наслагваме pending маркировките ОТГОРЕ → оцеляват refetch/reload,
+    // докато записът реално не мине.
+    pending.forEach((patch, clientId) => {
+      const base = m.get(clientId) ?? ({ client_id: clientId, year, month, checked_by: {} } as ChecklistRow)
+      m.set(clientId, { ...base, ...patch })
+    })
     return m
-  }, [checklistQ.data])
+  }, [checklistQ.data, pending, year, month])
 
   const [search, setSearch] = useState('')
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
@@ -190,23 +233,69 @@ export function ChecklistPage() {
     if (value) nextCheckedBy[key as string] = { name: myName || 'неизвестен', at: new Date().toISOString() }
     else delete nextCheckedBy[key as string]
     const patch = { [key]: value, checked_by: nextCheckedBy } as Partial<ChecklistRow>
-    // Оптимистичен update в RQ кеша
-    queryClient.setQueryData<ChecklistRow[]>(['checklist', year, month], (prev) => {
-      if (!prev) return prev
-      const idx = prev.findIndex(r => r.client_id === clientId)
-      if (idx >= 0) return prev.map((r, i) => i === idx ? { ...r, ...patch } : r)
-      return [...prev, { client_id: clientId, year, month, ...patch } as ChecklistRow]
+
+    // Optimistic → в pending (устойчив слой). Наслагва се над RQ данните и
+    // ОЦЕЛЯВА refetch/reload, докато записът реално не мине.
+    setPending(prev => {
+      const next = new Map(prev)
+      const existing = next.get(clientId) ?? {}
+      next.set(clientId, { ...existing, [key]: value, checked_by: nextCheckedBy })
+      return next
     })
+
     setSavingFor(prev => new Set(prev).add(clientId))
     try {
       await upsertChecklistByKey(clientId, year, month, patch, user?.id)
-    } catch (e: any) {
-      toast.error(e.message ?? 'Грешка при запис')
-      invalidateChecklist(year, month)
+      // Успех → махаме ключа от pending (запазваме други чакащи ключове на
+      // същия клиент). Realtime/invalidate ще донесе потвърдената стойност.
+      setPending(prev => {
+        const next = new Map(prev)
+        const existing = { ...(next.get(clientId) ?? {}) } as Record<string, unknown>
+        delete existing[key as string]
+        const realKeys = Object.keys(existing).filter(k => k !== 'checked_by')
+        if (realKeys.length === 0) next.delete(clientId)
+        else next.set(clientId, existing as Partial<ChecklistRow>)
+        return next
+      })
+    } catch {
+      // ВАЖНО: НЕ invalidate-ваме (това връщаше клетката на нечекнато).
+      // Маркировката остава в pending → визуално чекнато + ще се опита пак.
+      toast.error('Записът не мина (връзката). Маркировката е запазена и ще се опита отново.')
     } finally {
       setSavingFor(prev => { const n = new Set(prev); n.delete(clientId); return n })
     }
   }
+
+  // Retry на pending маркировки — при mount (напр. след авто-reload) и при
+  // връщане на фокус. Опитва да запише всичко, което още не е потвърдено.
+  // pendingRef държи най-новото pending (за да не чете stale в listener-а).
+  const pendingRef = useRef(pending)
+  useEffect(() => { pendingRef.current = pending }, [pending])
+  const retryingRef = useRef(false)
+  async function flushPending() {
+    if (retryingRef.current) return
+    const snapshot = new Map(pendingRef.current)
+    if (snapshot.size === 0) return
+    retryingRef.current = true
+    try {
+      for (const [clientId, patch] of snapshot) {
+        try {
+          await upsertChecklistByKey(clientId, year, month, patch, user?.id)
+          setPending(prev => { const n = new Map(prev); n.delete(clientId); return n })
+        } catch { /* остава в pending за следващ опит */ }
+      }
+    } finally {
+      retryingRef.current = false
+    }
+  }
+  // Веднъж при mount и при всяко връщане на видимост.
+  useEffect(() => {
+    void flushPending()
+    const onVis = () => { if (document.visibilityState === 'visible') void flushPending() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, month])
 
   async function saveNotes(clientId: string, notes: string) {
     lastEditRef.current = Date.now()
