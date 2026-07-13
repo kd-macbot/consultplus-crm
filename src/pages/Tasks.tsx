@@ -1,24 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
-  KanbanSquare, List, Plus, Search, Trash2, X, CalendarDays, User as UserIcon,
+  KanbanSquare, List, Plus, Search, Trash2, X, CalendarDays, User as UserIcon, ShieldAlert,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import {
-  useClients, useColumns, useCellValues, useStaff, useTasks, useInvalidateCrm,
+  useClients, useColumns, useCellValues, useDropdownOptions, useStaff, useTasks, useInvalidateCrm,
 } from '../lib/queries'
 import { addTask, updateTask, deleteTask } from '../lib/storage'
 import { queryClient } from '../lib/queryClient'
 import {
   TASK_STATUSES, TASK_STATUS_LABELS, TASK_STATUS_COLORS,
-  type Task, type TaskStatus,
+  INSPECTION_TYPES, INSPECTION_TYPE_LABELS, INSPECTION_TYPE_COLORS,
+  type Task, type TaskStatus, type TaskKind, type InspectionType,
 } from '../lib/types'
-import { formatDate } from '../lib/utils'
+import { formatDate, namesMatch } from '../lib/utils'
 import { useMyStaff } from '../lib/useMyStaff'
 import { useRealtime } from '../lib/useRealtime'
 
 const VIEW_KEY = 'tasks-view'  // 'kanban' | 'list' — запомня се per браузър
+const KIND_KEY = 'tasks-kind'  // 'task' | 'inspection'
 const DONE_HIDE_AFTER_DAYS = 14
 
 // Колона-акцент за kanban header-а (по-плътни от card цветовете).
@@ -42,11 +44,12 @@ function isOverdue(task: Task): boolean {
 
 export function TasksPage() {
   const { user } = useAuth()
-  const { myStaff, isAdmin } = useMyStaff()
+  const { myStaff, isAdmin, inDept } = useMyStaff()
 
   const clientsQ = useClients()
   const columnsQ = useColumns()
   const cellsQ = useCellValues()
+  const dropdownsQ = useDropdownOptions()
   const staffQ = useStaff()
   const tasksQ = useTasks()
   const { invalidateTasks } = useInvalidateCrm()
@@ -54,6 +57,7 @@ export function TasksPage() {
   const clients = useMemo(() => clientsQ.data ?? [], [clientsQ.data])
   const columns = useMemo(() => columnsQ.data ?? [], [columnsQ.data])
   const cells = useMemo(() => cellsQ.data ?? [], [cellsQ.data])
+  const dropdowns = useMemo(() => dropdownsQ.data ?? [], [dropdownsQ.data])
   const staff = useMemo(() => staffQ.data ?? [], [staffQ.data])
 
   // Live обновяване, когато колега мести/създава задачи.
@@ -84,12 +88,42 @@ export function TasksPage() {
   }, [staff])
 
   // ============================================================
+  // Отговорник per фирма — извлича се на живо от колоната „Отговорник"
+  // на Работния лист. За проверките отговорникът НЕ се въвежда ръчно.
+  // ============================================================
+  const respCol = useMemo(() => columns.find(c => c.name === 'Отговорник'), [columns])
+  const dropdownValueById = useMemo(() => {
+    const m = new Map<string, string>()
+    dropdowns.forEach(d => m.set(d.id, d.value))
+    return m
+  }, [dropdowns])
+  const respByClient = useMemo(() => {
+    const m = new Map<string, string>()
+    if (!respCol) return m
+    cells.forEach(c => {
+      if (c.column_id !== respCol.id) return
+      const v = c.value_text || (c.value_dropdown ? dropdownValueById.get(c.value_dropdown) : '')
+      if (v) m.set(c.client_id, v)
+    })
+    return m
+  }, [cells, respCol, dropdownValueById])
+
+  // ============================================================
   // View state + филтри
   // ============================================================
   const [view, setView] = useState<'kanban' | 'list'>(() => {
     try { return (localStorage.getItem(VIEW_KEY) as 'kanban' | 'list') || 'kanban' } catch { return 'kanban' }
   })
   useEffect(() => { try { localStorage.setItem(VIEW_KEY, view) } catch { /* noop */ } }, [view])
+
+  // Превключвател Задачи / Проверки — същият механизъм, различен kind.
+  const [kind, setKind] = useState<TaskKind>(() => {
+    try { return (localStorage.getItem(KIND_KEY) as TaskKind) || 'task' } catch { return 'task' }
+  })
+  useEffect(() => { try { localStorage.setItem(KIND_KEY, kind) } catch { /* noop */ } }, [kind])
+  const isInspections = kind === 'inspection'
+  // Проверки създават само admin и Тийм Лийд (основен или допълнителен отдел).
+  const canCreate = !isInspections || isAdmin || inDept('Тийм Лийд')
 
   const [search, setSearch] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
@@ -102,7 +136,8 @@ export function TasksPage() {
   const tasks = useMemo(() => {
     const cutoff = Date.now() - DONE_HIDE_AFTER_DAYS * 24 * 60 * 60_000
     let list = (tasksQ.data ?? []).filter(t =>
-      t.status !== 'done' || new Date(t.updated_at).getTime() >= cutoff,
+      ((t.kind ?? 'task') === kind)
+      && (t.status !== 'done' || new Date(t.updated_at).getTime() >= cutoff),
     )
     const q = search.trim().toLowerCase()
     if (q) {
@@ -113,9 +148,14 @@ export function TasksPage() {
       )
     }
     if (assigneeFilter) list = list.filter(t => t.assignee_staff_id === assigneeFilter)
-    if (onlyMine && myStaff) list = list.filter(t => t.assignee_staff_id === myStaff.id)
+    if (onlyMine && myStaff) {
+      list = isInspections
+        // При проверките „моите" = фирмите, на които съм отговорник.
+        ? list.filter(t => t.client_id && namesMatch(respByClient.get(t.client_id), myStaff.full_name))
+        : list.filter(t => t.assignee_staff_id === myStaff.id)
+    }
     return list
-  }, [tasksQ.data, search, assigneeFilter, onlyMine, myStaff, nameByClient])
+  }, [tasksQ.data, kind, isInspections, search, assigneeFilter, onlyMine, myStaff, nameByClient, respByClient])
 
   const byStatus = useMemo(() => {
     const m = new Map<TaskStatus, Task[]>()
@@ -145,7 +185,7 @@ export function TasksPage() {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverCol, setDragOverCol] = useState<TaskStatus | null>(null)
 
-  const ready = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!staffQ.data && !!tasksQ.data
+  const ready = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!dropdownsQ.data && !!staffQ.data && !!tasksQ.data
   if (!ready) {
     return (
       <div className="flex items-center justify-center h-full min-h-[50vh] text-muted-foreground">
@@ -165,12 +205,31 @@ export function TasksPage() {
       <div className="px-3 py-2 md:px-5 md:py-3 border-b border-border bg-card">
         <div className="flex flex-wrap items-center gap-3 justify-between">
           <div className="flex items-center gap-3">
-            <KanbanSquare className="h-5 w-5 text-muted-foreground" />
+            {isInspections
+              ? <ShieldAlert className="h-5 w-5 text-muted-foreground" />
+              : <KanbanSquare className="h-5 w-5 text-muted-foreground" />}
             <div>
-              <h1 className="text-base md:text-lg font-semibold text-foreground">Задачи</h1>
+              <h1 className="text-base md:text-lg font-semibold text-foreground">{isInspections ? 'Проверки' : 'Задачи'}</h1>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                Влачи картите между колоните или кликни на статуса.
+                {isInspections
+                  ? 'Проверки/ревизии по фирма — отговорникът идва автоматично от Работния лист.'
+                  : 'Влачи картите между колоните или кликни на статуса.'}
               </p>
+            </div>
+            {/* Превключвател Задачи / Проверки */}
+            <div className="flex items-center border border-border rounded-md bg-background p-0.5 ml-2">
+              <Button
+                variant={!isInspections ? 'default' : 'ghost'} size="sm"
+                className="h-7 px-3 text-xs" onClick={() => setKind('task')}
+              >
+                Задачи
+              </Button>
+              <Button
+                variant={isInspections ? 'default' : 'ghost'} size="sm"
+                className="h-7 px-3 text-xs" onClick={() => setKind('inspection')}
+              >
+                Проверки
+              </Button>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -189,10 +248,12 @@ export function TasksPage() {
                 <List className="h-3.5 w-3.5" />
               </Button>
             </div>
-            <Button size="sm" onClick={() => setModal({})}>
-              <Plus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Нова задача</span>
-            </Button>
+            {canCreate && (
+              <Button size="sm" onClick={() => setModal({})}>
+                <Plus className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{isInspections ? 'Нова проверка' : 'Нова задача'}</span>
+              </Button>
+            )}
           </div>
         </div>
 
@@ -206,17 +267,20 @@ export function TasksPage() {
               className="w-full md:w-64 pl-8 pr-3 py-1.5 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
             />
           </div>
-          <select
-            value={assigneeFilter} onChange={e => setAssigneeFilter(e.target.value)}
-            className="h-8 px-2 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
-          >
-            <option value="">Всички изпълнители</option>
-            {activeStaff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
-          </select>
+          {!isInspections && (
+            <select
+              value={assigneeFilter} onChange={e => setAssigneeFilter(e.target.value)}
+              className="h-8 px-2 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
+            >
+              <option value="">Всички изпълнители</option>
+              {activeStaff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+            </select>
+          )}
           {myStaff && (
             <button
               type="button"
               onClick={() => setOnlyMine(v => !v)}
+              title={isInspections ? 'Само проверки на фирмите, на които съм отговорник' : 'Само задачите, назначени на мен'}
               className={`h-8 px-2.5 text-xs rounded border transition-colors ${
                 onlyMine ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border hover:bg-muted/30'
               }`}
@@ -225,7 +289,7 @@ export function TasksPage() {
             </button>
           )}
           <span className="text-xs text-muted-foreground ml-auto">
-            {tasks.length} {tasks.length === 1 ? 'задача' : 'задачи'}
+            {tasks.length} {tasks.length === 1 ? (isInspections ? 'проверка' : 'задача') : (isInspections ? 'проверки' : 'задачи')}
           </span>
         </div>
       </div>
@@ -261,7 +325,10 @@ export function TasksPage() {
                       <TaskCard
                         key={t.id}
                         task={t}
-                        assigneeName={t.assignee_staff_id ? staffById.get(t.assignee_staff_id) ?? null : null}
+                        // Проверка → отговорникът на фирмата (авто); задача → изпълнителят.
+                        assigneeName={(t.kind ?? 'task') === 'inspection'
+                          ? (t.client_id ? respByClient.get(t.client_id) ?? null : null)
+                          : (t.assignee_staff_id ? staffById.get(t.assignee_staff_id) ?? null : null)}
                         clientName={t.client_id ? nameByClient.get(t.client_id) ?? null : null}
                         onDragStart={() => setDraggedId(t.id)}
                         onDragEnd={() => setDraggedId(null)}
@@ -280,8 +347,10 @@ export function TasksPage() {
         ) : (
           <TaskList
             tasks={tasks}
+            isInspections={isInspections}
             staffById={staffById}
             nameByClient={nameByClient}
+            respByClient={respByClient}
             onOpen={t => setModal({ existing: t })}
             onMove={(id, s) => void moveTask(id, s)}
           />
@@ -291,9 +360,11 @@ export function TasksPage() {
       {modal && (
         <TaskModal
           existing={modal.existing}
+          kind={modal.existing ? ((modal.existing.kind ?? 'task') as TaskKind) : kind}
           staff={activeStaff}
           clients={clients}
           nameByClient={nameByClient}
+          respByClient={respByClient}
           canDelete={!!modal.existing && (isAdmin || modal.existing.created_by === user?.id)}
           onClose={() => setModal(null)}
           onSaved={async () => { await invalidateTasks(); setModal(null) }}
@@ -328,6 +399,17 @@ function TaskCard({
       onClick={onOpen}
       className="bg-card border border-border rounded-md p-2.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow select-none"
     >
+      {/* Проверка: тип-бадж + фирма отгоре (фирмата е главното). */}
+      {(task.kind ?? 'task') === 'inspection' && (
+        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+          {task.inspection_type && (
+            <span className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${INSPECTION_TYPE_COLORS[task.inspection_type as InspectionType] ?? ''}`}>
+              {INSPECTION_TYPE_LABELS[task.inspection_type as InspectionType] ?? task.inspection_type}
+            </span>
+          )}
+          {clientName && <span className="text-xs font-semibold text-foreground truncate">{clientName}</span>}
+        </div>
+      )}
       <div className="text-sm font-medium text-foreground leading-tight">{task.title}</div>
       {task.description && (
         <div className="text-[11px] text-muted-foreground leading-tight mt-1 line-clamp-2">{task.description}</div>
@@ -361,7 +443,7 @@ function TaskCard({
             </>
           )}
         </div>
-        {clientName && (
+        {clientName && (task.kind ?? 'task') !== 'inspection' && (
           <span className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground truncate max-w-[110px]">{clientName}</span>
         )}
         {task.due_date && (
@@ -387,11 +469,13 @@ function TaskCard({
 // Списъчен изглед
 // ============================================================
 function TaskList({
-  tasks, staffById, nameByClient, onOpen, onMove,
+  tasks, isInspections, staffById, nameByClient, respByClient, onOpen, onMove,
 }: {
   tasks: Task[]
+  isInspections: boolean
   staffById: Map<string, string>
   nameByClient: Map<string, string>
+  respByClient: Map<string, string>
   onOpen: (t: Task) => void
   onMove: (id: string, s: TaskStatus) => void
 }) {
@@ -409,7 +493,7 @@ function TaskList({
   }, [tasks])
 
   if (ordered.length === 0) {
-    return <p className="text-center text-muted-foreground py-12 text-sm">Няма задачи. Натисни „Нова задача".</p>
+    return <p className="text-center text-muted-foreground py-12 text-sm">{isInspections ? 'Няма проверки.' : 'Няма задачи. Натисни „Нова задача".'}</p>
   }
 
   return (
@@ -417,8 +501,9 @@ function TaskList({
       <thead className="bg-navy text-white">
         <tr>
           <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[110px]">Статус</th>
-          <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider">Задача</th>
-          <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[140px]">Изпълнител</th>
+          {isInspections && <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[100px]">Тип</th>}
+          <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider">{isInspections ? 'Проверка' : 'Задача'}</th>
+          <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[140px]">{isInspections ? 'Отговорник' : 'Изпълнител'}</th>
           <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[140px]">Клиент</th>
           <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[100px]">Срок</th>
         </tr>
@@ -427,6 +512,9 @@ function TaskList({
         {ordered.map((t, i) => {
           const overdue = isOverdue(t)
           const evenBg = i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
+          const respName = isInspections
+            ? (t.client_id ? respByClient.get(t.client_id) ?? null : null)
+            : (t.assignee_staff_id ? staffById.get(t.assignee_staff_id) ?? null : null)
           return (
             <tr key={t.id} className={`border-b border-border ${evenBg} hover:bg-accent/30 ${t.status === 'done' ? 'opacity-60' : ''}`}>
               <td className="px-3 py-1.5" onClick={e => e.stopPropagation()}>
@@ -438,15 +526,24 @@ function TaskList({
                   {TASK_STATUSES.map(s => <option key={s} value={s}>{TASK_STATUS_LABELS[s]}</option>)}
                 </select>
               </td>
+              {isInspections && (
+                <td className="px-3 py-1.5">
+                  {t.inspection_type ? (
+                    <span className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${INSPECTION_TYPE_COLORS[t.inspection_type as InspectionType] ?? ''}`}>
+                      {INSPECTION_TYPE_LABELS[t.inspection_type as InspectionType] ?? t.inspection_type}
+                    </span>
+                  ) : <span className="text-muted-foreground/40">—</span>}
+                </td>
+              )}
               <td className="px-3 py-1.5 cursor-pointer" onClick={() => onOpen(t)}>
                 <div className="font-medium text-foreground">{t.title}</div>
                 {t.description && <div className="text-[11px] text-muted-foreground line-clamp-1">{t.description}</div>}
               </td>
               <td className="px-3 py-1.5 text-muted-foreground">
-                {t.assignee_staff_id ? (
+                {respName ? (
                   <span className="inline-flex items-center gap-1.5">
                     <UserIcon className="h-3 w-3" />
-                    {staffById.get(t.assignee_staff_id) ?? '—'}
+                    {respName}
                   </span>
                 ) : <span className="text-muted-foreground/40">—</span>}
               </td>
@@ -468,21 +565,25 @@ function TaskList({
 // Modal: Нова / редактирай задача
 // ============================================================
 function TaskModal({
-  existing, staff, clients, nameByClient, canDelete, onClose, onSaved, userId,
+  existing, kind, staff, clients, nameByClient, respByClient, canDelete, onClose, onSaved, userId,
 }: {
   existing?: Task
+  kind: TaskKind
   staff: { id: string; full_name: string }[]
   clients: { id: string }[]
   nameByClient: Map<string, string>
+  respByClient: Map<string, string>
   canDelete: boolean
   onClose: () => void
   onSaved: () => Promise<void>
   userId?: string
 }) {
+  const isInspection = kind === 'inspection'
   const [title, setTitle] = useState(existing?.title ?? '')
   const [description, setDescription] = useState(existing?.description ?? '')
   const [status, setStatus] = useState<TaskStatus>((existing?.status as TaskStatus) ?? 'todo')
   const [assignee, setAssignee] = useState(existing?.assignee_staff_id ?? '')
+  const [inspectionType, setInspectionType] = useState<InspectionType>((existing?.inspection_type as InspectionType) ?? 'проверка')
   const [clientId, setClientId] = useState<string | null>(existing?.client_id ?? null)
   const [clientSearch, setClientSearch] = useState('')
   const [dueDate, setDueDate] = useState(existing?.due_date ?? '')
@@ -504,7 +605,10 @@ function TaskModal({
       .slice(0, 8)
   }, [clients, nameByClient, clientSearch])
 
-  const canSave = title.trim() && !saving
+  // При проверка фирмата е ЗАДЪЛЖИТЕЛНА.
+  const canSave = title.trim() && !saving && (!isInspection || !!clientId)
+  // Отговорникът на избраната фирма — авто, само за показване.
+  const autoResp = clientId ? respByClient.get(clientId) ?? null : null
 
   async function save() {
     setSaving(true)
@@ -513,13 +617,17 @@ function TaskModal({
         title: title.trim(),
         description: description.trim() || null,
         status,
-        assignee_staff_id: assignee || null,
+        inspection_type: isInspection ? inspectionType : null,
+        assignee_staff_id: isInspection ? null : (assignee || null),
         client_id: clientId,
         due_date: dueDate || null,
       }
+      // kind се задава само при създаване — не се сменя после.
       if (existing) await updateTask(existing.id, payload)
-      else await addTask(payload, userId)
-      toast.success(existing ? 'Задачата е обновена' : 'Задачата е създадена')
+      else await addTask({ ...payload, kind }, userId)
+      toast.success(existing
+        ? (isInspection ? 'Проверката е обновена' : 'Задачата е обновена')
+        : (isInspection ? 'Проверката е създадена' : 'Задачата е създадена'))
       await onSaved()
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при запис')
@@ -553,13 +661,33 @@ function TaskModal({
 
         <div className="flex-1 overflow-auto p-4 space-y-3">
           <div>
-            <label className="text-xs font-medium text-foreground block mb-1">Задача</label>
+            <label className="text-xs font-medium text-foreground block mb-1">{isInspection ? 'Заглавие' : 'Задача'}</label>
             <input
               type="text" value={title} onChange={e => setTitle(e.target.value)}
-              placeholder="Какво трябва да се свърши" autoFocus
+              placeholder={isInspection ? 'напр. Ревизия ДДС 2024-2025' : 'Какво трябва да се свърши'} autoFocus
               className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
             />
           </div>
+
+          {isInspection && (
+            <div>
+              <label className="text-xs font-medium text-foreground block mb-1.5">Тип</label>
+              <div className="flex flex-wrap gap-1.5">
+                {INSPECTION_TYPES.map(t => (
+                  <button
+                    key={t} type="button" onClick={() => setInspectionType(t)}
+                    className={`px-2.5 py-1 text-xs rounded border transition-all ${
+                      inspectionType === t
+                        ? `${INSPECTION_TYPE_COLORS[t]} ring-2 ring-offset-1 ring-current/30`
+                        : 'bg-background border-border text-muted-foreground hover:bg-muted/30'
+                    }`}
+                  >
+                    {INSPECTION_TYPE_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="text-xs font-medium text-foreground block mb-1.5">Статус</label>
@@ -580,16 +708,18 @@ function TaskModal({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Изпълнител</label>
-              <select
-                value={assignee} onChange={e => setAssignee(e.target.value)}
-                className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
-              >
-                <option value="">— никой —</option>
-                {staff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
-              </select>
-            </div>
+            {!isInspection && (
+              <div>
+                <label className="text-xs font-medium text-foreground block mb-1">Изпълнител</label>
+                <select
+                  value={assignee} onChange={e => setAssignee(e.target.value)}
+                  className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
+                >
+                  <option value="">— никой —</option>
+                  {staff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="text-xs font-medium text-foreground block mb-1">Срок</label>
               <input
@@ -601,7 +731,7 @@ function TaskModal({
           </div>
 
           <div>
-            <label className="text-xs font-medium text-foreground block mb-1">Клиент (по желание)</label>
+            <label className="text-xs font-medium text-foreground block mb-1">{isInspection ? 'Фирма (задължително)' : 'Клиент (по желание)'}</label>
             {clientId ? (
               <div className="flex items-center justify-between px-2.5 py-1.5 border border-border rounded-md bg-muted/30">
                 <span className="text-sm">{nameByClient.get(clientId) ?? '—'}</span>
@@ -632,6 +762,14 @@ function TaskModal({
               </div>
             )}
           </div>
+
+          {/* Авто-отговорник — извлича се от Работния лист, само за информация. */}
+          {isInspection && clientId && (
+            <div className="px-2.5 py-1.5 rounded-md bg-sky-50 border border-sky-200 dark:bg-sky-950/30 dark:border-sky-800 text-xs">
+              <span className="text-sky-700 dark:text-sky-300">Отговорник (авто от Работния лист): </span>
+              <span className="font-semibold text-sky-900 dark:text-sky-100">{autoResp ?? 'не е зададен за тази фирма'}</span>
+            </div>
+          )}
 
           <div>
             <label className="text-xs font-medium text-foreground block mb-1">Описание</label>
