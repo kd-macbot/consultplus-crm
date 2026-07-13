@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -1440,6 +1440,64 @@ export async function updateTask(
 export async function deleteTask(id: string): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase.from('crm_tasks').delete().eq('id', id)
+    if (error) throw error
+  })())
+}
+
+// ============================================================
+// Проверяващи на месеца
+// ============================================================
+
+export async function getMonthReviewers(year: number, month: number): Promise<MonthReviewers | null> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_month_reviewers')
+      .select('year,month,reviewer1_staff_id,reviewer2_staff_id,updated_by,updated_at')
+      .eq('year', year)
+      .eq('month', month)
+      .maybeSingle()
+    if (error) throw error
+    return (data as MonthReviewers | null)
+  })
+}
+
+/**
+ * Първоначално авто-назначаване (random) — ignoreDuplicates, така че при
+ * едновременно отваряне от двама колеги вторият insert НЕ презаписва.
+ */
+export async function seedMonthReviewers(
+  year: number, month: number,
+  reviewer1: string, reviewer2: string,
+  updatedBy?: string | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_month_reviewers')
+    .upsert(
+      { year, month, reviewer1_staff_id: reviewer1, reviewer2_staff_id: reviewer2, updated_by: updatedBy ?? null },
+      { onConflict: 'year,month', ignoreDuplicates: true },
+    )
+  if (error) throw error
+}
+
+/** Ръчна смяна на проверяващ — нормален upsert (презаписва). */
+export async function setMonthReviewers(
+  year: number, month: number,
+  reviewer1: string | null, reviewer2: string | null,
+  updatedBy?: string | null,
+): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_month_reviewers')
+      .upsert(
+        {
+          year, month,
+          reviewer1_staff_id: reviewer1,
+          reviewer2_staff_id: reviewer2,
+          updated_by: updatedBy ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'year,month' },
+      )
     if (error) throw error
   })())
 }

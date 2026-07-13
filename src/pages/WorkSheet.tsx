@@ -23,6 +23,7 @@ import { statusBadgeClass, isHiddenStatus } from '../lib/statusBadge'
 import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
+import { MonthReviewersWidget } from '../components/worksheet/MonthReviewers'
 
 function formatCurrency(v: number | null): string {
   if (v == null) return ''
@@ -380,6 +381,8 @@ export function WorkSheetPage() {
             <Button variant="ghost" size="sm" onClick={() => { const d = new Date(); setYear(d.getFullYear()); setMonth(d.getMonth() + 1) }}>
               Календарен месец
             </Button>
+            {/* Проверяващи на месеца — отличаващ се amber блок до month picker-а. */}
+            <MonthReviewersWidget year={year} month={month} />
           </div>
         </div>
         <div className="flex items-center gap-2">
