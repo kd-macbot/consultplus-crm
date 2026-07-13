@@ -668,6 +668,18 @@ export interface Task {
   updated_at: string
 }
 
+// ============================================================
+// Проверяващи на месеца (Работен лист)
+// ============================================================
+export interface MonthReviewers {
+  year: number
+  month: number
+  reviewer1_staff_id: string | null
+  reviewer2_staff_id: string | null
+  updated_by: string | null
+  updated_at: string
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory
