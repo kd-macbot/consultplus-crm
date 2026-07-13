@@ -9,26 +9,8 @@ import {
 import { upsertVacationQuota } from '../lib/storage'
 import type { Absence, VacationQuota } from '../lib/types'
 import { Navigate } from 'react-router-dom'
-import { namesMatch } from '../lib/utils'
-
-// Брой работни дни от vacation в конкретен месец на годината.
-function workingDaysInMonth(start: string, end: string, year: number, month: number): number {
-  const monthStart = new Date(year, month - 1, 1)
-  const monthEnd = new Date(year, month, 0)
-  const a = new Date(start + 'T00:00:00')
-  const b = new Date(end + 'T00:00:00')
-  const from = a < monthStart ? monthStart : a
-  const to = b > monthEnd ? monthEnd : b
-  if (from > to) return 0
-  let count = 0
-  const cur = new Date(from)
-  while (cur <= to) {
-    const dow = cur.getDay()
-    if (dow !== 0 && dow !== 6) count++
-    cur.setDate(cur.getDate() + 1)
-  }
-  return count
-}
+import { workingDaysInMonth } from '../lib/utils'
+import { useMyStaff } from '../lib/useMyStaff'
 
 const MONTHS_SHORT = ['Ян', 'Фев', 'Мар', 'Апр', 'Май', 'Юни', 'Юли', 'Авг', 'Сеп', 'Окт', 'Ное', 'Дек']
 
@@ -75,11 +57,8 @@ export function VacationsPage() {
   const quotas = useMemo(() => quotasQ.data ?? [], [quotasQ.data])
 
   // Достъп — admin или ТРЗ отдел. (Това е финансова справка.)
-  const myStaff = useMemo(
-    () => (staffQ.data ?? []).find(s => namesMatch(s.full_name, user?.full_name)),
-    [staffQ.data, user?.full_name],
-  )
-  const canSee = user?.role === 'admin' || myStaff?.department === 'ТРЗ'
+  const { myStaff, isAdmin } = useMyStaff()
+  const canSee = isAdmin || myStaff?.department === 'ТРЗ'
 
   const quotaByStaff = useMemo(() => {
     const m = new Map<string, VacationQuota>()

@@ -22,6 +22,7 @@ import {
 import { statusBadgeClass, isHiddenStatus } from '../lib/statusBadge'
 import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
+import { usePendingPatches } from '../lib/usePendingPatches'
 
 function formatCurrency(v: number | null): string {
   if (v == null) return ''
@@ -92,12 +93,25 @@ export function WorkSheetPage() {
   const art55Q = useArt55Entries(year, [month])
   const { invalidateMonthlyWork, invalidateArt55 } = useInvalidateCrm()
 
+  // Durable pending слой (моделът от Личен чек лист): непотвърдена промяна
+  // се пази в localStorage, наслагва се над сървърните данни и се опитва
+  // пак при връщане на фокус / reload.
+  const { pending, addPatch, removeFields } = usePendingPatches<MonthlyWork>({
+    storageKey: `worksheet-pending-${year}-${month}`,
+    save: (clientId, patch) => upsertMonthlyWorkByKey(clientId, year, month, patch, user?.id),
+    onFlushed: () => invalidateMonthlyWork(year, month),
+  })
+
   // Деривираме Map структурите от array data за бърз lookup в render-а.
   const rows = useMemo(() => {
     const m = new Map<string, MonthlyWork>()
     ;(monthlyWorkQ.data ?? []).forEach(w => m.set(w.client_id, w))
+    pending.forEach((patch, clientId) => {
+      const base = m.get(clientId) ?? ({ client_id: clientId, year, month } as MonthlyWork)
+      m.set(clientId, { ...base, ...patch })
+    })
     return m
-  }, [monthlyWorkQ.data])
+  }, [monthlyWorkQ.data, pending, year, month])
   const art55Entries = useMemo(() => {
     const m = new Map<string, Art55Entry[]>()
     ;(art55Q.data ?? []).forEach(e => {
@@ -325,12 +339,16 @@ export function WorkSheetPage() {
       if (idx >= 0) return prev.map((w, i) => i === idx ? { ...w, ...patch } : w)
       return [...prev, { client_id: clientId, year, month, ...patch } as MonthlyWork]
     })
+    // Durable pending — оцелява refetch/reload до потвърден запис.
+    addPatch(clientId, patch)
     setSavingFor(prev => new Set(prev).add(clientId))
     try {
       await upsertMonthlyWorkByKey(clientId, year, month, patch, user?.id)
-    } catch (e: any) {
-      toast.error(e.message ?? 'Грешка при запис')
-      invalidateMonthlyWork(year, month)
+      removeFields(clientId, Object.keys(patch))
+    } catch {
+      // НЕ invalidate-ваме — това връщаше клетката към старата стойност.
+      // Промяната остава в pending и се опитва отново при фокус / reload.
+      toast.error('Записът не мина (връзката). Промяната е запазена и ще се опита отново.')
     } finally {
       setSavingFor(prev => {
         const next = new Set(prev)

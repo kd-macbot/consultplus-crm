@@ -9,7 +9,7 @@ import {
 } from '../lib/queries'
 import { setForm76Override } from '../lib/storage'
 import { exportRowsToExcel } from '../lib/export'
-import { namesMatch } from '../lib/utils'
+import { useMyStaff } from '../lib/useMyStaff'
 import {
   ABSENCE_TYPE_TO_FORM76_CODE,
   FORM76_CODES, FORM76_CODE_LABELS, FORM76_CODE_COLORS,
@@ -76,11 +76,8 @@ export function Form76Page() {
 
   // Достъп — admin или ТРЗ.
   const allStaff = useMemo(() => (staffQ.data ?? []), [staffQ.data])
-  const myStaff = useMemo(
-    () => allStaff.find(s => namesMatch(s.full_name, user?.full_name)),
-    [allStaff, user?.full_name],
-  )
-  const canSee = user?.role === 'admin' || myStaff?.department === 'ТРЗ'
+  const { myStaff, isAdmin } = useMyStaff()
+  const canSee = isAdmin || myStaff?.department === 'ТРЗ'
 
   const staff = useMemo(() => allStaff.filter(s => s.is_active), [allStaff])
   const absences = useMemo(() => absencesQ.data ?? [], [absencesQ.data])
@@ -117,10 +114,11 @@ export function Form76Page() {
     try {
       await setForm76Override(staffId, year, month, day, value, user?.id)
       await invalidateForm76Overrides(year, month)
-    } catch (e: any) {
-      toast.error(e.message ?? 'Грешка при запис')
-    } finally {
+      // Затваряме popover-а САМО при успех — при грешка остава отворен,
+      // за да може потребителят да опита пак, без да губи избора си.
       setEditingCell(null)
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при запис — опитай отново')
     }
   }, [editingCell, year, month, user?.id, invalidateForm76Overrides])
 

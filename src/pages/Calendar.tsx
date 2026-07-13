@@ -14,7 +14,11 @@ import {
   type AbsenceType, type Absence, type EventType, type CompanyEvent, type NewsType, type NewsItem,
 } from '../lib/types'
 import type { StaffMember as StaffMemberType } from '../lib/storage'
-import { namesMatch, formatDate, formatDateTime } from '../lib/utils'
+import {
+  formatDate, formatDateTime,
+  workingDaysInYear, workingDaysInMonth, workingDaysInMonthTotal,
+} from '../lib/utils'
+import { useMyStaff } from '../lib/useMyStaff'
 import { exportRowsToExcel } from '../lib/export'
 
 const MONTH_NAMES = [
@@ -30,57 +34,6 @@ function iso(y: number, m: number, d: number): string {
 
 function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
-}
-
-// Брой работни дни (Пн-Пт), които даден диапазон отсъствия покрива
-// в рамките на дадена година. Използва се за изчисление на „използвани"
-// дни отпуска (vacation), което се отнема от годишния баланс.
-function workingDaysInYear(start: string, end: string, year: number): number {
-  const yearStart = new Date(`${year}-01-01T00:00:00`)
-  const yearEnd = new Date(`${year}-12-31T00:00:00`)
-  const a = new Date(start + 'T00:00:00')
-  const b = new Date(end + 'T00:00:00')
-  const from = a < yearStart ? yearStart : a
-  const to = b > yearEnd ? yearEnd : b
-  if (from > to) return 0
-  let count = 0
-  const cur = new Date(from)
-  while (cur <= to) {
-    const dow = cur.getDay()
-    if (dow !== 0 && dow !== 6) count++
-    cur.setDate(cur.getDate() + 1)
-  }
-  return count
-}
-
-// Брой работни дни (Пн-Пт) в конкретен месец, които даден диапазон покрива.
-function workingDaysInMonth(start: string, end: string, year: number, month: number): number {
-  const monthStart = new Date(year, month - 1, 1)
-  const monthEnd = new Date(year, month, 0)
-  const a = new Date(start + 'T00:00:00')
-  const b = new Date(end + 'T00:00:00')
-  const from = a < monthStart ? monthStart : a
-  const to = b > monthEnd ? monthEnd : b
-  if (from > to) return 0
-  let count = 0
-  const cur = new Date(from)
-  while (cur <= to) {
-    const dow = cur.getDay()
-    if (dow !== 0 && dow !== 6) count++
-    cur.setDate(cur.getDate() + 1)
-  }
-  return count
-}
-
-// Брой работни дни (Пн-Пт) в целия месец — за колоната „Раб. дни".
-function workingDaysInMonthTotal(year: number, month: number): number {
-  const monthEnd = new Date(year, month, 0).getDate()
-  let count = 0
-  for (let d = 1; d <= monthEnd; d++) {
-    const dow = new Date(year, month - 1, d).getDay()
-    if (dow !== 0 && dow !== 6) count++
-  }
-  return count
 }
 
 // За даден ден връща typed absence, ако служителят е отсъстващ. null иначе.
@@ -112,15 +65,8 @@ export function CalendarPage() {
   const news = useMemo(() => newsQ.data ?? [], [newsQ.data])
   const quotas = useMemo(() => quotasQ.data ?? [], [quotasQ.data])
 
-  // Текущият потребител → staff запис (с нормализирано сравнение по име,
-  // случвало се е да има тривиална разлика — главни/малки, двойни интервали).
-  // Търсим във ВСИЧКИ staff записи (active и inactive), за да не „загубим"
-  // потребител с временно деактивирана служебна позиция.
-  const myStaff = useMemo(
-    () => allStaff.find(s => namesMatch(s.full_name, user?.full_name)),
-    [allStaff, user?.full_name],
-  )
-  const isAdmin = user?.role === 'admin'
+  // Текущият потребител → staff запис — от споделения useMyStaff lookup.
+  const { myStaff, isAdmin } = useMyStaff()
   // Manager + отдел ТРЗ → разширен достъп: редактира чужди редове в
   // календара и вижда чакащите заявки, но БЕЗ право да одобрява/отказва.
   const isManagerTrz = user?.role === 'manager' && myStaff?.department === 'ТРЗ'
@@ -635,25 +581,6 @@ export function CalendarPage() {
 // сверх). Admin може да добавя без ограничение, тъй като той сам одобрява.
 const REMOTE_LIMIT_PER_MONTH = 2
 
-// Брой работни дни от един range в конкретен месец на годината.
-function rangeWorkingDaysInMonth(start: string, end: string, year: number, month: number): number {
-  const monthStart = new Date(year, month - 1, 1)
-  const monthEnd = new Date(year, month, 0)
-  const a = new Date(start + 'T00:00:00')
-  const b = new Date(end + 'T00:00:00')
-  const from = a < monthStart ? monthStart : a
-  const to = b > monthEnd ? monthEnd : b
-  if (from > to) return 0
-  let count = 0
-  const cur = new Date(from)
-  while (cur <= to) {
-    const dow = cur.getDay()
-    if (dow !== 0 && dow !== 6) count++
-    cur.setDate(cur.getDate() + 1)
-  }
-  return count
-}
-
 function AbsenceModal({
   staffId, staffName, existing, defaultDate, isAdmin, allAbsences, onClose, onSaved, userId,
 }: {
@@ -703,14 +630,14 @@ function AbsenceModal({
       cur.setMonth(cur.getMonth() + 1)
     }
     for (const { year, month } of months) {
-      const newDays = rangeWorkingDaysInMonth(start, end, year, month)
+      const newDays = workingDaysInMonth(start, end, year, month)
       let existingDays = 0
       allAbsences.forEach(abs => {
         if (abs.staff_id !== staffId) return
         if (abs.type !== 'remote') return
         if (abs.status === 'rejected') return
         if (existing && abs.id === existing.id) return  // не брой собствения запис
-        existingDays += rangeWorkingDaysInMonth(abs.start_date, abs.end_date, year, month)
+        existingDays += workingDaysInMonth(abs.start_date, abs.end_date, year, month)
       })
       if (newDays + existingDays > REMOTE_LIMIT_PER_MONTH) {
         const monthName = ['Януари','Февруари','Март','Април','Май','Юни','Юли','Август','Септември','Октомври','Ноември','Декември'][month - 1]

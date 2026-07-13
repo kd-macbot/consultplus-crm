@@ -14,7 +14,7 @@ import {
   BANK_ACCESS_TYPES, BANK_ACCESS_TYPE_LABELS, BANKS,
   type BankAccess, type BankAccessType,
 } from '../lib/types'
-import { namesMatch } from '../lib/utils'
+import { useMyStaff } from '../lib/useMyStaff'
 
 // ============================================================
 // Draft persistence — пази въведеното в „Добави клиент" в sessionStorage,
@@ -109,17 +109,9 @@ export function BankAccessPage() {
   // Достъп по отдел:
   //   Виждат   → отдел Тийм Лийд, Управление, или admin
   //   Редактират → admin или отдел Управление
-  // Отделите се проверяват и в основния, и в допълнителните.
+  // Отделите се проверяват и в основния, и в допълнителните (inDept).
   // ============================================================
-  const myStaff = useMemo(
-    () => (staffQ.data ?? []).find(s => namesMatch(s.full_name, user?.full_name)),
-    [staffQ.data, user?.full_name],
-  )
-  const inDept = useCallback((dept: string) => {
-    if (!myStaff) return false
-    return myStaff.department === dept || (myStaff.additional_departments ?? []).includes(dept)
-  }, [myStaff])
-  const isAdmin = user?.role === 'admin'
+  const { inDept, isAdmin } = useMyStaff()
   const canView = isAdmin || inDept('Тийм Лийд') || inDept('Управление')
   const canEdit = isAdmin || inDept('Управление')
 

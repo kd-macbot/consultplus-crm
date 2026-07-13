@@ -94,6 +94,57 @@ export function timeAgo(iso: string | null | undefined, now: Date = new Date()):
   return `${dd}.${mm}.${yy} ${hh}:${mn}`
 }
 
+// ============================================================
+// Работни дни (Пн-Пт, без официални празници) — ЕДИНСТВЕНАТА
+// имплементация. Ползва се от Календар, Справка отпуска, Заявки и
+// Форма 76. Ако някога добавим официални празници, пипаме само тук.
+// ============================================================
+
+function parseIsoDate(iso: string): Date {
+  return new Date(iso + 'T00:00:00')
+}
+
+/** Брой работни дни (Пн-Пт) в затворен интервал [from..to]. */
+function countWorkdays(from: Date, to: Date): number {
+  if (from > to) return 0
+  let count = 0
+  const cur = new Date(from)
+  while (cur <= to) {
+    const dow = cur.getDay()
+    if (dow !== 0 && dow !== 6) count++
+    cur.setDate(cur.getDate() + 1)
+  }
+  return count
+}
+
+/** Работни дни между две ISO дати (вкл. двете граници). */
+export function workingDaysBetween(startIso: string, endIso: string): number {
+  return countWorkdays(parseIsoDate(startIso), parseIsoDate(endIso))
+}
+
+/** Работни дни от диапазона [start..end], попадащи в дадената година. */
+export function workingDaysInYear(startIso: string, endIso: string, year: number): number {
+  const yearStart = new Date(year, 0, 1)
+  const yearEnd = new Date(year, 11, 31)
+  const a = parseIsoDate(startIso)
+  const b = parseIsoDate(endIso)
+  return countWorkdays(a < yearStart ? yearStart : a, b > yearEnd ? yearEnd : b)
+}
+
+/** Работни дни от диапазона [start..end], попадащи в дадения месец (1-12). */
+export function workingDaysInMonth(startIso: string, endIso: string, year: number, month: number): number {
+  const monthStart = new Date(year, month - 1, 1)
+  const monthEnd = new Date(year, month, 0)
+  const a = parseIsoDate(startIso)
+  const b = parseIsoDate(endIso)
+  return countWorkdays(a < monthStart ? monthStart : a, b > monthEnd ? monthEnd : b)
+}
+
+/** Общ брой работни дни в целия месец (1-12). */
+export function workingDaysInMonthTotal(year: number, month: number): number {
+  return countWorkdays(new Date(year, month - 1, 1), new Date(year, month, 0))
+}
+
 /** ISO timestamp → „DD.MM.YYYY HH:MM". Празно → ''. */
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return ''
