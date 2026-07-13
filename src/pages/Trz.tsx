@@ -21,6 +21,7 @@ import { statusBadgeClass } from '../lib/statusBadge'
 import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { TRZ_ACTIVE, findTrzColumns } from '../lib/trz'
 import { useRealtime } from '../lib/useRealtime'
+import { usePendingPatches } from '../lib/usePendingPatches'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -46,11 +47,25 @@ export function TrzPage() {
 
   // ТРЗ месечни данни — от React Query, кеширани по (year, month).
   const trzWorkQ = useTrzWork(year, month)
+
+  // Durable pending слой (същият модел като Личен чек лист): промяна,
+  // чийто запис не е потвърден, се пази в localStorage и се наслагва над
+  // сървърните данни → оцелява refetch/reload и се опитва пак.
+  const { pending, addPatch, removeFields } = usePendingPatches<TrzWork>({
+    storageKey: `trz-pending-${year}-${month}`,
+    save: (clientId, patch) => upsertTrzWorkByKey(clientId, year, month, patch, user?.id),
+    onFlushed: () => invalidateTrzWork(year, month),
+  })
+
   const rows = useMemo(() => {
     const m = new Map<string, TrzWork>()
     ;(trzWorkQ.data ?? []).forEach(w => m.set(w.client_id, w))
+    pending.forEach((patch, clientId) => {
+      const base = m.get(clientId) ?? ({ client_id: clientId, year, month } as TrzWork)
+      m.set(clientId, { ...base, ...patch })
+    })
     return m
-  }, [trzWorkQ.data])
+  }, [trzWorkQ.data, pending, year, month])
 
   const [search, setSearch] = useState('')
   const [formaFilter, setFormaFilter] = useState<string[]>([])
@@ -211,12 +226,17 @@ export function TrzPage() {
       if (idx >= 0) return prev.map((w, i) => i === idx ? { ...w, ...patch } : w)
       return [...prev, { client_id: clientId, year, month, ...patch } as TrzWork]
     })
+    // Durable pending — оцелява refetch/reload до потвърден запис.
+    addPatch(clientId, patch)
     setSavingFor(prev => new Set(prev).add(clientId))
     try {
       await upsertTrzWorkByKey(clientId, year, month, patch, user?.id)
-    } catch (e: any) {
-      toast.error(e.message ?? 'Грешка при запис')
-      invalidateTrzWork(year, month)
+      removeFields(clientId, Object.keys(patch))
+    } catch {
+      // НЕ invalidate-ваме — това връщаше клетката към старата стойност.
+      // Промяната остава в pending (визуално видима) и се опитва отново
+      // при връщане на фокус / reload.
+      toast.error('Записът не мина (връзката). Промяната е запазена и ще се опита отново.')
     } finally {
       setSavingFor(prev => {
         const next = new Set(prev)

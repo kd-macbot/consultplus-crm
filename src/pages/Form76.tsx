@@ -117,10 +117,11 @@ export function Form76Page() {
     try {
       await setForm76Override(staffId, year, month, day, value, user?.id)
       await invalidateForm76Overrides(year, month)
-    } catch (e: any) {
-      toast.error(e.message ?? 'Грешка при запис')
-    } finally {
+      // Затваряме popover-а САМО при успех — при грешка остава отворен,
+      // за да може потребителят да опита пак, без да губи избора си.
       setEditingCell(null)
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при запис — опитай отново')
     }
   }, [editingCell, year, month, user?.id, invalidateForm76Overrides])
 

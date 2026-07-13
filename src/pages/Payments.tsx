@@ -10,6 +10,7 @@ import {
   upsertPaymentConfig, deletePaymentConfig, setPaymentStatus, setPaymentStatusBulk,
 } from '../lib/storage'
 import { PAYMENT_TYPES, PAYMENT_TYPE_COLORS, BANKS, type PaymentConfig, type PaymentStatus } from '../lib/types'
+import { queryClient } from '../lib/queryClient'
 
 const MONTHS = [
   'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни',
@@ -103,16 +104,34 @@ export function PaymentsPage() {
   const ready = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!configsQ.data && !!statusesQ.data
 
   // ============================================================
-  // Toggle на checkbox в клетката — instant write, optimistic invalidate.
+  // Toggle на checkbox в клетката — оптимистичен update (чекът реагира
+  // веднага, без да чака мрежата) + revert с ясен toast при грешка.
   // ============================================================
+  const applyStatusLocally = useCallback((clientId: string, type: string, month: number, paid: boolean) => {
+    queryClient.setQueryData<PaymentStatus[]>(['paymentStatuses', year], (prev) => {
+      if (!prev) return prev
+      const idx = prev.findIndex(s => s.client_id === clientId && s.payment_type === type && s.month === month)
+      if (idx >= 0) return prev.map((s, i) => i === idx ? { ...s, paid } : s)
+      return [...prev, {
+        id: `optimistic-${clientId}-${type}-${month}`,
+        client_id: clientId, payment_type: type, year, month,
+        paid, paid_at: paid ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(), updated_by: null,
+      } as PaymentStatus]
+    })
+  }, [year])
+
   const togglePaid = useCallback(async (clientId: string, type: string, month: number, paid: boolean) => {
+    applyStatusLocally(clientId, type, month, paid)
     try {
       await setPaymentStatus(clientId, type, year, month, paid, user?.id)
       await invalidatePaymentStatuses(year)
-    } catch (e: any) {
-      toast.error(e.message ?? 'Грешка при запис')
+    } catch {
+      // Revert + ясно съобщение — да не остане чек, който не е записан.
+      applyStatusLocally(clientId, type, month, !paid)
+      toast.error('Записът не мина (връзката) — отметката е върната. Опитай пак.')
     }
-  }, [year, user?.id, invalidatePaymentStatuses])
+  }, [year, user?.id, invalidatePaymentStatuses, applyStatusLocally])
 
   const saveBank = useCallback(async (clientId: string, bank: string) => {
     try {
