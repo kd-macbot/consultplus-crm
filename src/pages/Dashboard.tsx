@@ -236,7 +236,7 @@ export function Dashboard() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">ДДС осчетоводено</p>
+                  <p className="text-xs text-muted-foreground">Проверено</p>
                   <p className="text-2xl font-bold text-foreground tabular-nums">
                     {wsStats.vat}<span className="text-base text-muted-foreground font-normal"> / {wsStats.total}</span>
                   </p>
@@ -252,7 +252,7 @@ export function Dashboard() {
               <div className="space-y-2.5">
                 <WsProgress label="Подадени" done={wsStats.submitted} total={wsStats.total} />
                 <WsProgress label="Уведомени" done={wsStats.notified} total={wsStats.total} />
-                <WsProgress label="ДДС осчетоводено" done={wsStats.vat} total={wsStats.total} />
+                <WsProgress label="Проверено" done={wsStats.vat} total={wsStats.total} />
                 <WsProgress label="Амортизации" done={wsStats.amort} total={wsStats.total} />
                 <WsProgress label="Банка" done={wsStats.bank} total={wsStats.total} />
                 <WsProgress label="Заплати" done={wsStats.salaries} total={wsStats.total} />
