@@ -14,7 +14,17 @@ import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKey?: 'paymentsUnpaid' | 'absentToday' | 'absenceRequests' | 'recentNews'; showOnlyForTrzOrAdmin?: boolean; showOnlyForBankDepts?: boolean }
+type BadgeKey = 'paymentsUnpaid' | 'absentToday' | 'absenceRequests' | 'recentNews'
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKeys?: BadgeKey[]; showOnlyForTrzOrAdmin?: boolean; showOnlyForBankDepts?: boolean }
+
+// Цвят + tooltip per бадж — един item може да носи няколко баджа
+// (напр. Календар: отсъстващи днес + нови новини).
+const BADGE_META: Record<BadgeKey, { color: string; title: (n: number) => string }> = {
+  paymentsUnpaid: { color: 'bg-amber-500', title: n => `${n} неплатени за работния месец` },
+  absentToday: { color: 'bg-sky-500', title: n => `${n} ${n === 1 ? 'отсъстващ' : 'отсъстващи'} днес` },
+  absenceRequests: { color: 'bg-rose-500', title: n => `${n} ${n === 1 ? 'заявка' : 'заявки'} чакат одобрение` },
+  recentNews: { color: 'bg-emerald-500', title: n => `${n} ${n === 1 ? 'нова новина' : 'нови новини'} в последните 24 ч.` },
+}
 type NavSection = { title: string | null; items: NavItem[] }
 
 const NAV_SECTIONS: NavSection[] = [
@@ -22,7 +32,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: null,  // Табло + Календар — без заглавие, най-отгоре в sidebar-а
     items: [
       { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
-      { to: '/calendar', label: 'Календар', icon: CalendarDays, roles: ['admin', 'manager', 'employee'], badgeKey: 'recentNews' },
+      { to: '/calendar', label: 'Календар', icon: CalendarDays, roles: ['admin', 'manager', 'employee'], badgeKeys: ['absentToday', 'recentNews'] },
     ],
   },
   {
@@ -35,7 +45,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/checklist', label: 'Личен чек лист', icon: ListChecks, roles: ['admin', 'manager', 'employee'], hideForTrz: true },
       { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
       { to: '/profiles', label: 'Профили', icon: IdCard, roles: ['admin', 'manager', 'employee'] },
-      { to: '/payments', label: 'Плащания', icon: Banknote, roles: ['admin', 'manager'], badgeKey: 'paymentsUnpaid' },
+      { to: '/payments', label: 'Плащания', icon: Banknote, roles: ['admin', 'manager'], badgeKeys: ['paymentsUnpaid'] },
     ],
   },
   {
@@ -51,7 +61,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },
       { to: '/bank-access', label: 'Банков достъп', icon: Landmark, roles: ['admin', 'manager', 'employee'], showOnlyForBankDepts: true },
-      { to: '/absence-requests', label: 'Заявки за отпуска', icon: Inbox, roles: ['admin', 'manager'], badgeKey: 'absenceRequests', showOnlyForTrzOrAdmin: true },
+      { to: '/absence-requests', label: 'Заявки за отпуска', icon: Inbox, roles: ['admin', 'manager'], badgeKeys: ['absenceRequests'], showOnlyForTrzOrAdmin: true },
       { to: '/vacations', label: 'Справка отпуска', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
       { to: '/form76', label: 'Форма 76', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
       { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin'] },
@@ -141,7 +151,7 @@ export function Layout() {
     return (newsQ.data ?? []).filter(n => new Date(n.created_at).getTime() >= cutoff).length
   }, [newsQ.data])
 
-  const badges: Record<string, number> = { paymentsUnpaid: paymentsUnpaid, absentToday, absenceRequests, recentNews }
+  const badges: Record<BadgeKey, number> = { paymentsUnpaid, absentToday, absenceRequests, recentNews }
 
   const handleLogout = () => {
     logout()
@@ -224,7 +234,6 @@ export function Layout() {
                 )}
                 {visibleItems.map(item => {
                   const Icon = item.icon
-                  const badgeCount = item.badgeKey ? badges[item.badgeKey] : 0
                   return (
                     <NavLink
                       key={item.to}
@@ -242,28 +251,23 @@ export function Layout() {
                         <>
                           <Icon className={cn('h-4 w-4 shrink-0 transition-colors', isActive ? 'text-white' : 'text-white/50 group-hover:text-white/80')} />
                           <span className="flex-1">{item.label}</span>
-                          {badgeCount > 0 && (
-                            <span
-                              title={
-                                item.badgeKey === 'absentToday'
-                                  ? `${badgeCount} ${badgeCount === 1 ? 'отсъстващ' : 'отсъстващи'} днес`
-                                  : item.badgeKey === 'absenceRequests'
-                                    ? `${badgeCount} ${badgeCount === 1 ? 'заявка' : 'заявки'} чакат одобрение`
-                                    : item.badgeKey === 'recentNews'
-                                      ? `${badgeCount} ${badgeCount === 1 ? 'нова новина' : 'нови новини'} в последните 24 ч.`
-                                      : `${badgeCount} неплатени за работния месец`
-                              }
-                              className={cn(
-                                'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold text-white shrink-0',
-                                item.badgeKey === 'absentToday' ? 'bg-sky-500'
-                                  : item.badgeKey === 'absenceRequests' ? 'bg-rose-500'
-                                  : item.badgeKey === 'recentNews' ? 'bg-emerald-500'
-                                  : 'bg-amber-500',
-                              )}
-                            >
-                              {badgeCount > 99 ? '99+' : badgeCount}
-                            </span>
-                          )}
+                          {(item.badgeKeys ?? []).map(bk => {
+                            const count = badges[bk]
+                            if (!count) return null
+                            const meta = BADGE_META[bk]
+                            return (
+                              <span
+                                key={bk}
+                                title={meta.title(count)}
+                                className={cn(
+                                  'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold text-white shrink-0',
+                                  meta.color,
+                                )}
+                              >
+                                {count > 99 ? '99+' : count}
+                              </span>
+                            )
+                          })}
                           {isActive && <ChevronRight className="h-3 w-3 text-white/40" />}
                         </>
                       )}
