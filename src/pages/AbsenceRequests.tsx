@@ -7,26 +7,13 @@ import { useAuth } from '../lib/auth'
 import { useStaff, useAbsences, useInvalidateCrm } from '../lib/queries'
 import { approveAbsence, rejectAbsence } from '../lib/storage'
 import { ABSENCE_TYPE_LABELS, ABSENCE_TYPE_COLORS, type AbsenceType } from '../lib/types'
-import { namesMatch } from '../lib/utils'
+import { workingDaysBetween } from '../lib/utils'
+import { useMyStaff } from '../lib/useMyStaff'
 
 function formatDate(iso: string): string {
   const d = new Date(iso + 'T00:00:00')
   if (isNaN(d.getTime())) return iso
   return d.toLocaleDateString('bg-BG')
-}
-
-function workingDaysBetween(start: string, end: string): number {
-  const a = new Date(start + 'T00:00:00')
-  const b = new Date(end + 'T00:00:00')
-  if (a > b) return 0
-  let count = 0
-  const cur = new Date(a)
-  while (cur <= b) {
-    const dow = cur.getDay()
-    if (dow !== 0 && dow !== 6) count++
-    cur.setDate(cur.getDate() + 1)
-  }
-  return count
 }
 
 export function AbsenceRequestsPage() {
@@ -57,11 +44,7 @@ export function AbsenceRequestsPage() {
 
   // Достъп — admin или manager-ТРЗ. Само admin може да одобрява/отказва;
   // manager-ТРЗ е в read-only режим (вижда списъка, но без бутони).
-  const myStaff = useMemo(
-    () => (staffQ.data ?? []).find(s => namesMatch(s.full_name, user?.full_name)),
-    [staffQ.data, user?.full_name],
-  )
-  const isAdmin = user?.role === 'admin'
+  const { myStaff, isAdmin } = useMyStaff()
   const isManagerTrz = user?.role === 'manager' && myStaff?.department === 'ТРЗ'
   const canSee = isAdmin || isManagerTrz
   const canApprove = isAdmin

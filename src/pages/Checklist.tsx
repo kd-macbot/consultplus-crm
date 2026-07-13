@@ -15,7 +15,8 @@ import {
   buildCellIndex, buildDropdownIndex, clientDisplayName, resolveDropdownText, cellKey,
 } from '../lib/tableIndices'
 import { isHiddenStatus } from '../lib/statusBadge'
-import { MONTH_NAMES, previousMonth, namesMatch } from '../lib/utils'
+import { MONTH_NAMES, previousMonth } from '../lib/utils'
+import { useMyStaff } from '../lib/useMyStaff'
 import { useRealtime } from '../lib/useRealtime'
 
 // ============================================================
@@ -109,7 +110,6 @@ export function ChecklistPage() {
   const columns = useMemo(() => columnsQ.data ?? [], [columnsQ.data])
   const cells = useMemo(() => cellsQ.data ?? [], [cellsQ.data])
   const dropdowns = useMemo(() => dropdownsQ.data ?? [], [dropdownsQ.data])
-  const staff = useMemo(() => staffQ.data ?? [], [staffQ.data])
   const masterReady = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!dropdownsQ.data && !!staffQ.data
 
   const checklistQ = useChecklist(year, month)
@@ -144,13 +144,8 @@ export function ChecklistPage() {
   const lastEditRef = useRef(0)
   const deferEdits = () => Date.now() - lastEditRef.current < 3000
 
-  const isAdmin = user?.role === 'admin'
-
-  // Текущият потребител → staff запис (по име) → отдел.
-  const myStaff = useMemo(
-    () => staff.find(s => namesMatch(s.full_name, user?.full_name)),
-    [staff, user?.full_name],
-  )
+  // Текущият потребител → staff запис (споделен lookup).
+  const { myStaff, isAdmin } = useMyStaff()
   const isTrz = myStaff?.department === 'ТРЗ'
   const myName = user?.full_name ?? ''
 
