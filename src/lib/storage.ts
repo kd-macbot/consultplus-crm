@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -1379,6 +1379,67 @@ export async function upsertBankAccess(
 export async function deleteBankAccess(clientId: string): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase.from('crm_bank_access').delete().eq('client_id', clientId)
+    if (error) throw error
+  })())
+}
+
+// ============================================================
+// Задачи
+// ============================================================
+
+export async function getTasks(): Promise<Task[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_tasks')
+      .select('id,title,description,status,kind,inspection_type,assignee_staff_id,client_id,due_date,position,created_by,created_at,updated_at')
+      .order('position')
+    if (error) throw error
+    return (data ?? []) as Task[]
+  })
+}
+
+export async function addTask(
+  patch: Pick<Task, 'title'> & Partial<Pick<Task, 'description' | 'status' | 'kind' | 'inspection_type' | 'assignee_staff_id' | 'client_id' | 'due_date'>>,
+  createdBy?: string | null,
+): Promise<Task> {
+  return await trackSave((async () => {
+    const { data, error } = await supabase
+      .from('crm_tasks')
+      .insert([{
+        title: patch.title,
+        description: patch.description ?? null,
+        status: patch.status ?? 'todo',
+        kind: patch.kind ?? 'task',
+        inspection_type: patch.inspection_type ?? null,
+        assignee_staff_id: patch.assignee_staff_id ?? null,
+        client_id: patch.client_id ?? null,
+        due_date: patch.due_date ?? null,
+        position: Date.now(),  // нови задачи в края на колоната
+        created_by: createdBy ?? null,
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data as Task
+  })())
+}
+
+export async function updateTask(
+  id: string,
+  patch: Partial<Pick<Task, 'title' | 'description' | 'status' | 'inspection_type' | 'assignee_staff_id' | 'client_id' | 'due_date' | 'position'>>,
+): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_tasks')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase.from('crm_tasks').delete().eq('id', id)
     if (error) throw error
   })())
 }

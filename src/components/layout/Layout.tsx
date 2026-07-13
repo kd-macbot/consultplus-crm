@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
-import { usePaymentConfigs, usePaymentStatuses, useAbsences, useNews } from '../../lib/queries'
+import { usePaymentConfigs, usePaymentStatuses, useAbsences, useNews, useTasks } from '../../lib/queries'
 import { previousMonth } from '../../lib/utils'
 import { useMyStaff } from '../../lib/useMyStaff'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
-  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark,
+  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark, KanbanSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,7 @@ import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
 
-type BadgeKey = 'paymentsUnpaid' | 'absentToday' | 'absenceRequests' | 'recentNews'
+type BadgeKey = 'paymentsUnpaid' | 'absentToday' | 'absenceRequests' | 'recentNews' | 'myOpenTasks'
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKeys?: BadgeKey[]; showOnlyForTrzOrAdmin?: boolean; showOnlyForBankDepts?: boolean }
 
 // Цвят + tooltip per бадж — един item може да носи няколко баджа
@@ -24,6 +24,7 @@ const BADGE_META: Record<BadgeKey, { color: string; title: (n: number) => string
   absentToday: { color: 'bg-sky-500', title: n => `${n} ${n === 1 ? 'отсъстващ' : 'отсъстващи'} днес` },
   absenceRequests: { color: 'bg-rose-500', title: n => `${n} ${n === 1 ? 'заявка' : 'заявки'} чакат одобрение` },
   recentNews: { color: 'bg-emerald-500', title: n => `${n} ${n === 1 ? 'нова новина' : 'нови новини'} в последните 24 ч.` },
+  myOpenTasks: { color: 'bg-violet-500', title: n => `${n} ${n === 1 ? 'моя отворена задача' : 'мои отворени задачи'}` },
 }
 type NavSection = { title: string | null; items: NavItem[] }
 
@@ -33,6 +34,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
       { to: '/calendar', label: 'Календар', icon: CalendarDays, roles: ['admin', 'manager', 'employee'], badgeKeys: ['absentToday', 'recentNews'] },
+      { to: '/tasks', label: 'Задачи', icon: KanbanSquare, roles: ['admin', 'manager', 'employee'], badgeKeys: ['myOpenTasks'] },
     ],
   },
   {
@@ -82,7 +84,7 @@ export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Отделите на текущия потребител — от споделения useMyStaff lookup.
-  const { inDept } = useMyStaff()
+  const { inDept, myStaff } = useMyStaff()
   const isTrz = inDept('ТРЗ')
   // Банков достъп се вижда от Тийм Лийд / Управление (+ admin).
   const canSeeBankAccess = user?.role === 'admin' || inDept('Тийм Лийд') || inDept('Управление')
@@ -151,7 +153,14 @@ export function Layout() {
     return (newsQ.data ?? []).filter(n => new Date(n.created_at).getTime() >= cutoff).length
   }, [newsQ.data])
 
-  const badges: Record<BadgeKey, number> = { paymentsUnpaid, absentToday, absenceRequests, recentNews }
+  // Мои отворени задачи (всичко освен Готово) — бадж на Задачи.
+  const tasksQ = useTasks()
+  const myOpenTasks = useMemo(() => {
+    if (!myStaff) return 0
+    return (tasksQ.data ?? []).filter(t => t.assignee_staff_id === myStaff.id && t.status !== 'done').length
+  }, [tasksQ.data, myStaff])
+
+  const badges: Record<BadgeKey, number> = { paymentsUnpaid, absentToday, absenceRequests, recentNews, myOpenTasks }
 
   const handleLogout = () => {
     logout()

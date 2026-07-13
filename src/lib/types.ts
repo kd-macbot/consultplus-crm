@@ -607,6 +607,67 @@ export interface BankAccess {
   updated_by: string | null
 }
 
+// ============================================================
+// Задачи (kanban / list)
+// ============================================================
+export const TASK_STATUSES = ['todo', 'in_progress', 'done', 'issue'] as const
+export type TaskStatus = typeof TASK_STATUSES[number]
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  todo:        'To Do',
+  in_progress: 'В процес',
+  done:        'Готово',
+  issue:       'Проблем',
+}
+
+// Цвят на колоната/баджа per статус.
+export const TASK_STATUS_COLORS: Record<TaskStatus, string> = {
+  todo:        'bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700',
+  in_progress: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800',
+  done:        'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
+  issue:       'bg-red-100 text-red-800 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800',
+}
+
+// Вид на записа: обикновена задача или проверка/ревизия.
+export const TASK_KINDS = ['task', 'inspection'] as const
+export type TaskKind = typeof TASK_KINDS[number]
+
+// Типове проверки (за kind='inspection').
+export const INSPECTION_TYPES = ['проверка', 'ревизия', 'ПФО', 'насрещна', 'друго'] as const
+export type InspectionType = typeof INSPECTION_TYPES[number]
+
+export const INSPECTION_TYPE_LABELS: Record<InspectionType, string> = {
+  'проверка': 'Проверка',
+  'ревизия':  'Ревизия',
+  'ПФО':      'ПФО',
+  'насрещна': 'Насрещна проверка',
+  'друго':    'Друго',
+}
+
+export const INSPECTION_TYPE_COLORS: Record<InspectionType, string> = {
+  'проверка': 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800',
+  'ревизия':  'bg-red-100 text-red-800 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800',
+  'ПФО':      'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
+  'насрещна': 'bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800',
+  'друго':    'bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700',
+}
+
+export interface Task {
+  id: string
+  title: string
+  description: string | null
+  status: TaskStatus | string
+  kind: TaskKind | string
+  inspection_type: InspectionType | string | null  // само за kind='inspection'
+  assignee_staff_id: string | null
+  client_id: string | null
+  due_date: string | null  // ISO YYYY-MM-DD
+  position: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Expense {
   id: string
   category: ExpenseCategory
