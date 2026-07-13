@@ -216,8 +216,10 @@ export function TasksPage() {
                   : 'Влачи картите между колоните или кликни на статуса.'}
               </p>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
             {/* Превключвател Задачи / Проверки */}
-            <div className="flex items-center border border-border rounded-md bg-background p-0.5 ml-2">
+            <div className="flex items-center border border-border rounded-md bg-background p-0.5">
               <Button
                 variant={!isInspections ? 'default' : 'ghost'} size="sm"
                 className="h-7 px-3 text-xs" onClick={() => setKind('task')}
@@ -231,8 +233,6 @@ export function TasksPage() {
                 Проверки
               </Button>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
             {/* View toggle */}
             <div className="flex items-center border border-border rounded-md bg-background p-0.5">
               <Button
