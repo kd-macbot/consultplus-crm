@@ -639,7 +639,7 @@ export type InspectionType = typeof INSPECTION_TYPES[number]
 export const INSPECTION_TYPE_LABELS: Record<InspectionType, string> = {
   'проверка': 'Проверка',
   'ревизия':  'Ревизия',
-  'ПФО':      'ПФО',
+  'ПФО':      'ПУФО',  // етикет ПУФО; вътрешната стойност остава 'ПФО' (има записи с нея)
   'насрещна': 'Насрещна проверка',
   'друго':    'Друго',
 }
