@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import '@fontsource-variable/inter/wght.css'
 import './styles/globals.css'
 
 console.log('[CRM] Starting app...', import.meta.env.VITE_BUILD_ID ?? 'dev')
