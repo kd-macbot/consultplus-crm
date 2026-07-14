@@ -372,7 +372,7 @@ function AdvanceTable({ rows, year, canEdit, onPatch }: {
           const evenBg = i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
           const diff = (r.minYearly ?? 0) - r.total
           return (
-            <tr key={r.client.id} className={`border-b border-light/50 hover:bg-gold/5 ${evenBg}`}>
+            <tr key={r.client.id} className={`border-b border-border hover:bg-gold/5 ${evenBg}`}>
               <td className={`px-3 py-1 font-medium whitespace-nowrap sticky left-0 z-10 ${evenBg}`}>{r.name}</td>
               <td className="px-2 py-1 text-center text-xs">
                 <span className={`px-1.5 py-0.5 rounded ${r.profile === 'Месечни' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300'}`}>
@@ -483,7 +483,7 @@ function Art55Table({ rows, year, canEdit, onPatchStatus }: {
         {rows.map((r, i) => {
           const evenBg = i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
           return (
-            <tr key={r.client.id} className={`border-b border-light/50 hover:bg-gold/5 ${evenBg}`}>
+            <tr key={r.client.id} className={`border-b border-border hover:bg-gold/5 ${evenBg}`}>
               <td className={`px-3 py-1.5 font-medium whitespace-nowrap sticky left-0 z-10 ${evenBg} border-r border-border`}>{r.name}</td>
               {QUARTERS.map(q => {
                 const entries = r.quarters.get(q.q) ?? []
@@ -708,7 +708,7 @@ function VatTable({ rows, year, canEdit, onPatch }: {
             const isSelRow = sumMode && selClient === r.client.id
             const rowSelNet = isSelRow ? [...selMonths].reduce((s, m) => s + (r.months.get(m) ?? 0), 0) : 0
             return (
-              <tr key={r.client.id} className={`border-b border-light/50 hover:bg-gold/5 ${evenBg} ${isSelRow ? 'ring-1 ring-sky-400' : ''}`}>
+              <tr key={r.client.id} className={`border-b border-border hover:bg-gold/5 ${evenBg} ${isSelRow ? 'ring-1 ring-sky-400' : ''}`}>
                 <td className={`px-3 py-1 font-medium whitespace-nowrap sticky left-0 z-10 ${evenBg}`}>
                   {r.name}
                   {isSelRow && selMonths.size > 0 && (

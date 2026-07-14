@@ -833,13 +833,13 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-3 md:p-4 border-b border-light flex items-center gap-3 flex-wrap bg-card">
+      <div className="p-3 md:p-4 border-b border-border flex items-center gap-3 flex-wrap bg-card">
         <input
           type="text"
           value={globalFilter}
           onChange={e => setGlobalFilter(e.target.value)}
           placeholder="🔍 Търсене..."
-          className="px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy w-full sm:w-64 bg-background text-foreground"
+          className="px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-navy w-full sm:w-64 bg-background text-foreground"
         />
 
         {allTags.length > 0 && (
@@ -875,7 +875,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition ${
               showColPanel || hiddenCols.size > 0
                 ? 'border-navy bg-navy text-white'
-                : 'border-light text-dark/50 hover:border-navy hover:text-navy dark:text-foreground bg-card'
+                : 'border-border text-dark/50 hover:border-navy hover:text-navy dark:text-foreground bg-card'
             }`}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -1081,7 +1081,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
               {table.getRowModel().rows.map((row, i) => (
                 <tr
                   key={row.id}
-                  className={`border-b border-light/50 transition-colors hover:bg-gold/5 ${
+                  className={`border-b border-border transition-colors hover:bg-gold/5 ${
                     selected.has(row.original.clientId)
                       ? 'bg-blue-50'
                       : i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
@@ -1137,7 +1137,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         />
       )}
 
-      <div className="p-2 md:p-3 border-t border-light flex items-center justify-end gap-2 bg-card text-xs md:text-sm text-muted-foreground">
+      <div className="p-2 md:p-3 border-t border-border flex items-center justify-end gap-2 bg-card text-xs md:text-sm text-muted-foreground">
         Показани {table.getFilteredRowModel().rows.length} реда
       </div>
     </div>

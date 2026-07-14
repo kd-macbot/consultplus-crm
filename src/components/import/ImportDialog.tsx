@@ -101,7 +101,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 border-b border-light flex items-center justify-between">
+        <div className="p-4 border-b border-border flex items-center justify-between">
           <h2 className="text-lg font-bold text-navy dark:text-foreground">
             {step === 'upload' && 'Импорт на клиенти'}
             {step === 'preview' && 'Преглед и настройки'}
@@ -118,7 +118,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
             <div
               onDragOver={e => e.preventDefault()}
               onDrop={handleDrop}
-              className="border-2 border-dashed border-light rounded-lg p-12 text-center hover:border-navy transition cursor-pointer"
+              className="border-2 border-dashed border-border rounded-lg p-12 text-center hover:border-navy transition cursor-pointer"
               onClick={() => fileRef.current?.click()}
             >
               <input
@@ -160,7 +160,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
                       <select
                         value={m.crmColumn?.id ?? ''}
                         onChange={e => updateMapping(m.excelIndex, e.target.value)}
-                        className="flex-1 px-2 py-1 border border-light rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-navy"
+                        className="flex-1 px-2 py-1 border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-navy"
                       >
                         <option value="">— Пропусни —</option>
                         {columns.map(col => (
@@ -202,7 +202,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
               {/* Preview table */}
               <div>
                 <h3 className="font-medium text-navy dark:text-foreground mb-2">Преглед (първите 10 реда)</h3>
-                <div className="overflow-x-auto border border-light rounded-md">
+                <div className="overflow-x-auto border border-border rounded-md">
                   <table className="w-full text-xs">
                     <thead className="bg-navy text-white">
                       <tr>
@@ -258,7 +258,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
                     </button>
                     <button
                       onClick={() => handleNewOptionsResponse(false)}
-                      className="px-4 py-2 border border-light rounded-md hover:bg-light transition text-sm"
+                      className="px-4 py-2 border border-border rounded-md hover:bg-light transition text-sm"
                     >
                       Отказ
                     </button>
@@ -317,7 +317,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-light flex justify-end gap-2">
+        <div className="p-4 border-t border-border flex justify-end gap-2">
           {step === 'preview' && (
             <button
               onClick={handleImport}
@@ -338,7 +338,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
           {step !== 'importing' && (
             <button
               onClick={onClose}
-              className="px-4 py-2 border border-light rounded-md hover:bg-light transition text-sm"
+              className="px-4 py-2 border border-border rounded-md hover:bg-light transition text-sm"
             >
               {step === 'done' ? 'Затвори' : 'Отказ'}
             </button>
