@@ -57,6 +57,8 @@ export function SubscriptionsPage() {
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [amountBucket, setAmountBucket] = useState<AmountBucket>('all')
   const [tagFilter, setTagFilter] = useState<string[]>([])
+  // Сортиране: клик на заглавие → asc → desc → без. key: '_name' | '_status' | column id
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null)
   const [markedClients, setMarkedClients] = useState<Set<string>>(new Set())
 
   const isAdmin = user?.role === 'admin'
@@ -191,6 +193,46 @@ export function SubscriptionsPage() {
     })
   }, [clients, search, colFilters, tableColumns, allCells, statusFilter, amountBucket, statusColumn, honorarColumn, allDropdowns, tagFilter, tagsByClient])
 
+  function toggleSort(key: string) {
+    setSort(prev => {
+      if (prev?.key !== key) return { key, dir: 'asc' }
+      if (prev.dir === 'asc') return { key, dir: 'desc' }
+      return null
+    })
+  }
+
+  // Сортиране върху филтрираните; без активно сортиране редът е по име
+  // (filteredClients идва от clients, които вече са подредени по име).
+  const sortedClients = useMemo(() => {
+    if (!sort) return filteredClients
+    const col = tableColumns.find(c => c.id === sort.key)
+    const val = (clientId: string): string | number | boolean | null => {
+      if (sort.key === '_name') return clientName(clientId)
+      if (sort.key === '_status') return clientStatus(clientId)
+      if (!col) return null
+      const cell = getCell(clientId, col.id)
+      if (!cell) return null
+      if (col.type === 'number') return cell.value_number ?? null
+      if (col.type === 'checkbox') return cell.value_bool ?? false
+      if (col.type === 'date') return cell.value_date ?? null
+      return cell.value_text ?? null
+    }
+    const dir = sort.dir === 'asc' ? 1 : -1
+    return [...filteredClients].sort((a, b) => {
+      const va = val(a.id), vb = val(b.id)
+      // Празните винаги накрая, независимо от посоката.
+      if (va == null || va === '') return vb == null || vb === '' ? 0 : 1
+      if (vb == null || vb === '') return -1
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir
+      if (typeof va === 'boolean' && typeof vb === 'boolean') return (Number(va) - Number(vb)) * dir
+      return String(va).localeCompare(String(vb), 'bg') * dir
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredClients, sort, tableColumns, cellIdx, dropdownIdx])
+
+  /** Индикатор ↑/↓ до заглавието на активната сортираща колона. */
+  const sortMark = (key: string) => sort?.key === key ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''
+
   const totalHonorar = useMemo(() => {
     if (!honorarColumn) return 0
     return clients.reduce((sum, c) => sum + (resolveNumber(c.id, honorarColumn, cellIdx) ?? 0), 0)
@@ -306,7 +348,7 @@ export function SubscriptionsPage() {
               <X className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Изчисти</span>
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => exportRows(filteredClients, isFiltered ? '_филтрирани' : '')} className="gap-1">
+          <Button variant="outline" size="sm" onClick={() => exportRows(sortedClients, isFiltered ? '_филтрирани' : '')} className="gap-1">
             <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Експорт</span>
           </Button>
           {isAdmin && (
@@ -446,18 +488,31 @@ export function SubscriptionsPage() {
                 />
               </th>
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-10">#</th>
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Клиент</th>
+              <th
+                className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap cursor-pointer select-none hover:bg-white/10"
+                onClick={() => toggleSort('_name')}
+                title="Сортирай по клиент"
+              >Клиент{sortMark('_name')}</th>
               {statusColumn && (
-                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Статус</th>
+                <th
+                  className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap cursor-pointer select-none hover:bg-white/10"
+                  onClick={() => toggleSort('_status')}
+                  title="Сортирай по статус"
+                >Статус{sortMark('_status')}</th>
               )}
               <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Тагове</th>
               {tableColumns.map(col => (
-                <th key={col.id} className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">
+                <th
+                  key={col.id}
+                  className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap cursor-pointer select-none hover:bg-white/10"
+                  onClick={() => toggleSort(col.id)}
+                  title={`Сортирай по ${col.name}`}
+                >
                   <div className="flex items-center gap-1">
-                    <span>{col.name}</span>
+                    <span>{col.name}{sortMark(col.id)}</span>
                     {isAdmin && col.staff_department === SUB_MARKER && (
                       <button
-                        onClick={() => setConfirmDeleteCol(col)}
+                        onClick={e => { e.stopPropagation(); setConfirmDeleteCol(col) }}
                         className="text-white/50 hover:text-white ml-1 text-base leading-none"
                         title="Изтрий колона"
                       >×</button>
@@ -514,7 +569,7 @@ export function SubscriptionsPage() {
                 </td>
               </tr>
             )}
-            {filteredClients.map((client, i) => {
+            {sortedClients.map((client, i) => {
               const marked = markedClients.has(client.id)
               return (
               <tr
