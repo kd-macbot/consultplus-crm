@@ -394,7 +394,7 @@ export function CalendarPage() {
                 const isWeekend = dow === 0 || dow === 6
                 const isToday = isViewingThisMonth && d === todayDay
                 return (
-                  <th key={d} className={`text-center px-0 py-1 font-medium border-r border-navy-light/50 ${isToday ? 'bg-amber-500 text-navy' : isWeekend ? 'bg-navy/80' : ''}`} style={{ minWidth: 28 }}>
+                  <th key={d} className={`text-center px-0 py-1 font-medium border-r border-navy-light/50 ${isToday ? 'bg-amber-500 text-navy dark:text-foreground' : isWeekend ? 'bg-navy/80' : ''}`} style={{ minWidth: 28 }}>
                     <div className="leading-tight">
                       <div className="text-[10px] opacity-60">{WEEKDAY_SHORT[dow]}</div>
                       <div className={`text-[11px] ${isToday ? 'font-bold' : ''}`}>{d}</div>

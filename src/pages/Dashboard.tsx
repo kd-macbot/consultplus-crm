@@ -199,7 +199,7 @@ export function Dashboard() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between px-5 pt-5 pb-3">
           <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
-            <ClipboardCheck className="h-4 w-4 text-navy" />
+            <ClipboardCheck className="h-4 w-4 text-navy dark:text-foreground" />
             Работен лист
             {user?.role === 'employee' && <span className="text-xs font-normal text-muted-foreground">(моите клиенти)</span>}
           </CardTitle>
@@ -270,7 +270,7 @@ export function Dashboard() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between px-5 pt-5 pb-3">
           <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
-            <Receipt className="h-4 w-4 text-navy" />
+            <Receipt className="h-4 w-4 text-navy dark:text-foreground" />
             ТРЗ Работен лист
           </CardTitle>
           <div className="flex items-center gap-1">
