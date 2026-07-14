@@ -223,7 +223,7 @@ export function PaymentsPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Header */}
       <div className="px-3 py-2 md:px-5 md:py-3 border-b border-border bg-card">
         <div className="flex flex-wrap items-center gap-3 justify-between">
@@ -254,7 +254,7 @@ export function PaymentsPage() {
           </div>
         </div>
 
-        <div className="mt-2 flex items-center gap-3">
+        <div className="mt-2 flex flex-wrap items-center gap-3 gap-y-2">
           <div className="relative">
             <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -266,7 +266,7 @@ export function PaymentsPage() {
             />
           </div>
           {/* Филтър по тип плащане — multi-select; празен избор = всички */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {PAYMENT_TYPES.map(t => {
               const active = typeFilter.includes(t)
               return (
@@ -329,7 +329,9 @@ export function PaymentsPage() {
                       <>
                         {/* Click-outside overlay */}
                         <div className="fixed inset-0 z-30" onClick={() => setOpenColumnMenu(null)} />
-                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-40 min-w-[180px] bg-card text-foreground border border-border rounded-md shadow-lg overflow-hidden">
+                        <div className={`absolute top-full mt-1 z-40 min-w-[180px] bg-card text-foreground border border-border rounded-md shadow-lg overflow-hidden ${
+                          monthNum <= 2 ? 'left-0' : monthNum >= 11 ? 'right-0' : 'left-1/2 -translate-x-1/2'
+                        }`}>
                           <button
                             type="button"
                             onClick={() => { setOpenColumnMenu(null); bulkColumn(monthNum, true) }}

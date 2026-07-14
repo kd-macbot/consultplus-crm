@@ -260,7 +260,7 @@ export function SubscriptionsPage() {
   const isFiltered = hasFilters && filteredClients.length !== clients.length
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Sticky title bar — както в Клиенти */}
       <div className="px-3 py-2 md:px-5 md:py-3 flex items-center justify-between border-b border-border bg-card">
         <h1 className="text-base md:text-lg font-semibold text-foreground">💶 Абонаменти</h1>

@@ -89,7 +89,7 @@ export function AbsenceRequestsPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       <div className="px-3 py-2 md:px-5 md:py-3 border-b border-border bg-card">
         <div className="flex flex-wrap items-center gap-3 justify-between">
           <div className="flex items-center gap-3">
