@@ -179,6 +179,9 @@ export function ChecklistPage() {
       }))
       // „Без дейност" / „Без ДДС" не участват в ДДС чеклиста
       .filter(r => !isHiddenStatus(r.status))
+      // „НУЛЕВО" също отпада (по искане на колегите) — САМО тук, в
+      // Работния лист нулевите фирми си остават видими.
+      .filter(r => !r.status.toLowerCase().includes('нулево'))
       // Само зачислените на текущия потребител (admin вижда всички)
       .filter(r => isAdmin || r.accountant === myName || r.responsible === myName)
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
