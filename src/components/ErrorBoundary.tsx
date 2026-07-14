@@ -44,7 +44,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </button>
               <button
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 border border-light rounded-md hover:bg-light transition text-sm"
+                className="px-4 py-2 border border-border rounded-md hover:bg-light transition text-sm"
               >
                 Презареди страницата
               </button>

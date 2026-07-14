@@ -470,7 +470,7 @@ export function SubscriptionsPage() {
               return (
               <tr
                 key={client.id}
-                className={`border-b border-light/50 ${marked ? 'bg-amber-100/60 dark:bg-amber-900/20' : i % 2 === 0 ? 'bg-card' : 'bg-muted/20'} hover:bg-gold/5 transition-colors`}
+                className={`border-b border-border ${marked ? 'bg-amber-100/60 dark:bg-amber-900/20' : i % 2 === 0 ? 'bg-card' : 'bg-muted/20'} hover:bg-gold/5 transition-colors`}
               >
                 <td className="px-2 py-2 text-center w-9">
                   <input
@@ -544,7 +544,7 @@ export function SubscriptionsPage() {
               )
             })}
           </tbody>
-          <tfoot className="bg-navy/5 border-t-2 border-light font-semibold">
+          <tfoot className="bg-navy/5 border-t-2 border-border font-semibold">
             <tr>
               <td className="px-2 py-2" />
               <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums">

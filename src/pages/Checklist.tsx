@@ -402,7 +402,7 @@ export function ChecklistPage() {
                   ? (i % 2 === 0 ? 'bg-emerald-50 dark:bg-emerald-950/40' : 'bg-emerald-100/60 dark:bg-emerald-950/30')
                   : evenBg
                 return (
-                  <tr key={row.client.id} className={`border-b border-light/50 hover:bg-gold/5 transition-colors ${rowBg}`}>
+                  <tr key={row.client.id} className={`border-b border-border hover:bg-gold/5 transition-colors ${rowBg}`}>
                     <td className="px-3 py-1.5 text-xs text-muted-foreground/70 text-right">{i + 1}</td>
                     <td className={`px-3 py-1.5 font-medium text-foreground whitespace-nowrap truncate max-w-[220px] sticky left-0 z-10 ${rowBg}`} title={row.name}>
                       {row.name || <span className="text-muted-foreground/40 italic">(без име)</span>}

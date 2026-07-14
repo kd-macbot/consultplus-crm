@@ -434,7 +434,7 @@ export function TrzPage() {
               return (
                 <tr
                   key={r.client.id}
-                  className={`border-b border-light/50 ${i % 2 === 0 ? 'bg-card' : 'bg-muted/20'} hover:bg-gold/5 transition-colors`}
+                  className={`border-b border-border ${i % 2 === 0 ? 'bg-card' : 'bg-muted/20'} hover:bg-gold/5 transition-colors`}
                 >
                   <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums w-10">
                     {isSaving ? <Loader2 className="h-3 w-3 animate-spin inline" /> : i + 1}

@@ -54,7 +54,7 @@ export function ViewsMenu({
         className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition ${
           open
             ? 'border-navy bg-navy text-white'
-            : 'border-light text-dark/70 hover:border-navy hover:text-navy dark:text-foreground bg-card'
+            : 'border-border text-dark/70 hover:border-navy hover:text-navy dark:text-foreground bg-card'
         }`}
       >
         <Layout className="h-3.5 w-3.5" />
