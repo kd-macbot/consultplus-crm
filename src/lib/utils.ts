@@ -176,18 +176,3 @@ export function previousMonth(d: Date = new Date()): { year: number; month: numb
   if (m === 0) return { year: d.getFullYear() - 1, month: 12 }
   return { year: d.getFullYear(), month: m }
 }
-
-/**
- * „НОВ" клиент — първите NEW_CLIENT_MONTHS месеца след добавянето му.
- * Виртуален бадж (не запис в базата): изтича сам, без scheduled job.
- */
-export const NEW_CLIENT_MONTHS = 4
-
-export function isNewClient(createdAt: string | null | undefined): boolean {
-  if (!createdAt) return false
-  const created = new Date(createdAt)
-  if (isNaN(created.getTime())) return false
-  const expiry = new Date(created)
-  expiry.setMonth(expiry.getMonth() + NEW_CLIENT_MONTHS)
-  return new Date() < expiry
-}

@@ -40,8 +40,6 @@ import {
 import { queryClient } from '../../lib/queryClient'
 import { useAuth } from '../../lib/auth'
 import { buildCellIndex, buildDropdownIndex, cellKey, clientDisplayName } from '../../lib/tableIndices'
-import { isNewClient } from '../../lib/utils'
-import { NewClientBadge } from '../clients/NewClientBadge'
 import { toast } from 'sonner'
 import { CellEditor } from './CellEditor'
 import { TagEditor } from '../tags/TagEditor'
@@ -58,7 +56,6 @@ interface ClientRow {
   clientName: string
   assignedTo?: string
   tagIds: string[]
-  isNew?: boolean  // виртуален „НОВ" — първите месеци след добавяне
   [columnId: string]: string | number | boolean | string[] | undefined
 }
 
@@ -169,7 +166,6 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [globalFilter, setGlobalFilter] = useState('')
   const [editCell, setEditCell] = useState<{ clientId: string; columnId: string } | null>(null)
   const [tagFilter, setTagFilter] = useState<string[]>([])
-  const [onlyNew, setOnlyNew] = useState(false)
   const [columnOrder, setColumnOrder] = useState<string[]>([])
 
   // Saved views: на mount-а зареждаме default-а (или активния, ако е bookmark-нат)
@@ -469,7 +465,6 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         clientName: clientDisplayName(client.id, columns, cellIdx),
         assignedTo: client.assigned_to,
         tagIds: tagsByClient.get(client.id) ?? [],
-        isNew: isNewClient(client.created_at),
       }
       for (const col of columns) {
         const cell = cellIdx.get(cellKey(client.id, col.id))
@@ -489,11 +484,9 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   }, [clients, columns, cellIdx, dropdownIdx, tagsByClient])
 
   const filteredByTags = useMemo(() => {
-    let rows = data
-    if (onlyNew) rows = rows.filter(row => row.isNew)
-    if (tagFilter.length === 0) return rows
-    return rows.filter(row => tagFilter.some(tid => row.tagIds.includes(tid)))
-  }, [data, tagFilter, onlyNew])
+    if (tagFilter.length === 0) return data
+    return data.filter(row => tagFilter.some(tid => row.tagIds.includes(tid)))
+  }, [data, tagFilter])
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager'
   const canDelete = user?.role === 'admin' || user?.role === 'manager'
@@ -768,16 +761,13 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           const row = info.row.original
           const assigned = allTags.filter(t => row.tagIds.includes(t.id))
           return (
-            <div className="flex items-center gap-1">
-              {row.isNew && <NewClientBadge />}
-              <TagEditor
-                clientId={row.clientId}
-                clientName={row.clientName}
-                assignedTags={assigned}
-                allTags={allTags}
-                onUpdate={onRefresh}
-              />
-            </div>
+            <TagEditor
+              clientId={row.clientId}
+              clientName={row.clientName}
+              assignedTags={assigned}
+              allTags={allTags}
+              onUpdate={onRefresh}
+            />
           )
         },
       },
@@ -855,18 +845,6 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
         {allTags.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs text-dark/40">Тагове:</span>
-            {/* Виртуален „НОВ" — не е запис в базата, смята се от created_at */}
-            <button
-              onClick={() => setOnlyNew(v => !v)}
-              title="Само клиентите, добавени през последните 4 месеца"
-              className={`px-2 py-0.5 rounded-full text-xs font-bold transition ${
-                onlyNew
-                  ? 'bg-sky-600 text-white ring-2 ring-navy'
-                  : 'text-sky-600 border-[1.5px] border-sky-400 opacity-60 hover:opacity-90'
-              }`}
-            >
-              НОВ
-            </button>
             {allTags.map(tag => {
               const active = tagFilter.includes(tag.id)
               return (
