@@ -72,17 +72,20 @@
   * {
     border-color: var(--color-border);
   }
+}
 
-  body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
-    font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
+/* body/table остават ИЗВЪН слой (както бяха винаги) — вътре в @layer base
+   наследяването на цвета се чупеше при част от браузърите (регресия:
+   тъмен текст върху тъмни редове в Клиенти). Тук няма конфликт с утилити. */
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
 
-  /* Inter има таблични цифри — в таблици числата се подравняват по колони. */
-  table {
-    font-variant-numeric: tabular-nums;
-  }
+/* Inter има таблични цифри — в таблици числата се подравняват по колони. */
+table {
+  font-variant-numeric: tabular-nums;
 }
 
