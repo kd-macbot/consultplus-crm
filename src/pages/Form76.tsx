@@ -277,7 +277,7 @@ export function Form76Page() {
                 const isWeekend = dow === 0 || dow === 6
                 const isToday = isViewingThisMonth && d === todayDay
                 return (
-                  <th key={d} className={`text-center font-medium border-r border-navy-light/50 ${isToday ? 'bg-amber-500 text-navy font-bold' : isWeekend ? 'bg-sky-700' : ''}`} style={{ minWidth: 28 }}>
+                  <th key={d} className={`text-center font-medium border-r border-navy-light/50 ${isToday ? 'bg-amber-500 text-navy dark:text-foreground font-bold' : isWeekend ? 'bg-sky-700' : ''}`} style={{ minWidth: 28 }}>
                     {d}
                   </th>
                 )

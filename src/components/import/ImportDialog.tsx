@@ -102,7 +102,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
       >
         {/* Header */}
         <div className="p-4 border-b border-light flex items-center justify-between">
-          <h2 className="text-lg font-bold text-navy">
+          <h2 className="text-lg font-bold text-navy dark:text-foreground">
             {step === 'upload' && 'Импорт на клиенти'}
             {step === 'preview' && 'Преглед и настройки'}
             {step === 'importing' && 'Импортиране...'}
@@ -149,7 +149,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
 
               {/* Column mapping */}
               <div>
-                <h3 className="font-medium text-navy mb-2">Свързване на колони</h3>
+                <h3 className="font-medium text-navy dark:text-foreground mb-2">Свързване на колони</h3>
                 <div className="space-y-1 max-h-60 overflow-y-auto">
                   {mappings.map(m => (
                     <div key={m.excelIndex} className="flex items-center gap-2 text-sm">
@@ -180,7 +180,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
 
               {/* Duplicate handling */}
               <div>
-                <h3 className="font-medium text-navy mb-2">При дублирани клиенти (по &quot;Фирма&quot;)</h3>
+                <h3 className="font-medium text-navy dark:text-foreground mb-2">При дублирани клиенти (по &quot;Фирма&quot;)</h3>
                 <div className="flex gap-4 text-sm">
                   <label className="flex items-center gap-1 cursor-pointer">
                     <input
@@ -201,7 +201,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
 
               {/* Preview table */}
               <div>
-                <h3 className="font-medium text-navy mb-2">Преглед (първите 10 реда)</h3>
+                <h3 className="font-medium text-navy dark:text-foreground mb-2">Преглед (първите 10 реда)</h3>
                 <div className="overflow-x-auto border border-light rounded-md">
                   <table className="w-full text-xs">
                     <thead className="bg-navy text-white">
@@ -237,7 +237,7 @@ export function ImportDialog({ onClose, onDone, userId }: Props) {
             <div className="text-center py-12">
               {newOptionsPrompt ? (
                 <div className="text-left max-w-md mx-auto">
-                  <h3 className="font-medium text-navy mb-3">Нови стойности за падащи менюта</h3>
+                  <h3 className="font-medium text-navy dark:text-foreground mb-3">Нови стойности за падащи менюта</h3>
                   <p className="text-sm text-dark/70 mb-3">
                     Следните стойности не съществуват и ще бъдат създадени:
                   </p>

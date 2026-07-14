@@ -875,7 +875,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition ${
               showColPanel || hiddenCols.size > 0
                 ? 'border-navy bg-navy text-white'
-                : 'border-light text-dark/50 hover:border-navy hover:text-navy bg-card'
+                : 'border-light text-dark/50 hover:border-navy hover:text-navy dark:text-foreground bg-card'
             }`}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
