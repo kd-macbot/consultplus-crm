@@ -66,19 +66,23 @@
   --color-gold: #b8a43e;
 }
 
-* {
-  border-color: var(--color-border);
-}
+/* В @layer base, за да НЕ тъпче цветните border утилити (border-blue-500 и
+   т.н.) — извън слой това правило печели над всички Tailwind класове. */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
 
-body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
 
-/* Inter има таблични цифри — в таблици числата се подравняват по колони. */
-table {
-  font-variant-numeric: tabular-nums;
+  /* Inter има таблични цифри — в таблици числата се подравняват по колони. */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
