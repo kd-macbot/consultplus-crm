@@ -31,6 +31,14 @@ const COLUMN_ACCENT: Record<TaskStatus, string> = {
   issue:       'border-t-red-500',
 }
 
+// Същите цветове като кант отляво на картите — визуална връзка с колоната.
+const CARD_ACCENT: Record<TaskStatus, string> = {
+  todo:        'border-l-gray-400',
+  in_progress: 'border-l-blue-500',
+  done:        'border-l-emerald-500',
+  issue:       'border-l-red-500',
+}
+
 function initials(name: string): string {
   return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
 }
@@ -423,7 +431,7 @@ function TaskCard({
       onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDragStart() }}
       onDragEnd={onDragEnd}
       onClick={onOpen}
-      className="bg-card border border-border rounded-md p-2.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow select-none"
+      className={`bg-card border border-border border-l-[3px] ${CARD_ACCENT[task.status as TaskStatus] ?? 'border-l-gray-400'} rounded-md p-2.5 shadow-sm cursor-pointer hover:shadow-md hover:-translate-y-px transition-all select-none`}
     >
       {/* Проверка: тип-бадж + фирма отгоре (фирмата е главното). */}
       {(task.kind ?? 'task') === 'inspection' && (
