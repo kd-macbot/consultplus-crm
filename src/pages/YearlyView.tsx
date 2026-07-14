@@ -284,10 +284,10 @@ export function YearlyViewPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Header */}
-      <div className="px-3 py-2 md:px-5 md:py-3 flex items-center justify-between border-b border-border bg-card">
-        <div className="flex items-center gap-3">
+      <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
+        <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-base md:text-lg font-semibold text-foreground">📅 Годишен изглед</h1>
           <div className="flex items-center gap-1">
             <Button variant="outline" size="sm" onClick={() => setYear(year - 1)}><ChevronLeft className="h-3.5 w-3.5" /></Button>

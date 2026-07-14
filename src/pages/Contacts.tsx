@@ -204,7 +204,7 @@ export function ContactsPage() {
   )
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
 
       {/* Header */}
       <div className="px-3 py-2 md:px-5 md:py-3 flex items-center justify-between border-b border-border bg-card shrink-0">
@@ -212,14 +212,14 @@ export function ContactsPage() {
           Контакти
           <span className="ml-2 text-sm font-normal text-muted-foreground">{filtered.length}</span>
         </h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Търси..."
-              className="pl-8 h-8 w-44 text-sm"
+              className="pl-8 h-8 w-32 sm:w-44 text-sm"
             />
             {search && (
               <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">

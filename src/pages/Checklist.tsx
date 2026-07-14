@@ -335,9 +335,9 @@ export function ChecklistPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Title bar */}
-      <div className="px-3 py-2 md:px-5 md:py-3 flex items-center justify-between border-b border-border bg-card">
+      <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
         <div className="flex items-center gap-2">
           <h1 className="text-lg md:text-xl font-bold text-foreground whitespace-nowrap">Личен чек лист</h1>
           <span className="text-xs text-muted-foreground hidden sm:inline">ДДС · срок 14-ти</span>

@@ -341,7 +341,7 @@ export function AdminPage() {
           <div className="space-y-1.5">
             {columns.map((col, i) => (
               <div key={col.id}>
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${editingDropdown === col.id ? 'bg-amber-50 ring-1 ring-amber-200' : 'hover:bg-muted/50'} ${col.is_hidden ? 'opacity-60' : ''}`}>
+                <div className={`flex flex-wrap items-center gap-2 gap-y-1 px-3 py-2 rounded-lg transition-colors ${editingDropdown === col.id ? 'bg-amber-50 ring-1 ring-amber-200' : 'hover:bg-muted/50'} ${col.is_hidden ? 'opacity-60' : ''}`}>
                   <span className="w-5 text-xs text-muted-foreground/50 shrink-0">{i + 1}</span>
                   <span className="flex-1 text-sm font-medium truncate">{col.name}</span>
                   {col.is_hidden && (
