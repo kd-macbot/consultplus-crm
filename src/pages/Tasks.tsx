@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
-  KanbanSquare, List, Plus, Search, Trash2, X, CalendarDays, User as UserIcon, ShieldAlert,
+  Archive, KanbanSquare, List, Plus, Search, Trash2, X, CalendarDays, User as UserIcon, ShieldAlert,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
@@ -21,7 +21,7 @@ import { useRealtime } from '../lib/useRealtime'
 
 const VIEW_KEY = 'tasks-view'  // 'kanban' | 'list' — запомня се per браузър
 const KIND_KEY = 'tasks-kind'  // 'task' | 'inspection'
-const DONE_HIDE_AFTER_DAYS = 14
+const DONE_HIDE_AFTER_DAYS = 7
 
 // Колона-акцент за kanban header-а (по-плътни от card цветовете).
 const COLUMN_ACCENT: Record<TaskStatus, string> = {
@@ -128,17 +128,21 @@ export function TasksPage() {
   const [search, setSearch] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [onlyMine, setOnlyMine] = useState(false)
+  const [showArchive, setShowArchive] = useState(false)
   const [modal, setModal] = useState<null | { existing?: Task }>(null)
 
   // ============================================================
-  // Видими задачи: Done по-стари от 14 дни се скриват (не се трият).
+  // Видими задачи: Done по-стари от DONE_HIDE_AFTER_DAYS дни се скриват
+  // (не се трият) — точно те са „Архивът". Всички филтри (търсене,
+  // изпълнител, „Само моите") важат и в двата режима.
   // ============================================================
   const tasks = useMemo(() => {
     const cutoff = Date.now() - DONE_HIDE_AFTER_DAYS * 24 * 60 * 60_000
-    let list = (tasksQ.data ?? []).filter(t =>
-      ((t.kind ?? 'task') === kind)
-      && (t.status !== 'done' || new Date(t.updated_at).getTime() >= cutoff),
-    )
+    let list = (tasksQ.data ?? []).filter(t => {
+      if ((t.kind ?? 'task') !== kind) return false
+      const archived = t.status === 'done' && new Date(t.updated_at).getTime() < cutoff
+      return showArchive ? archived : !archived
+    })
     const q = search.trim().toLowerCase()
     if (q) {
       list = list.filter(t =>
@@ -155,7 +159,7 @@ export function TasksPage() {
         : list.filter(t => t.assignee_staff_id === myStaff.id)
     }
     return list
-  }, [tasksQ.data, kind, isInspections, search, assigneeFilter, onlyMine, myStaff, nameByClient, respByClient])
+  }, [tasksQ.data, kind, isInspections, search, assigneeFilter, onlyMine, showArchive, myStaff, nameByClient, respByClient])
 
   const byStatus = useMemo(() => {
     const m = new Map<TaskStatus, Task[]>()
@@ -288,15 +292,37 @@ export function TasksPage() {
               Само моите
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setShowArchive(v => !v)}
+            title={`Готови, скрити от борда преди повече от ${DONE_HIDE_AFTER_DAYS} дни`}
+            className={`h-8 px-2.5 text-xs rounded border transition-colors inline-flex items-center gap-1.5 ${
+              showArchive ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border hover:bg-muted/30'
+            }`}
+          >
+            <Archive className="h-3.5 w-3.5" />
+            Архив
+          </button>
           <span className="text-xs text-muted-foreground ml-auto">
             {tasks.length} {tasks.length === 1 ? (isInspections ? 'проверка' : 'задача') : (isInspections ? 'проверки' : 'задачи')}
           </span>
         </div>
       </div>
 
-      {/* Body */}
+      {/* Body — архивът е винаги списък (kanban няма смисъл за готови). */}
       <div className="flex-1 overflow-auto p-3 md:p-4">
-        {view === 'kanban' ? (
+        {showArchive ? (
+          <TaskList
+            tasks={tasks}
+            isInspections={isInspections}
+            archive
+            staffById={staffById}
+            nameByClient={nameByClient}
+            respByClient={respByClient}
+            onOpen={t => setModal({ existing: t })}
+            onMove={(id, s) => void moveTask(id, s)}
+          />
+        ) : view === 'kanban' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
             {TASK_STATUSES.map(status => {
               const list = byStatus.get(status) ?? []
@@ -469,10 +495,11 @@ function TaskCard({
 // Списъчен изглед
 // ============================================================
 function TaskList({
-  tasks, isInspections, staffById, nameByClient, respByClient, onOpen, onMove,
+  tasks, isInspections, archive = false, staffById, nameByClient, respByClient, onOpen, onMove,
 }: {
   tasks: Task[]
   isInspections: boolean
+  archive?: boolean
   staffById: Map<string, string>
   nameByClient: Map<string, string>
   respByClient: Map<string, string>
@@ -480,7 +507,9 @@ function TaskList({
   onMove: (id: string, s: TaskStatus) => void
 }) {
   // Подредба: Проблем → В процес → To Do → Готово; вътре по срок/позиция.
+  // В архива — по дата на приключване (последна промяна), най-новите отгоре.
   const ordered = useMemo(() => {
+    if (archive) return [...tasks].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
     const rank: Record<string, number> = { issue: 0, in_progress: 1, todo: 2, done: 3 }
     return [...tasks].sort((a, b) => {
       const r = (rank[a.status] ?? 9) - (rank[b.status] ?? 9)
@@ -490,10 +519,14 @@ function TaskList({
       if (b.due_date) return 1
       return a.position - b.position
     })
-  }, [tasks])
+  }, [tasks, archive])
 
   if (ordered.length === 0) {
-    return <p className="text-center text-muted-foreground py-12 text-sm">{isInspections ? 'Няма проверки.' : 'Няма задачи. Натисни „Нова задача".'}</p>
+    return (
+      <p className="text-center text-muted-foreground py-12 text-sm">
+        {archive ? 'Архивът е празен.' : isInspections ? 'Няма проверки.' : 'Няма задачи. Натисни „Нова задача".'}
+      </p>
+    )
   }
 
   return (
@@ -506,6 +539,7 @@ function TaskList({
           <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[140px]">{isInspections ? 'Отговорник' : 'Изпълнител'}</th>
           <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[140px]">Клиент</th>
           <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[100px]">Срок</th>
+          {archive && <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[100px]">Приключена</th>}
         </tr>
       </thead>
       <tbody>
@@ -553,6 +587,9 @@ function TaskList({
               <td className={`px-3 py-1.5 ${overdue ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
                 {t.due_date ? formatDate(t.due_date) : <span className="text-muted-foreground/40">—</span>}
               </td>
+              {archive && (
+                <td className="px-3 py-1.5 text-muted-foreground">{formatDate(t.updated_at)}</td>
+              )}
             </tr>
           )
         })}
