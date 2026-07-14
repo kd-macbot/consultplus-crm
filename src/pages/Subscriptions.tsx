@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { addColumn, deleteColumn } from '../lib/storage'
 import { useClients, useColumns, useCellValues, useDropdownOptions, useTags, useClientTags, useInvalidateCrm, qk } from '../lib/queries'
-import { isNewClient } from '../lib/utils'
-import { NewClientBadge } from '../components/clients/NewClientBadge'
 import { queryClient } from '../lib/queryClient'
 import { CellEditor } from '../components/table/CellEditor'
 import { useAuth } from '../lib/auth'
@@ -59,7 +57,6 @@ export function SubscriptionsPage() {
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [amountBucket, setAmountBucket] = useState<AmountBucket>('all')
   const [tagFilter, setTagFilter] = useState<string[]>([])
-  const [onlyNew, setOnlyNew] = useState(false)
   const [markedClients, setMarkedClients] = useState<Set<string>>(new Set())
 
   const isAdmin = user?.role === 'admin'
@@ -138,7 +135,7 @@ export function SubscriptionsPage() {
     return cell.value_text ?? ''
   }
 
-  const hasFilters = search.trim() !== '' || Object.values(colFilters).some(v => v !== '') || statusFilter.length > 0 || amountBucket !== 'all' || tagFilter.length > 0 || onlyNew
+  const hasFilters = search.trim() !== '' || Object.values(colFilters).some(v => v !== '') || statusFilter.length > 0 || amountBucket !== 'all' || tagFilter.length > 0
 
   function clearFilters() {
     setSearch('')
@@ -146,7 +143,6 @@ export function SubscriptionsPage() {
     setStatusFilter([])
     setAmountBucket('all')
     setTagFilter([])
-    setOnlyNew(false)
   }
 
   function setColFilter(colId: string, value: string) {
@@ -169,9 +165,6 @@ export function SubscriptionsPage() {
       if (amountBucket !== 'all') {
         if (!inBucket(clientHonorar(client.id), amountBucket)) return false
       }
-
-      // Само НОВИ (виртуален бадж по created_at)
-      if (onlyNew && !isNewClient(client.created_at)) return false
 
       // Филтър по таг (OR между избраните тагове)
       if (tagFilter.length > 0) {
@@ -196,7 +189,7 @@ export function SubscriptionsPage() {
       }
       return true
     })
-  }, [clients, search, colFilters, tableColumns, allCells, statusFilter, amountBucket, statusColumn, honorarColumn, allDropdowns, tagFilter, onlyNew, tagsByClient])
+  }, [clients, search, colFilters, tableColumns, allCells, statusFilter, amountBucket, statusColumn, honorarColumn, allDropdowns, tagFilter, tagsByClient])
 
   const totalHonorar = useMemo(() => {
     if (!honorarColumn) return 0
@@ -247,10 +240,7 @@ export function SubscriptionsPage() {
     const rows: (string | number)[][] = rowsClients.map(c => {
       const row: (string | number)[] = [clientName(c.id)]
       if (statusColumn) row.push(clientStatus(c.id))
-      row.push([
-        ...(isNewClient(c.created_at) ? ['НОВ'] : []),
-        ...clientTagObjs(c.id).map(t => t.name),
-      ].join(', '))
+      row.push(clientTagObjs(c.id).map(t => t.name).join(', '))
       for (const col of tableColumns) row.push(exportCellValue(col, getCell(c.id, col.id)))
       return row
     })
@@ -416,20 +406,9 @@ export function SubscriptionsPage() {
               ))}
             </div>
           )}
-          {/* Тагове (споделени с Клиенти) + виртуален „НОВ" */}
+          {/* Тагове (споделени с Клиенти) — read-only филтър */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-muted-foreground uppercase tracking-wider font-semibold">Тагове:</span>
-            <button
-              onClick={() => setOnlyNew(v => !v)}
-              title="Само клиентите, добавени през последните 4 месеца"
-              className={`px-2 py-0.5 rounded-full font-bold transition ${
-                onlyNew
-                  ? 'bg-sky-600 text-white'
-                  : 'text-sky-600 border border-sky-400 opacity-60 hover:opacity-90'
-              }`}
-            >
-              НОВ
-            </button>
             {allTags.map(tag => {
               const active = tagFilter.includes(tag.id)
               return (
@@ -568,7 +547,6 @@ export function SubscriptionsPage() {
                 )}
                 <td className="px-3 py-1.5">
                   <div className="flex flex-wrap items-center gap-1">
-                    {isNewClient(client.created_at) && <NewClientBadge />}
                     {clientTagObjs(client.id).map(t => (
                       <span
                         key={t.id}
@@ -578,9 +556,7 @@ export function SubscriptionsPage() {
                         {t.name}
                       </span>
                     ))}
-                    {!isNewClient(client.created_at) && clientTagObjs(client.id).length === 0 && (
-                      <span className="text-dark/20">—</span>
-                    )}
+                    {clientTagObjs(client.id).length === 0 && <span className="text-dark/20">—</span>}
                   </div>
                 </td>
                 {tableColumns.map(col => {
