@@ -2,6 +2,7 @@
 const STATUS_BADGE: Record<string, string> = {
   'АКТИВНА': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
   'НУЛЕВО': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  'НОВ': 'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300',
 }
 
 export function statusBadgeClass(s: string): string {
