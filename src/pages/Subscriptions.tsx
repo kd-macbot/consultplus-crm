@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { addColumn, deleteColumn } from '../lib/storage'
-import { useClients, useColumns, useCellValues, useDropdownOptions, useInvalidateCrm, qk } from '../lib/queries'
+import { useClients, useColumns, useCellValues, useDropdownOptions, useTags, useClientTags, useInvalidateCrm, qk } from '../lib/queries'
+import { isNewClient } from '../lib/utils'
+import { NewClientBadge } from '../components/clients/NewClientBadge'
 import { queryClient } from '../lib/queryClient'
 import { CellEditor } from '../components/table/CellEditor'
 import { useAuth } from '../lib/auth'
@@ -39,6 +41,8 @@ export function SubscriptionsPage() {
   const columnsQ = useColumns()
   const cellsQ = useCellValues()
   const dropdownsQ = useDropdownOptions()
+  const tagsQ = useTags()
+  const clientTagsQ = useClientTags()
   const { invalidateColumns, invalidateCells } = useInvalidateCrm()
 
   const allClients = useMemo(() => clientsQ.data ?? [], [clientsQ.data])
@@ -54,6 +58,8 @@ export function SubscriptionsPage() {
   const [colFilters, setColFilters] = useState<Record<string, string>>({})
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [amountBucket, setAmountBucket] = useState<AmountBucket>('all')
+  const [tagFilter, setTagFilter] = useState<string[]>([])
+  const [onlyNew, setOnlyNew] = useState(false)
   const [markedClients, setMarkedClients] = useState<Set<string>>(new Set())
 
   const isAdmin = user?.role === 'admin'
@@ -95,6 +101,20 @@ export function SubscriptionsPage() {
     return [...new Set(allDropdowns.filter(d => d.column_id === statusColumn.id).map(d => d.value))]
   }, [allDropdowns, statusColumn])
 
+  // Тагове — споделени с Клиенти (crm_tags / crm_client_tags), тук read-only.
+  const allTags = useMemo(() => tagsQ.data ?? [], [tagsQ.data])
+  const tagsByClient = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const ct of clientTagsQ.data ?? []) {
+      const arr = m.get(ct.client_id) ?? []
+      arr.push(ct.tag_id)
+      m.set(ct.client_id, arr)
+    }
+    return m
+  }, [clientTagsQ.data])
+  const clientTagObjs = (clientId: string) =>
+    allTags.filter(t => (tagsByClient.get(clientId) ?? []).includes(t.id))
+
   const tableColumns = useMemo(() => {
     const cols: Column[] = []
     if (honorarColumn) cols.push(honorarColumn)
@@ -118,13 +138,15 @@ export function SubscriptionsPage() {
     return cell.value_text ?? ''
   }
 
-  const hasFilters = search.trim() !== '' || Object.values(colFilters).some(v => v !== '') || statusFilter.length > 0 || amountBucket !== 'all'
+  const hasFilters = search.trim() !== '' || Object.values(colFilters).some(v => v !== '') || statusFilter.length > 0 || amountBucket !== 'all' || tagFilter.length > 0 || onlyNew
 
   function clearFilters() {
     setSearch('')
     setColFilters({})
     setStatusFilter([])
     setAmountBucket('all')
+    setTagFilter([])
+    setOnlyNew(false)
   }
 
   function setColFilter(colId: string, value: string) {
@@ -148,6 +170,15 @@ export function SubscriptionsPage() {
         if (!inBucket(clientHonorar(client.id), amountBucket)) return false
       }
 
+      // Само НОВИ (виртуален бадж по created_at)
+      if (onlyNew && !isNewClient(client.created_at)) return false
+
+      // Филтър по таг (OR между избраните тагове)
+      if (tagFilter.length > 0) {
+        const ids = tagsByClient.get(client.id) ?? []
+        if (!tagFilter.some(tid => ids.includes(tid))) return false
+      }
+
       for (const [colId, filterVal] of Object.entries(colFilters)) {
         if (!filterVal) continue
         const col = tableColumns.find(c => c.id === colId)
@@ -165,7 +196,7 @@ export function SubscriptionsPage() {
       }
       return true
     })
-  }, [clients, search, colFilters, tableColumns, allCells, statusFilter, amountBucket, statusColumn, honorarColumn, allDropdowns])
+  }, [clients, search, colFilters, tableColumns, allCells, statusFilter, amountBucket, statusColumn, honorarColumn, allDropdowns, tagFilter, onlyNew, tagsByClient])
 
   const totalHonorar = useMemo(() => {
     if (!honorarColumn) return 0
@@ -212,10 +243,14 @@ export function SubscriptionsPage() {
 
   async function exportRows(rowsClients: Client[], suffix: string) {
     if (rowsClients.length === 0) { toast.error('Няма редове за експорт'); return }
-    const headers = ['Клиент', ...(statusColumn ? ['Статус'] : []), ...tableColumns.map(c => c.name)]
+    const headers = ['Клиент', ...(statusColumn ? ['Статус'] : []), 'Тагове', ...tableColumns.map(c => c.name)]
     const rows: (string | number)[][] = rowsClients.map(c => {
       const row: (string | number)[] = [clientName(c.id)]
       if (statusColumn) row.push(clientStatus(c.id))
+      row.push([
+        ...(isNewClient(c.created_at) ? ['НОВ'] : []),
+        ...clientTagObjs(c.id).map(t => t.name),
+      ].join(', '))
       for (const col of tableColumns) row.push(exportCellValue(col, getCell(c.id, col.id)))
       return row
     })
@@ -224,6 +259,7 @@ export function SubscriptionsPage() {
       const sum = rowsClients.reduce((s, c) => s + (resolveNumber(c.id, honorarColumn, cellIdx) ?? 0), 0)
       const totalRow: (string | number)[] = [`Общо (${rowsClients.length})`]
       if (statusColumn) totalRow.push('')
+      totalRow.push('')  // Тагове
       for (const col of tableColumns) totalRow.push(col.id === honorarColumn.id ? sum : '')
       rows.push(totalRow)
     }
@@ -380,6 +416,38 @@ export function SubscriptionsPage() {
               ))}
             </div>
           )}
+          {/* Тагове (споделени с Клиенти) + виртуален „НОВ" */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-muted-foreground uppercase tracking-wider font-semibold">Тагове:</span>
+            <button
+              onClick={() => setOnlyNew(v => !v)}
+              title="Само клиентите, добавени през последните 4 месеца"
+              className={`px-2 py-0.5 rounded-full font-bold transition ${
+                onlyNew
+                  ? 'bg-sky-600 text-white'
+                  : 'text-sky-600 border border-sky-400 opacity-60 hover:opacity-90'
+              }`}
+            >
+              НОВ
+            </button>
+            {allTags.map(tag => {
+              const active = tagFilter.includes(tag.id)
+              return (
+                <button
+                  key={tag.id}
+                  onClick={() => setTagFilter(prev => active ? prev.filter(id => id !== tag.id) : [...prev, tag.id])}
+                  className={`px-2 py-0.5 rounded-full font-medium transition ${active ? 'text-white' : 'opacity-50 hover:opacity-80'}`}
+                  style={{
+                    backgroundColor: active ? tag.color : 'transparent',
+                    color: active ? 'white' : tag.color,
+                    border: active ? 'none' : `1.5px solid ${tag.color}`,
+                  }}
+                >
+                  {tag.name}
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
 
@@ -403,6 +471,7 @@ export function SubscriptionsPage() {
               {statusColumn && (
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Статус</th>
               )}
+              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Тагове</th>
               {tableColumns.map(col => (
                 <th key={col.id} className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">
                   <div className="flex items-center gap-1">
@@ -432,6 +501,7 @@ export function SubscriptionsPage() {
                 />
               </th>
               {statusColumn && <th className="px-2 py-1" />}
+              <th className="px-2 py-1" />
               {tableColumns.map(col => (
                 <th key={col.id + '_f'} className="px-2 py-1">
                   {col.type === 'checkbox' ? (
@@ -460,7 +530,7 @@ export function SubscriptionsPage() {
           <tbody>
             {filteredClients.length === 0 && (
               <tr>
-                <td colSpan={tableColumns.length + 3 + (statusColumn ? 1 : 0)} className="px-4 py-8 text-center text-dark/40">
+                <td colSpan={tableColumns.length + 4 + (statusColumn ? 1 : 0)} className="px-4 py-8 text-center text-dark/40">
                   {hasFilters ? 'Няма клиенти отговарящи на филтрите' : 'Няма клиенти'}
                 </td>
               </tr>
@@ -496,6 +566,23 @@ export function SubscriptionsPage() {
                     })()}
                   </td>
                 )}
+                <td className="px-3 py-1.5">
+                  <div className="flex flex-wrap items-center gap-1">
+                    {isNewClient(client.created_at) && <NewClientBadge />}
+                    {clientTagObjs(client.id).map(t => (
+                      <span
+                        key={t.id}
+                        className="px-1.5 py-0.5 rounded-full text-[10px] font-medium text-white"
+                        style={{ backgroundColor: t.color }}
+                      >
+                        {t.name}
+                      </span>
+                    ))}
+                    {!isNewClient(client.created_at) && clientTagObjs(client.id).length === 0 && (
+                      <span className="text-dark/20">—</span>
+                    )}
+                  </div>
+                </td>
                 {tableColumns.map(col => {
                   const cell = getCell(client.id, col.id)
                   const isEditing = editCell?.clientId === client.id && editCell?.columnId === col.id
@@ -554,6 +641,7 @@ export function SubscriptionsPage() {
                 Общо {isFiltered && <span className="text-xs font-normal text-muted-foreground">({filteredClients.length} от {clients.length})</span>}
               </td>
               {statusColumn && <td />}
+              <td />
               {tableColumns.map(col => (
                 <td key={col.id} className="px-3 py-1.5">
                   {col.id === honorarColumn?.id
