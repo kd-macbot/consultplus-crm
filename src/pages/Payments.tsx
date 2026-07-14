@@ -22,6 +22,7 @@ export function PaymentsPage() {
   const { user } = useAuth()
   const [year, setYear] = useState(new Date().getFullYear())
   const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
 
   const clientsQ = useClients()
@@ -85,7 +86,10 @@ export function PaymentsPage() {
       // Подреждаме типовете по PAYMENT_TYPES за консистентност; чужди типове в края.
       const known: string[] = PAYMENT_TYPES.filter(t => config.payment_types.includes(t))
       const unknown: string[] = config.payment_types.filter(t => !PAYMENT_TYPES.includes(t as never))
+      // Филтърът по тип се прилага ТУК (не върху готовите редове), за да са
+      // верни isFirstOfClient/typeRowCount и rowspan-ът на Фирма/Банка/Забележка.
       const types: string[] = [...known, ...unknown]
+        .filter(t => typeFilter.length === 0 || typeFilter.includes(t))
       types.forEach((type, idx) => {
         out.push({
           clientId: config.client_id,
@@ -99,7 +103,7 @@ export function PaymentsPage() {
     })
     const q = search.trim().toLowerCase()
     return q ? out.filter(r => r.clientName.toLowerCase().includes(q)) : out
-  }, [configs, nameByClient, search])
+  }, [configs, nameByClient, search, typeFilter])
 
   const ready = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!configsQ.data && !!statusesQ.data
 
@@ -261,6 +265,37 @@ export function PaymentsPage() {
               className="w-full md:w-72 pl-8 pr-3 py-1.5 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
             />
           </div>
+          {/* Филтър по тип плащане — multi-select; празен избор = всички */}
+          <div className="flex items-center gap-1.5">
+            {PAYMENT_TYPES.map(t => {
+              const active = typeFilter.includes(t)
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTypeFilter(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+                  title={active ? `Скрий филтъра „${t}"` : `Покажи само „${t}"`}
+                  className={`px-2 py-1 text-[11px] border rounded font-medium transition-all ${
+                    active
+                      ? PAYMENT_TYPE_COLORS[t] + ' ring-1 ring-current/40'
+                      : 'border-border bg-background text-muted-foreground hover:bg-muted/30'
+                  }`}
+                >
+                  {t}
+                </button>
+              )
+            })}
+            {typeFilter.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setTypeFilter([])}
+                className="px-1.5 py-1 text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
+                title="Изчисти филтъра по тип"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
           <div className="text-xs text-muted-foreground">
             Проследени: <span className="font-semibold text-foreground">{configs.length}</span>
             <span className="mx-2">·</span>
@@ -326,7 +361,7 @@ export function PaymentsPage() {
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={17} className="text-center py-12 text-muted-foreground">
-                  {search ? 'Няма намерени фирми.' : 'Няма проследени клиенти. Натисни „Добави клиент" за начало.'}
+                  {search || typeFilter.length > 0 ? 'Няма намерени фирми.' : 'Няма проследени клиенти. Натисни „Добави клиент" за начало.'}
                 </td>
               </tr>
             ) : rows.map(r => {
