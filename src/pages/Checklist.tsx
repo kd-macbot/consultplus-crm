@@ -342,7 +342,7 @@ export function ChecklistPage() {
           <h1 className="text-lg md:text-xl font-bold text-foreground whitespace-nowrap">Личен чек лист</h1>
           <span className="text-xs text-muted-foreground hidden sm:inline">ДДС · срок 14-ти</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1 gap-y-2">
           <Button variant="ghost" size="icon" onClick={() => changeMonth(-1)} className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
           <span className="text-sm font-medium min-w-[120px] text-center">{MONTH_NAMES[month - 1]} {year}</span>
           <Button variant="ghost" size="icon" onClick={() => changeMonth(1)} className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>

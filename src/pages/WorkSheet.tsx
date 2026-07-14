@@ -365,7 +365,7 @@ export function WorkSheetPage() {
       <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-base md:text-lg font-semibold text-foreground">📋 Работен лист</h1>
-          <div className="flex items-center gap-1 ml-2">
+          <div className="flex flex-wrap items-center gap-1 gap-y-2 ml-2">
             <Button variant="outline" size="sm" onClick={() => changeMonth(-1)}>
               <ChevronLeft className="h-3.5 w-3.5" />
             </Button>
