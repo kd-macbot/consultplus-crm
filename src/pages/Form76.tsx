@@ -223,7 +223,7 @@ export function Form76Page() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Header */}
       <div className="px-3 py-2 md:px-5 md:py-3 border-b border-border bg-card">
         <div className="flex flex-wrap items-center gap-3 justify-between">
@@ -277,7 +277,7 @@ export function Form76Page() {
                 const isWeekend = dow === 0 || dow === 6
                 const isToday = isViewingThisMonth && d === todayDay
                 return (
-                  <th key={d} className={`text-center font-medium border-r border-navy-light/50 ${isToday ? 'bg-amber-500 text-navy font-bold' : isWeekend ? 'bg-sky-700' : ''}`} style={{ minWidth: 28 }}>
+                  <th key={d} className={`text-center font-medium border-r border-navy-light/50 ${isToday ? 'bg-amber-500 text-navy dark:text-foreground font-bold' : isWeekend ? 'bg-sky-700' : ''}`} style={{ minWidth: 28 }}>
                     {d}
                   </th>
                 )
@@ -324,6 +324,7 @@ export function Form76Page() {
                           <CellEditor
                             currentValue={value}
                             hasOverride={hasOverride}
+                            align={d <= 4 ? 'left' : d >= days.length - 3 ? 'right' : 'center'}
                             onPick={handleSetValue}
                             onClose={() => setEditingCell(null)}
                           />
@@ -351,16 +352,18 @@ export function Form76Page() {
 }
 
 // Popover за избор на стойност на клетка.
-function CellEditor({ currentValue, hasOverride, onPick, onClose }: {
+function CellEditor({ currentValue, hasOverride, align = 'center', onPick, onClose }: {
   currentValue: string
   hasOverride: boolean
+  align?: 'left' | 'right' | 'center'  // крайните дни се закачат за ръба, за да не се режат
   onPick: (v: string | null) => void
   onClose: () => void
 }) {
+  const alignCls = align === 'left' ? 'left-0' : align === 'right' ? 'right-0' : 'left-1/2 -translate-x-1/2'
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 min-w-[200px] bg-card text-foreground border border-border rounded-md shadow-lg overflow-hidden">
+      <div className={`absolute top-full ${alignCls} mt-1 z-50 min-w-[200px] bg-card text-foreground border border-border rounded-md shadow-lg overflow-hidden`}>
         {FORM76_CODES.map(code => (
           <button
             key={code || 'empty'}

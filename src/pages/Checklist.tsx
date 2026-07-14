@@ -335,14 +335,14 @@ export function ChecklistPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Title bar */}
-      <div className="px-3 py-2 md:px-5 md:py-3 flex items-center justify-between border-b border-border bg-card">
+      <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
         <div className="flex items-center gap-2">
           <h1 className="text-lg md:text-xl font-bold text-foreground whitespace-nowrap">Личен чек лист</h1>
           <span className="text-xs text-muted-foreground hidden sm:inline">ДДС · срок 14-ти</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1 gap-y-2">
           <Button variant="ghost" size="icon" onClick={() => changeMonth(-1)} className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
           <span className="text-sm font-medium min-w-[120px] text-center">{MONTH_NAMES[month - 1]} {year}</span>
           <Button variant="ghost" size="icon" onClick={() => changeMonth(1)} className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>
@@ -402,7 +402,7 @@ export function ChecklistPage() {
                   ? (i % 2 === 0 ? 'bg-emerald-50 dark:bg-emerald-950/40' : 'bg-emerald-100/60 dark:bg-emerald-950/30')
                   : evenBg
                 return (
-                  <tr key={row.client.id} className={`border-b border-light/50 hover:bg-gold/5 transition-colors ${rowBg}`}>
+                  <tr key={row.client.id} className={`border-b border-border hover:bg-gold/5 transition-colors ${rowBg}`}>
                     <td className="px-3 py-1.5 text-xs text-muted-foreground/70 text-right">{i + 1}</td>
                     <td className={`px-3 py-1.5 font-medium text-foreground whitespace-nowrap truncate max-w-[220px] sticky left-0 z-10 ${rowBg}`} title={row.name}>
                       {row.name || <span className="text-muted-foreground/40 italic">(без име)</span>}

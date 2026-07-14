@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* dark: утилитите следват класа .dark (theme-toggle), не OS настройката. */
+@custom-variant dark (&:is(.dark *));
+
 @theme {
   /* Brand colors */
   --color-navy: #253551;
@@ -63,14 +66,26 @@
   --color-gold: #b8a43e;
 }
 
-* {
-  border-color: var(--color-border);
+/* В @layer base, за да НЕ тъпче цветните border утилити (border-blue-500 и
+   т.н.) — извън слой това правило печели над всички Tailwind класове. */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
 }
 
+/* body/table остават ИЗВЪН слой (както бяха винаги) — вътре в @layer base
+   наследяването на цвета се чупеше при част от браузърите (регресия:
+   тъмен текст върху тъмни редове в Клиенти). Тук няма конфликт с утилити. */
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: 'Inter Variable', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Inter има таблични цифри — в таблици числата се подравняват по колони. */
+table {
+  font-variant-numeric: tabular-nums;
 }
 

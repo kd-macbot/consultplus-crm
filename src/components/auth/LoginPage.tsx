@@ -27,7 +27,7 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-light">
       <div className="bg-card rounded-lg shadow-lg p-8 w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-navy">Consult Plus</h1>
+          <h1 className="text-3xl font-bold text-navy dark:text-foreground">Consult Plus</h1>
           <p className="text-dark/60 mt-2">Система за управление на клиенти</p>
         </div>
 
@@ -38,7 +38,7 @@ export function LoginPage() {
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy"
+              className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-navy"
               placeholder="email@consultplus.bg"
               required
             />
@@ -50,7 +50,7 @@ export function LoginPage() {
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-light rounded-md focus:outline-none focus:ring-2 focus:ring-navy"
+              className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-navy"
               placeholder="••••••"
               required
             />

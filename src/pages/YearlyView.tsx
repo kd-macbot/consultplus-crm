@@ -284,10 +284,10 @@ export function YearlyViewPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Header */}
-      <div className="px-3 py-2 md:px-5 md:py-3 flex items-center justify-between border-b border-border bg-card">
-        <div className="flex items-center gap-3">
+      <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
+        <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-base md:text-lg font-semibold text-foreground">📅 Годишен изглед</h1>
           <div className="flex items-center gap-1">
             <Button variant="outline" size="sm" onClick={() => setYear(year - 1)}><ChevronLeft className="h-3.5 w-3.5" /></Button>
@@ -372,7 +372,7 @@ function AdvanceTable({ rows, year, canEdit, onPatch }: {
           const evenBg = i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
           const diff = (r.minYearly ?? 0) - r.total
           return (
-            <tr key={r.client.id} className={`border-b border-light/50 hover:bg-gold/5 ${evenBg}`}>
+            <tr key={r.client.id} className={`border-b border-border hover:bg-gold/5 ${evenBg}`}>
               <td className={`px-3 py-1 font-medium whitespace-nowrap sticky left-0 z-10 ${evenBg}`}>{r.name}</td>
               <td className="px-2 py-1 text-center text-xs">
                 <span className={`px-1.5 py-0.5 rounded ${r.profile === 'Месечни' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300'}`}>
@@ -483,7 +483,7 @@ function Art55Table({ rows, year, canEdit, onPatchStatus }: {
         {rows.map((r, i) => {
           const evenBg = i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
           return (
-            <tr key={r.client.id} className={`border-b border-light/50 hover:bg-gold/5 ${evenBg}`}>
+            <tr key={r.client.id} className={`border-b border-border hover:bg-gold/5 ${evenBg}`}>
               <td className={`px-3 py-1.5 font-medium whitespace-nowrap sticky left-0 z-10 ${evenBg} border-r border-border`}>{r.name}</td>
               {QUARTERS.map(q => {
                 const entries = r.quarters.get(q.q) ?? []
@@ -708,7 +708,7 @@ function VatTable({ rows, year, canEdit, onPatch }: {
             const isSelRow = sumMode && selClient === r.client.id
             const rowSelNet = isSelRow ? [...selMonths].reduce((s, m) => s + (r.months.get(m) ?? 0), 0) : 0
             return (
-              <tr key={r.client.id} className={`border-b border-light/50 hover:bg-gold/5 ${evenBg} ${isSelRow ? 'ring-1 ring-sky-400' : ''}`}>
+              <tr key={r.client.id} className={`border-b border-border hover:bg-gold/5 ${evenBg} ${isSelRow ? 'ring-1 ring-sky-400' : ''}`}>
                 <td className={`px-3 py-1 font-medium whitespace-nowrap sticky left-0 z-10 ${evenBg}`}>
                   {r.name}
                   {isSelRow && selMonths.size > 0 && (

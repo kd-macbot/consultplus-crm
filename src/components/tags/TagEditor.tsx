@@ -81,7 +81,7 @@ export function TagEditor({ clientId, clientName, assignedTags, allTags, onUpdat
 
       {/* Popover */}
       {open && (
-        <div className="absolute z-50 top-full left-0 mt-1 w-64 bg-card rounded-lg shadow-lg border border-light p-3">
+        <div className="absolute z-50 top-full left-0 mt-1 w-64 bg-card rounded-lg shadow-lg border border-border p-3">
           {/* Assigned tags */}
           {assignedTags.length > 0 && (
             <div className="mb-2">
@@ -126,7 +126,7 @@ export function TagEditor({ clientId, clientName, assignedTags, allTags, onUpdat
           )}
 
           {/* Create new */}
-          <div className="border-t border-light pt-2 mt-2">
+          <div className="border-t border-border pt-2 mt-2">
             <p className="text-[10px] text-dark/40 uppercase mb-1">Нов таг</p>
             <div className="flex gap-1 mb-1.5">
               {PRESET_COLORS.map(c => (
@@ -144,7 +144,7 @@ export function TagEditor({ clientId, clientName, assignedTags, allTags, onUpdat
                 value={newTagName}
                 onChange={e => setNewTagName(e.target.value)}
                 placeholder="Име..."
-                className="flex-1 px-2 py-1 text-xs border border-light rounded focus:outline-none focus:ring-1 focus:ring-navy"
+                className="flex-1 px-2 py-1 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-navy"
                 onKeyDown={e => e.key === 'Enter' && handleCreate()}
               />
               <button

@@ -260,12 +260,12 @@ export function TrzPage() {
   const doneCount = filteredRows.filter(r => r.work?.salaries_prepared && r.work?.insurance_submitted && r.work?.payroll_sent).length
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Title bar */}
-      <div className="px-3 py-2 md:px-5 md:py-3 flex items-center justify-between border-b border-border bg-card">
-        <div className="flex items-center gap-2">
+      <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
+        <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-base md:text-lg font-semibold text-foreground">🧾 ТРЗ Работен лист</h1>
-          <div className="flex items-center gap-1 ml-2">
+          <div className="flex flex-wrap items-center gap-1 gap-y-2 ml-2">
             <Button variant="outline" size="sm" onClick={() => changeMonth(-1)}>
               <ChevronLeft className="h-3.5 w-3.5" />
             </Button>
@@ -434,7 +434,7 @@ export function TrzPage() {
               return (
                 <tr
                   key={r.client.id}
-                  className={`border-b border-light/50 ${i % 2 === 0 ? 'bg-card' : 'bg-muted/20'} hover:bg-gold/5 transition-colors`}
+                  className={`border-b border-border ${i % 2 === 0 ? 'bg-card' : 'bg-muted/20'} hover:bg-gold/5 transition-colors`}
                 >
                   <td className="px-3 py-2 text-dark/30 text-xs text-right tabular-nums w-10">
                     {isSaving ? <Loader2 className="h-3 w-3 animate-spin inline" /> : i + 1}

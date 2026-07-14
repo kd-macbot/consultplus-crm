@@ -360,12 +360,12 @@ export function WorkSheetPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Title bar */}
-      <div className="px-3 py-2 md:px-5 md:py-3 flex items-center justify-between border-b border-border bg-card">
-        <div className="flex items-center gap-2">
+      <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
+        <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-base md:text-lg font-semibold text-foreground">📋 Работен лист</h1>
-          <div className="flex items-center gap-1 ml-2">
+          <div className="flex flex-wrap items-center gap-1 gap-y-2 ml-2">
             <Button variant="outline" size="sm" onClick={() => changeMonth(-1)}>
               <ChevronLeft className="h-3.5 w-3.5" />
             </Button>
@@ -537,7 +537,7 @@ export function WorkSheetPage() {
                   ? (i % 2 === 0 ? 'bg-emerald-50 dark:bg-emerald-950/40' : 'bg-emerald-100/60 dark:bg-emerald-950/30')
                   : (i % 2 === 0 ? 'bg-card' : 'bg-muted/20')
                 return (
-                  <tr key={row.client.id} className={`border-b border-light/50 hover:bg-gold/5 transition-colors ${evenBg}`}>
+                  <tr key={row.client.id} className={`border-b border-border hover:bg-gold/5 transition-colors ${evenBg}`}>
                     <td className="px-3 py-1.5 text-xs text-muted-foreground/70 text-right">{i + 1}</td>
                     <td className={`px-3 py-1.5 font-medium text-foreground whitespace-nowrap sticky left-0 z-20 ${evenBg}`}>
                       {row.name || <span className="text-muted-foreground/40 italic">(без име)</span>}

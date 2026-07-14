@@ -148,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-light">
-        <div className="text-navy text-lg">Зареждане...</div>
+        <div className="text-navy dark:text-foreground text-lg">Зареждане...</div>
       </div>
     )
   }
