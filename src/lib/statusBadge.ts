@@ -19,3 +19,17 @@ export function isHiddenStatus(s: string): boolean {
   const norm = s.toLowerCase().trim()
   return norm.includes('без дейност') || norm.includes('без ддс')
 }
+
+/** „Без дейност" — никаква месечна работа; скрити от Работен лист. */
+export function isNoActivityStatus(s: string): boolean {
+  return s.toLowerCase().trim().includes('без дейност')
+}
+
+/**
+ * „Без ДДС" — нямат месечна ДДС декларация, но имат останалите атрибути
+ * (чл. 55, авансови вноски, заплати…). Виждат се в Работен лист с
+ * disabled ДДС полета.
+ */
+export function isNoVatStatus(s: string): boolean {
+  return s.toLowerCase().trim().includes('без ддс')
+}

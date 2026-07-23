@@ -19,7 +19,8 @@ import {
   buildCellIndex, buildDropdownIndex, clientDisplayName,
   resolveDropdownText, cellKey,
 } from '../lib/tableIndices'
-import { statusBadgeClass, isHiddenStatus } from '../lib/statusBadge'
+import { statusBadgeClass, isNoActivityStatus, isNoVatStatus } from '../lib/statusBadge'
+import { findTrzColumns, TRZ_ACTIVE } from '../lib/trz'
 import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
@@ -62,6 +63,15 @@ function art55Deadline(applies: string, month: number): string | null {
 }
 
 // masterValue беше O(N) — заменен с resolveDropdownText от tableIndices.
+
+// Отметъчните месечни колони — заглавието им е кликаем филтър
+// (всички → само без отметка → само с отметка).
+const CHECK_COLUMNS: { field: keyof MonthlyWork; label: string; title?: string }[] = [
+  { field: 'vat_accounted', label: 'Проверено', title: 'Последна проверка, че всичко е наред — след нея месецът може да се закрие' },
+  { field: 'amortization_done', label: 'Амор' },
+  { field: 'bank_done', label: 'Банка' },
+  { field: 'salaries_done', label: 'Заплати' },
+]
 
 export function WorkSheetPage() {
   const { user } = useAuth()
@@ -128,6 +138,18 @@ export function WorkSheetPage() {
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])
+  // Филтър по отметъчните колони: field → 'unchecked' (какво остава) | 'checked'
+  const [checkFilters, setCheckFilters] = useState<Record<string, 'checked' | 'unchecked'>>({})
+
+  function cycleCheckFilter(field: string) {
+    setCheckFilters(prev => {
+      const next = { ...prev }
+      if (!prev[field]) next[field] = 'unchecked'       // първи клик: какво остава
+      else if (prev[field] === 'unchecked') next[field] = 'checked'
+      else delete next[field]
+      return next
+    })
+  }
   const [accountantFilter, setAccountantFilter] = useState<string>('')
   const [respFilter, setRespFilter] = useState<string>('')
   const [onlyMissingSubmitted, setOnlyMissingSubmitted] = useState(false)
@@ -152,8 +174,10 @@ export function WorkSheetPage() {
     const statusColLocal = columns.find(c => c.name === 'Статус')
     const localCellIdx = buildCellIndex(cells)
     const localDropdownIdx = buildDropdownIndex(dropdowns)
+    // „Без ДДС" фирмите също получават месечен ред — имат чл. 55, авансови
+    // вноски и т.н. Скрити (без ред) остават само „Без дейност".
     const activeIds = clients
-      .filter(c => !isHiddenStatus(resolveDropdownText(c.id, statusColLocal, localCellIdx, localDropdownIdx)))
+      .filter(c => !isNoActivityStatus(resolveDropdownText(c.id, statusColLocal, localCellIdx, localDropdownIdx)))
       .map(c => c.id)
     if (activeIds.length === 0) return
     void ensureMonthlyRows(activeIds, year, month, user?.id)
@@ -219,6 +243,7 @@ export function WorkSheetPage() {
   const accountantCol = useMemo(() => columns.find(c => c.name === 'Счетоводител'), [columns])
   const respCol = useMemo(() => columns.find(c => c.name === 'Отговорник'), [columns])
   // Master ДА/НЕ флагове → месечни чекбоксове
+  const trzStatusCol = useMemo(() => findTrzColumns(columns).status, [columns])
   const akcizCol = useMemo(() => columns.find(c => c.name === 'АКЦИЗ'), [columns])
   const statistikaCol = useMemo(() => columns.find(c => c.name === 'СТАТИСТИКА'), [columns])
   const intrastatCol = useMemo(() => columns.find(c => c.name === 'Интрастат'), [columns])
@@ -245,12 +270,12 @@ export function WorkSheetPage() {
     return ''
   }
 
-  // Списък със стойности на статуса (за филтър). „Без дейност" и „Без ДДС"
-  // не се показват — тези клиенти изобщо не участват в Работен лист.
+  // Списък със стойности на статуса (за филтър). Скрит е само „Без дейност"
+  // (тези клиенти не участват); „Без ДДС" е нормален филтър-чип.
   const statusOptions = useMemo(() => {
     if (!statusCol) return [] as string[]
     return [...new Set(dropdowns.filter(d => d.column_id === statusCol.id).map(d => d.value))]
-      .filter(v => !isHiddenStatus(v))
+      .filter(v => !isNoActivityStatus(v))
   }, [dropdowns, statusCol])
 
   // Подготвени клиенти за render: name, status, monthly row
@@ -258,6 +283,7 @@ export function WorkSheetPage() {
     client: Client; name: string; status: string; accountant: string; responsible: string
     advance: string; art55: string
     akciz: string; statistika: string; intrastat: string; siddo: string; oss: string
+    trzActive: boolean
     work: MonthlyWork | undefined
   }
   const tableRows: Row[] = useMemo(() => {
@@ -275,11 +301,14 @@ export function WorkSheetPage() {
         intrastat: resolveDropdownText(c.id, intrastatCol, cellIdx, dropdownIdx),
         siddo: resolveDropdownText(c.id, siddoCol, cellIdx, dropdownIdx),
         oss: resolveDropdownText(c.id, ossCol, cellIdx, dropdownIdx),
+        // Заплати е активна само при „ТРЗ Статус" = Активна (точно равенство —
+        // „НЕ Активна" също съдържа думата „активна").
+        trzActive: resolveDropdownText(c.id, trzStatusCol, cellIdx, dropdownIdx).trim().toUpperCase() === TRZ_ACTIVE.toUpperCase(),
         work: rows.get(c.id),
       }))
-      .filter(r => !isHiddenStatus(r.status))
+      .filter(r => !isNoActivityStatus(r.status))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, respCol, akcizCol, statistikaCol, intrastatCol, siddoCol, ossCol, rows])
+  }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, respCol, akcizCol, statistikaCol, intrastatCol, siddoCol, ossCol, trzStatusCol, rows])
 
   // Списък със счетоводители за филтъра (само присъстващите в таблицата).
   const accountantOptions = useMemo(() => {
@@ -297,18 +326,33 @@ export function WorkSheetPage() {
       if (statusFilter.length > 0 && !statusFilter.includes(r.status)) return false
       if (accountantFilter && r.accountant !== accountantFilter) return false
       if (respFilter && r.responsible !== respFilter) return false
-      if (onlyMissingSubmitted && r.work?.submitted_at) return false
+      // „Без подадено" = чакащи подаване на ДДС; без-ддс фирмите не чакат.
+      if (onlyMissingSubmitted && (r.work?.submitted_at || isNoVatStatus(r.status))) return false
+      // Филтри по отметъчните колони (комбинират се: И между колоните).
+      for (const [field, mode] of Object.entries(checkFilters)) {
+        // Заплати: фирмите без активно ТРЗ нямат отметка изобщо —
+        // не са нито „остава", нито „готово".
+        if (field === 'salaries_done' && !r.trzActive) return false
+        const checked = !!r.work?.[field as keyof MonthlyWork]
+        if (mode === 'unchecked' && checked) return false
+        if (mode === 'checked' && !checked) return false
+      }
       if (s && !r.name.toLowerCase().includes(s)) return false
       return true
     })
-  }, [tableRows, search, statusFilter, accountantFilter, respFilter, onlyMissingSubmitted])
+  }, [tableRows, search, statusFilter, accountantFilter, respFilter, onlyMissingSubmitted, checkFilters])
 
   const stats = useMemo(() => {
     let totalResult = 0
     let submitted = 0, advDue = 0, advDone = 0, art55Due = 0, art55Done = 0
+    // „Подадени" се смята само върху фирмите С ДДС — без-ддс не подават.
+    let vatTotal = 0
     filteredRows.forEach(r => {
       if (r.work?.result_amount) totalResult += r.work.result_amount
-      if (r.work?.submitted_at) submitted++
+      if (!isNoVatStatus(r.status)) {
+        vatTotal++
+        if (r.work?.submitted_at) submitted++
+      }
       if (advanceRelevance(r.advance, month) === 'due') {
         advDue++
         if ((r.work?.advance_payment_amount ?? 0) > 0) advDone++
@@ -318,7 +362,7 @@ export function WorkSheetPage() {
         if ((art55Entries.get(r.client.id)?.length ?? 0) > 0) art55Done++
       }
     })
-    return { totalResult, submitted, advDue, advDone, art55Due, art55Done, total: filteredRows.length }
+    return { totalResult, submitted, advDue, advDone, art55Due, art55Done, total: vatTotal }
   }, [filteredRows, month, art55Entries])
 
   function changeMonth(delta: number) {
@@ -498,8 +542,6 @@ export function WorkSheetPage() {
             <Loader2 className="h-4 w-4 animate-spin" />
             Зареждане...
           </div>
-        ) : filteredRows.length === 0 ? (
-          <div className="p-10 text-center text-muted-foreground">Няма съвпадения</div>
         ) : (
           <table className="w-full border-collapse min-w-[2050px]">
             <thead className="bg-navy text-white sticky top-0 z-30">
@@ -513,10 +555,21 @@ export function WorkSheetPage() {
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Бележки</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="Авансова вноска корпоративен данък">Аванс. вн.</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="Декларация чл. 55 ЗДДФЛ">Чл. 55</th>
-                <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="Последна проверка, че всичко е наред — след нея месецът може да се закрие">Проверено</th>
-                <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Амор</th>
-                <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Банка</th>
-                <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Заплати</th>
+                {/* Отметъчните колони: клик на заглавието цикли филтъра
+                    всички → ☐ само без отметка → ☑ само с отметка. */}
+                {CHECK_COLUMNS.map(({ field, label, title }) => {
+                  const mode = checkFilters[field]
+                  return (
+                    <th
+                      key={field}
+                      onClick={() => cycleCheckFilter(field)}
+                      className={`px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap cursor-pointer select-none hover:bg-white/10 ${mode ? 'bg-white/15' : ''}`}
+                      title={`${title ?? label} — клик: всички → само без отметка → само с отметка`}
+                    >
+                      {label}{mode === 'unchecked' ? ' ☐' : mode === 'checked' ? ' ☑' : ''}
+                    </th>
+                  )
+                })}
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">АКЦИЗ</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Статист.</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Интрастат</th>
@@ -526,9 +579,22 @@ export function WorkSheetPage() {
               </tr>
             </thead>
             <tbody>
+              {/* Празният резултат е РЕД, не замества таблицата — иначе
+                  хедърът с кликаемите филтри изчезва и няма как да се
+                  изчистят (бъг: „не мога да се върна без рефреш"). */}
+              {filteredRows.length === 0 && (
+                <tr>
+                  <td colSpan={19} className="p-10 text-center text-muted-foreground">
+                    Няма съвпадения — разхлаби филтрите от заглавията на колоните или лентата горе.
+                  </td>
+                </tr>
+              )}
               {filteredRows.map((row, i) => {
                 const w = row.work
                 const isSaving = savingFor.has(row.client.id)
+                // „Без ДДС" фирма: ДДС полетата (Резултат, Подадено на,
+                // Уведомени) са неактивни; останалите колони работят нормално.
+                const noVat = isNoVatStatus(row.status)
                 // „Подадено на" има стойност → ДДС-то е подадено → редът се
                 // оцветява леко в зелено за бърз scan кои са приключени.
                 // Запазваме редуването четен/нечетен и за done, и за not-done.
@@ -550,29 +616,35 @@ export function WorkSheetPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-0.5 text-right">
-                      <NumberCell
-                        value={w?.result_amount ?? null}
-                        disabled={!canEdit}
-                        onSave={v => patchRow(row.client.id, { result_amount: v })}
-                      />
+                    <td className={`px-2 py-0.5 text-right ${noVat ? 'bg-muted/40' : ''}`} title={noVat ? 'Фирмата е без ДДС' : undefined}>
+                      {noVat ? <span className="text-muted-foreground/40 text-xs pr-1">без ДДС</span> : (
+                        <NumberCell
+                          value={w?.result_amount ?? null}
+                          disabled={!canEdit}
+                          onSave={v => patchRow(row.client.id, { result_amount: v })}
+                        />
+                      )}
                     </td>
-                    <td className="px-2 py-0.5">
-                      <input type="date" disabled={!canEdit}
-                        value={w?.submitted_at ?? ''}
-                        onChange={e => patchRow(row.client.id, { submitted_at: e.target.value || null })}
-                        // Когато няма стойност — скриваме „дд.мм.гггг г." (text-transparent),
-                        // иконата на календара остава видима и кликаема.
-                        className={`h-7 px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-32 ${!w?.submitted_at ? 'text-transparent' : ''}`} />
+                    <td className={`px-2 py-0.5 ${noVat ? 'bg-muted/40' : ''}`} title={noVat ? 'Фирмата е без ДДС' : undefined}>
+                      {noVat ? null : (
+                        <input type="date" disabled={!canEdit}
+                          value={w?.submitted_at ?? ''}
+                          onChange={e => patchRow(row.client.id, { submitted_at: e.target.value || null })}
+                          // Когато няма стойност — скриваме „дд.мм.гггг г." (text-transparent),
+                          // иконата на календара остава видима и кликаема.
+                          className={`h-7 px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-32 ${!w?.submitted_at ? 'text-transparent' : ''}`} />
+                      )}
                     </td>
-                    <td className="px-2 py-0.5">
-                      <select disabled={!canEdit}
-                        value={w?.notification_method ?? ''}
-                        onChange={e => patchRow(row.client.id, { notification_method: e.target.value || null })}
-                        className="h-7 px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent">
-                        <option value=""></option>
-                        {NOTIFICATION_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
+                    <td className={`px-2 py-0.5 ${noVat ? 'bg-muted/40' : ''}`} title={noVat ? 'Фирмата е без ДДС' : undefined}>
+                      {noVat ? null : (
+                        <select disabled={!canEdit}
+                          value={w?.notification_method ?? ''}
+                          onChange={e => patchRow(row.client.id, { notification_method: e.target.value || null })}
+                          className="h-7 px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent">
+                          <option value=""></option>
+                          {NOTIFICATION_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      )}
                     </td>
                     <td className="px-2 py-0.5">
                       <TextCell
@@ -596,7 +668,7 @@ export function WorkSheetPage() {
                       entries={art55Entries.get(row.client.id) ?? []}
                       onOpen={() => setArt55ModalFor({ client: row.client, name: row.name })}
                     />
-                    {(['vat_accounted', 'amortization_done', 'bank_done', 'salaries_done'] as const).map(field => (
+                    {(['vat_accounted', 'amortization_done', 'bank_done'] as const).map(field => (
                       <td key={field} className="px-2 py-1.5 text-center">
                         <input type="checkbox" disabled={!canEdit}
                           checked={!!w?.[field]}
@@ -604,6 +676,18 @@ export function WorkSheetPage() {
                           className="h-4 w-4 cursor-pointer accent-emerald-600" />
                       </td>
                     ))}
+                    {/* Заплати — само за фирми с ТРЗ Статус „Активна";
+                        иначе „не", както АКЦИЗ/Статистика/Интрастат. */}
+                    {row.trzActive ? (
+                      <td className="px-2 py-1.5 text-center">
+                        <input type="checkbox" disabled={!canEdit}
+                          checked={!!w?.salaries_done}
+                          onChange={e => patchRow(row.client.id, { salaries_done: e.target.checked })}
+                          className="h-4 w-4 cursor-pointer accent-emerald-600" />
+                      </td>
+                    ) : (
+                      <td className="px-2 py-1.5 text-center text-[10px] text-muted-foreground/50" title="ТРЗ Статус: НЕ Активна">не</td>
+                    )}
                     <MasterFlagCell flag={row.akciz} checked={!!w?.akciz_done} disabled={!canEdit}
                       onChange={v => patchRow(row.client.id, { akciz_done: v })} />
                     <MasterFlagCell flag={row.statistika} checked={!!w?.statistika_done} disabled={!canEdit}
