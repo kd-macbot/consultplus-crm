@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Archive, KanbanSquare, List, Plus, Search, Trash2, X, CalendarDays, User as UserIcon, ShieldAlert,
+  Phone, ExternalLink,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
@@ -448,6 +449,24 @@ function TaskCard({
       {task.description && (
         <div className="text-[11px] text-muted-foreground leading-tight mt-1 line-clamp-2">{task.description}</div>
       )}
+      {/* Детайли по ревизията: инспектор / телефон / документи */}
+      {(task.kind ?? 'task') === 'inspection' && (task.inspector_name || task.inspector_phone || task.documents_url) && (
+        <div className="flex items-center gap-2.5 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
+          {task.inspector_name && (
+            <span className="inline-flex items-center gap-1"><UserIcon className="h-3 w-3" />{task.inspector_name}</span>
+          )}
+          {task.inspector_phone && (
+            <a href={`tel:${task.inspector_phone}`} onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-foreground">
+              <Phone className="h-3 w-3" />{task.inspector_phone}
+            </a>
+          )}
+          {task.documents_url && (
+            <a href={task.documents_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 text-primary hover:underline">
+              <ExternalLink className="h-3 w-3" />документи
+            </a>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         {/* Клик на статус баджа → мини-меню (fallback за телефон, без drag). */}
         <div className="relative">
@@ -546,7 +565,8 @@ function TaskList({
           <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider">{isInspections ? 'Проверка' : 'Задача'}</th>
           <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[140px]">{isInspections ? 'Отговорник' : 'Изпълнител'}</th>
           <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[140px]">Клиент</th>
-          <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[100px]">Срок</th>
+          {isInspections && <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[130px]">Инспектор</th>}
+          <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[100px]">{isInspections ? 'Предаване' : 'Срок'}</th>
           {archive && <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[100px]">Приключена</th>}
         </tr>
       </thead>
@@ -578,7 +598,15 @@ function TaskList({
                 </td>
               )}
               <td className="px-3 py-1.5 cursor-pointer" onClick={() => onOpen(t)}>
-                <div className="font-medium text-foreground">{t.title}</div>
+                <div className="font-medium text-foreground inline-flex items-center gap-1.5">
+                  {t.title}
+                  {t.documents_url && (
+                    <a href={t.documents_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                      title="Линк към документите" className="text-primary hover:opacity-70">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                </div>
                 {t.description && <div className="text-[11px] text-muted-foreground line-clamp-1">{t.description}</div>}
               </td>
               <td className="px-3 py-1.5 text-muted-foreground">
@@ -592,6 +620,20 @@ function TaskList({
               <td className="px-3 py-1.5 text-muted-foreground">
                 {t.client_id ? nameByClient.get(t.client_id) ?? '—' : <span className="text-muted-foreground/40">—</span>}
               </td>
+              {isInspections && (
+                <td className="px-3 py-1.5 text-muted-foreground">
+                  {t.inspector_name || t.inspector_phone ? (
+                    <div>
+                      {t.inspector_name && <div>{t.inspector_name}</div>}
+                      {t.inspector_phone && (
+                        <a href={`tel:${t.inspector_phone}`} className="text-[11px] inline-flex items-center gap-1 hover:text-foreground">
+                          <Phone className="h-3 w-3" />{t.inspector_phone}
+                        </a>
+                      )}
+                    </div>
+                  ) : <span className="text-muted-foreground/40">—</span>}
+                </td>
+              )}
               <td className={`px-3 py-1.5 ${overdue ? 'text-red-600 font-semibold' : 'text-muted-foreground'}`}>
                 {t.due_date ? formatDate(t.due_date) : <span className="text-muted-foreground/40">—</span>}
               </td>
@@ -629,6 +671,9 @@ function TaskModal({
   const [status, setStatus] = useState<TaskStatus>((existing?.status as TaskStatus) ?? 'todo')
   const [assignee, setAssignee] = useState(existing?.assignee_staff_id ?? '')
   const [inspectionType, setInspectionType] = useState<InspectionType>((existing?.inspection_type as InspectionType) ?? 'проверка')
+  const [inspectorName, setInspectorName] = useState(existing?.inspector_name ?? '')
+  const [inspectorPhone, setInspectorPhone] = useState(existing?.inspector_phone ?? '')
+  const [documentsUrl, setDocumentsUrl] = useState(existing?.documents_url ?? '')
   const [clientId, setClientId] = useState<string | null>(existing?.client_id ?? null)
   const [clientSearch, setClientSearch] = useState('')
   const [dueDate, setDueDate] = useState(existing?.due_date ?? '')
@@ -663,6 +708,9 @@ function TaskModal({
         description: description.trim() || null,
         status,
         inspection_type: isInspection ? inspectionType : null,
+        inspector_name: isInspection ? (inspectorName.trim() || null) : null,
+        inspector_phone: isInspection ? (inspectorPhone.trim() || null) : null,
+        documents_url: isInspection ? (documentsUrl.trim() || null) : null,
         assignee_staff_id: isInspection ? null : (assignee || null),
         client_id: clientId,
         due_date: dueDate || null,
@@ -766,7 +814,7 @@ function TaskModal({
               </div>
             )}
             <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Срок</label>
+              <label className="text-xs font-medium text-foreground block mb-1">{isInspection ? 'Срок за предаване' : 'Срок'}</label>
               <input
                 type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
                 className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
@@ -774,6 +822,38 @@ function TaskModal({
               {dueDate && <p className="text-[10px] text-muted-foreground mt-0.5">{formatDate(dueDate)}</p>}
             </div>
           </div>
+
+          {/* Детайли по ревизията: инспектор + телефон + линк към документите */}
+          {isInspection && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Инспектор</label>
+                  <input
+                    type="text" value={inspectorName} onChange={e => setInspectorName(e.target.value)}
+                    placeholder="име на инспектора"
+                    className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Телефон</label>
+                  <input
+                    type="tel" value={inspectorPhone} onChange={e => setInspectorPhone(e.target.value)}
+                    placeholder="за връзка"
+                    className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-foreground block mb-1">Линк към документите</label>
+                <input
+                  type="url" value={documentsUrl} onChange={e => setDocumentsUrl(e.target.value)}
+                  placeholder="https://... (папка/файл с документите)"
+                  className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
+                />
+              </div>
+            </>
+          )}
 
           <div>
             <label className="text-xs font-medium text-foreground block mb-1">{isInspection ? 'Фирма (задължително)' : 'Клиент (по желание)'}</label>
