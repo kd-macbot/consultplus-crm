@@ -661,6 +661,7 @@ export interface Task {
   inspection_type: InspectionType | string | null  // само за kind='inspection'
   inspector_name: string | null   // само за kind='inspection'
   inspector_phone: string | null  // само за kind='inspection'
+  inspector_email: string | null  // само за kind='inspection'
   documents_url: string | null    // само за kind='inspection' — линк към документите
   assignee_staff_id: string | null
   client_id: string | null
