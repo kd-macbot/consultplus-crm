@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Archive, KanbanSquare, List, Plus, Search, Trash2, X, CalendarDays, User as UserIcon, ShieldAlert,
-  Phone, ExternalLink,
+  Phone, Mail, ExternalLink,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
@@ -450,7 +450,7 @@ function TaskCard({
         <div className="text-[11px] text-muted-foreground leading-tight mt-1 line-clamp-2">{task.description}</div>
       )}
       {/* Детайли по ревизията: инспектор / телефон / документи */}
-      {(task.kind ?? 'task') === 'inspection' && (task.inspector_name || task.inspector_phone || task.documents_url) && (
+      {(task.kind ?? 'task') === 'inspection' && (task.inspector_name || task.inspector_phone || task.inspector_email || task.documents_url) && (
         <div className="flex items-center gap-2.5 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
           {task.inspector_name && (
             <span className="inline-flex items-center gap-1"><UserIcon className="h-3 w-3" />{task.inspector_name}</span>
@@ -458,6 +458,11 @@ function TaskCard({
           {task.inspector_phone && (
             <a href={`tel:${task.inspector_phone}`} onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-foreground">
               <Phone className="h-3 w-3" />{task.inspector_phone}
+            </a>
+          )}
+          {task.inspector_email && (
+            <a href={`mailto:${task.inspector_email}`} onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-foreground">
+              <Mail className="h-3 w-3" />{task.inspector_email}
             </a>
           )}
           {task.documents_url && (
@@ -622,12 +627,17 @@ function TaskList({
               </td>
               {isInspections && (
                 <td className="px-3 py-1.5 text-muted-foreground">
-                  {t.inspector_name || t.inspector_phone ? (
+                  {t.inspector_name || t.inspector_phone || t.inspector_email ? (
                     <div>
                       {t.inspector_name && <div>{t.inspector_name}</div>}
                       {t.inspector_phone && (
                         <a href={`tel:${t.inspector_phone}`} className="text-[11px] inline-flex items-center gap-1 hover:text-foreground">
                           <Phone className="h-3 w-3" />{t.inspector_phone}
+                        </a>
+                      )}
+                      {t.inspector_email && (
+                        <a href={`mailto:${t.inspector_email}`} className="text-[11px] inline-flex items-center gap-1 hover:text-foreground">
+                          <Mail className="h-3 w-3" />{t.inspector_email}
                         </a>
                       )}
                     </div>
@@ -673,6 +683,7 @@ function TaskModal({
   const [inspectionType, setInspectionType] = useState<InspectionType>((existing?.inspection_type as InspectionType) ?? 'проверка')
   const [inspectorName, setInspectorName] = useState(existing?.inspector_name ?? '')
   const [inspectorPhone, setInspectorPhone] = useState(existing?.inspector_phone ?? '')
+  const [inspectorEmail, setInspectorEmail] = useState(existing?.inspector_email ?? '')
   const [documentsUrl, setDocumentsUrl] = useState(existing?.documents_url ?? '')
   const [clientId, setClientId] = useState<string | null>(existing?.client_id ?? null)
   const [clientSearch, setClientSearch] = useState('')
@@ -710,6 +721,7 @@ function TaskModal({
         inspection_type: isInspection ? inspectionType : null,
         inspector_name: isInspection ? (inspectorName.trim() || null) : null,
         inspector_phone: isInspection ? (inspectorPhone.trim() || null) : null,
+        inspector_email: isInspection ? (inspectorEmail.trim() || null) : null,
         documents_url: isInspection ? (documentsUrl.trim() || null) : null,
         assignee_staff_id: isInspection ? null : (assignee || null),
         client_id: clientId,
@@ -843,6 +855,14 @@ function TaskModal({
                     className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-foreground block mb-1">Email</label>
+                <input
+                  type="email" value={inspectorEmail} onChange={e => setInspectorEmail(e.target.value)}
+                  placeholder="email на инспектора"
+                  className="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none"
+                />
               </div>
               <div>
                 <label className="text-xs font-medium text-foreground block mb-1">Линк към документите</label>
