@@ -11,6 +11,7 @@ import { Users, Euro, CheckCircle2, TrendingUp, TrendingDown, Wallet, BookUser, 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn, formatCurrency, MONTH_NAMES, previousMonth } from '@/lib/utils'
 import { TRZ_ACTIVE, findTrzColumns, computeTrzProgress } from '../lib/trz'
+import { MyTasksCard, TeamTasksCards } from '../components/dashboard/TasksStats'
 
 export function Dashboard() {
   const { user } = useAuth()
@@ -341,6 +342,11 @@ export function Dashboard() {
         <p className="text-sm text-muted-foreground mt-1">{user ? roleLabel[user.role] : ''}</p>
       </div>
 
+      {/* Моите задачи + екипна статистика — за manager/employee тук горе,
+          над работните листове (за админа са по-долу, под главните редове) */}
+      {!isAdmin && <MyTasksCard />}
+      {user?.role === 'manager' && <TeamTasksCards />}
+
       {/* Работни листове — за админ са най-отдолу, за останалите тук горе */}
       {!isAdmin && worksheetSection}
 
@@ -548,6 +554,11 @@ export function Dashboard() {
           </Card>
         </>
       )}
+
+      {/* За админа: Моите задачи + екипната статистика идват под главните
+          редове, точно над работните листове */}
+      {isAdmin && <MyTasksCard />}
+      {isAdmin && <TeamTasksCards />}
 
       {/* За админа работните листове са най-отдолу, под другите карти */}
       {isAdmin && worksheetSection}
