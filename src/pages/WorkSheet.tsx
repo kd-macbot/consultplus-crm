@@ -19,7 +19,7 @@ import {
   buildCellIndex, buildDropdownIndex, clientDisplayName,
   resolveDropdownText, cellKey,
 } from '../lib/tableIndices'
-import { statusBadgeClass, isHiddenStatus } from '../lib/statusBadge'
+import { statusBadgeClass, isNoActivityStatus, isNoVatStatus } from '../lib/statusBadge'
 import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
@@ -152,8 +152,10 @@ export function WorkSheetPage() {
     const statusColLocal = columns.find(c => c.name === 'Статус')
     const localCellIdx = buildCellIndex(cells)
     const localDropdownIdx = buildDropdownIndex(dropdowns)
+    // „Без ДДС" фирмите също получават месечен ред — имат чл. 55, авансови
+    // вноски и т.н. Скрити (без ред) остават само „Без дейност".
     const activeIds = clients
-      .filter(c => !isHiddenStatus(resolveDropdownText(c.id, statusColLocal, localCellIdx, localDropdownIdx)))
+      .filter(c => !isNoActivityStatus(resolveDropdownText(c.id, statusColLocal, localCellIdx, localDropdownIdx)))
       .map(c => c.id)
     if (activeIds.length === 0) return
     void ensureMonthlyRows(activeIds, year, month, user?.id)
@@ -245,12 +247,12 @@ export function WorkSheetPage() {
     return ''
   }
 
-  // Списък със стойности на статуса (за филтър). „Без дейност" и „Без ДДС"
-  // не се показват — тези клиенти изобщо не участват в Работен лист.
+  // Списък със стойности на статуса (за филтър). Скрит е само „Без дейност"
+  // (тези клиенти не участват); „Без ДДС" е нормален филтър-чип.
   const statusOptions = useMemo(() => {
     if (!statusCol) return [] as string[]
     return [...new Set(dropdowns.filter(d => d.column_id === statusCol.id).map(d => d.value))]
-      .filter(v => !isHiddenStatus(v))
+      .filter(v => !isNoActivityStatus(v))
   }, [dropdowns, statusCol])
 
   // Подготвени клиенти за render: name, status, monthly row
@@ -277,7 +279,7 @@ export function WorkSheetPage() {
         oss: resolveDropdownText(c.id, ossCol, cellIdx, dropdownIdx),
         work: rows.get(c.id),
       }))
-      .filter(r => !isHiddenStatus(r.status))
+      .filter(r => !isNoActivityStatus(r.status))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
   }, [clients, columns, cellIdx, dropdownIdx, statusCol, advanceCol, art55Col, accountantCol, respCol, akcizCol, statistikaCol, intrastatCol, siddoCol, ossCol, rows])
 
@@ -297,7 +299,8 @@ export function WorkSheetPage() {
       if (statusFilter.length > 0 && !statusFilter.includes(r.status)) return false
       if (accountantFilter && r.accountant !== accountantFilter) return false
       if (respFilter && r.responsible !== respFilter) return false
-      if (onlyMissingSubmitted && r.work?.submitted_at) return false
+      // „Без подадено" = чакащи подаване на ДДС; без-ддс фирмите не чакат.
+      if (onlyMissingSubmitted && (r.work?.submitted_at || isNoVatStatus(r.status))) return false
       if (s && !r.name.toLowerCase().includes(s)) return false
       return true
     })
@@ -306,9 +309,14 @@ export function WorkSheetPage() {
   const stats = useMemo(() => {
     let totalResult = 0
     let submitted = 0, advDue = 0, advDone = 0, art55Due = 0, art55Done = 0
+    // „Подадени" се смята само върху фирмите С ДДС — без-ддс не подават.
+    let vatTotal = 0
     filteredRows.forEach(r => {
       if (r.work?.result_amount) totalResult += r.work.result_amount
-      if (r.work?.submitted_at) submitted++
+      if (!isNoVatStatus(r.status)) {
+        vatTotal++
+        if (r.work?.submitted_at) submitted++
+      }
       if (advanceRelevance(r.advance, month) === 'due') {
         advDue++
         if ((r.work?.advance_payment_amount ?? 0) > 0) advDone++
@@ -318,7 +326,7 @@ export function WorkSheetPage() {
         if ((art55Entries.get(r.client.id)?.length ?? 0) > 0) art55Done++
       }
     })
-    return { totalResult, submitted, advDue, advDone, art55Due, art55Done, total: filteredRows.length }
+    return { totalResult, submitted, advDue, advDone, art55Due, art55Done, total: vatTotal }
   }, [filteredRows, month, art55Entries])
 
   function changeMonth(delta: number) {
@@ -529,6 +537,9 @@ export function WorkSheetPage() {
               {filteredRows.map((row, i) => {
                 const w = row.work
                 const isSaving = savingFor.has(row.client.id)
+                // „Без ДДС" фирма: ДДС полетата (Резултат, Подадено на,
+                // Уведомени) са неактивни; останалите колони работят нормално.
+                const noVat = isNoVatStatus(row.status)
                 // „Подадено на" има стойност → ДДС-то е подадено → редът се
                 // оцветява леко в зелено за бърз scan кои са приключени.
                 // Запазваме редуването четен/нечетен и за done, и за not-done.
@@ -550,29 +561,35 @@ export function WorkSheetPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-0.5 text-right">
-                      <NumberCell
-                        value={w?.result_amount ?? null}
-                        disabled={!canEdit}
-                        onSave={v => patchRow(row.client.id, { result_amount: v })}
-                      />
+                    <td className={`px-2 py-0.5 text-right ${noVat ? 'bg-muted/40' : ''}`} title={noVat ? 'Фирмата е без ДДС' : undefined}>
+                      {noVat ? <span className="text-muted-foreground/40 text-xs pr-1">без ДДС</span> : (
+                        <NumberCell
+                          value={w?.result_amount ?? null}
+                          disabled={!canEdit}
+                          onSave={v => patchRow(row.client.id, { result_amount: v })}
+                        />
+                      )}
                     </td>
-                    <td className="px-2 py-0.5">
-                      <input type="date" disabled={!canEdit}
-                        value={w?.submitted_at ?? ''}
-                        onChange={e => patchRow(row.client.id, { submitted_at: e.target.value || null })}
-                        // Когато няма стойност — скриваме „дд.мм.гггг г." (text-transparent),
-                        // иконата на календара остава видима и кликаема.
-                        className={`h-7 px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-32 ${!w?.submitted_at ? 'text-transparent' : ''}`} />
+                    <td className={`px-2 py-0.5 ${noVat ? 'bg-muted/40' : ''}`} title={noVat ? 'Фирмата е без ДДС' : undefined}>
+                      {noVat ? null : (
+                        <input type="date" disabled={!canEdit}
+                          value={w?.submitted_at ?? ''}
+                          onChange={e => patchRow(row.client.id, { submitted_at: e.target.value || null })}
+                          // Когато няма стойност — скриваме „дд.мм.гггг г." (text-transparent),
+                          // иконата на календара остава видима и кликаема.
+                          className={`h-7 px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent w-32 ${!w?.submitted_at ? 'text-transparent' : ''}`} />
+                      )}
                     </td>
-                    <td className="px-2 py-0.5">
-                      <select disabled={!canEdit}
-                        value={w?.notification_method ?? ''}
-                        onChange={e => patchRow(row.client.id, { notification_method: e.target.value || null })}
-                        className="h-7 px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent">
-                        <option value=""></option>
-                        {NOTIFICATION_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
+                    <td className={`px-2 py-0.5 ${noVat ? 'bg-muted/40' : ''}`} title={noVat ? 'Фирмата е без ДДС' : undefined}>
+                      {noVat ? null : (
+                        <select disabled={!canEdit}
+                          value={w?.notification_method ?? ''}
+                          onChange={e => patchRow(row.client.id, { notification_method: e.target.value || null })}
+                          className="h-7 px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent">
+                          <option value=""></option>
+                          {NOTIFICATION_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      )}
                     </td>
                     <td className="px-2 py-0.5">
                       <TextCell
