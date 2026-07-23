@@ -1391,7 +1391,7 @@ export async function getTasks(): Promise<Task[]> {
   return withRetry(async () => {
     const { data, error } = await supabase
       .from('crm_tasks')
-      .select('id,title,description,status,kind,inspection_type,assignee_staff_id,client_id,due_date,position,created_by,created_at,updated_at')
+      .select('id,title,description,status,kind,inspection_type,inspector_name,inspector_phone,documents_url,assignee_staff_id,client_id,due_date,position,created_by,created_at,updated_at')
       .order('position')
     if (error) throw error
     return (data ?? []) as Task[]
