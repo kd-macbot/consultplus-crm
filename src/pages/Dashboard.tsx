@@ -342,11 +342,10 @@ export function Dashboard() {
         <p className="text-sm text-muted-foreground mt-1">{user ? roleLabel[user.role] : ''}</p>
       </div>
 
-      {/* Моите задачи — за всички роли; изчезва, ако нямаш нищо отворено */}
-      <MyTasksCard />
-
-      {/* Екипна статистика Задачи/Ревизии — само admin + manager */}
-      {(isAdmin || user?.role === 'manager') && <TeamTasksCards />}
+      {/* Моите задачи + екипна статистика — за manager/employee тук горе,
+          над работните листове (за админа са по-долу, под главните редове) */}
+      {!isAdmin && <MyTasksCard />}
+      {user?.role === 'manager' && <TeamTasksCards />}
 
       {/* Работни листове — за админ са най-отдолу, за останалите тук горе */}
       {!isAdmin && worksheetSection}
@@ -555,6 +554,11 @@ export function Dashboard() {
           </Card>
         </>
       )}
+
+      {/* За админа: Моите задачи + екипната статистика идват под главните
+          редове, точно над работните листове */}
+      {isAdmin && <MyTasksCard />}
+      {isAdmin && <TeamTasksCards />}
 
       {/* За админа работните листове са най-отдолу, под другите карти */}
       {isAdmin && worksheetSection}

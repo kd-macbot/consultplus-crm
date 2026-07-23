@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
 import { KanbanSquare, ShieldAlert, CalendarDays, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useClients, useColumns, useCellValues, useDropdownOptions, useStaff, useTasks } from '../../lib/queries'
@@ -18,8 +17,6 @@ import { formatDate, namesMatch } from '../../lib/utils'
 // Чисто четене от споделения кеш — без собствени заявки освен useTasks.
 // ============================================================
 
-const KIND_KEY = 'tasks-kind'  // същият ключ като Tasks.tsx — определя активния таб
-
 function todayIso(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -27,19 +24,6 @@ function todayIso(): string {
 
 function daysUntil(dateIso: string): number {
   return Math.round((new Date(dateIso).getTime() - new Date(todayIso()).getTime()) / 86_400_000)
-}
-
-/** Линк към Задачи/Проверки — предварително сменя таба (localStorage). */
-function TasksLink({ kind, children, className }: { kind: 'task' | 'inspection'; children: React.ReactNode; className?: string }) {
-  return (
-    <Link
-      to="/tasks"
-      onClick={() => { try { localStorage.setItem(KIND_KEY, kind) } catch { /* noop */ } }}
-      className={className ?? 'hover:underline'}
-    >
-      {children}
-    </Link>
-  )
 }
 
 function DueBadge({ due }: { due: string }) {
@@ -154,9 +138,9 @@ export function MyTasksCard() {
           Моите задачи
         </CardTitle>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <TasksLink kind="task">задачи: <strong className="text-foreground">{myTasks.length}</strong></TasksLink>
+          <span>задачи: <strong className="text-foreground">{myTasks.length}</strong></span>
           {myInspections.length > 0 && (
-            <TasksLink kind="inspection">проверки: <strong className="text-foreground">{myInspections.length}</strong></TasksLink>
+            <span>проверки: <strong className="text-foreground">{myInspections.length}</strong></span>
           )}
         </div>
       </CardHeader>
@@ -165,12 +149,12 @@ export function MyTasksCard() {
         <div className="divide-y divide-border">
           {urgent.map(t => (
             <div key={t.id} className="py-1.5 flex items-center justify-between gap-3 text-sm">
-              <TasksLink kind={(t.kind ?? 'task') === 'inspection' ? 'inspection' : 'task'} className="truncate hover:underline">
+              <div className="truncate">
                 <span className="font-medium text-foreground">{t.title}</span>
                 {t.client_id && nameByClient.get(t.client_id) && (
                   <span className="text-muted-foreground text-xs ml-1.5">{nameByClient.get(t.client_id)}</span>
                 )}
-              </TasksLink>
+              </div>
               {t.due_date ? <DueBadge due={t.due_date} /> : <span className="text-xs text-muted-foreground/40">без срок</span>}
             </div>
           ))}
@@ -235,7 +219,7 @@ export function TeamTasksCards() {
         <CardHeader className="flex flex-row items-center justify-between px-5 pt-5 pb-3">
           <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-muted-foreground" />
-            <TasksLink kind="inspection" className="hover:underline">Ревизии и проверки</TasksLink>
+            Ревизии и проверки
           </CardTitle>
           <span className="text-xs text-muted-foreground">активни: <strong className="text-foreground">{openInspections.length}</strong></span>
         </CardHeader>
@@ -258,10 +242,10 @@ export function TeamTasksCards() {
               <div className="divide-y divide-border">
                 {upcoming.map(t => (
                   <div key={t.id} className="py-1.5 flex items-center justify-between gap-3 text-sm">
-                    <TasksLink kind="inspection" className="truncate hover:underline">
+                    <div className="truncate">
                       <span className="font-medium text-foreground">{t.client_id ? nameByClient.get(t.client_id) ?? t.title : t.title}</span>
                       <span className="text-muted-foreground text-xs ml-1.5">{INSPECTION_TYPE_LABELS[t.inspection_type as InspectionType] ?? t.inspection_type}</span>
-                    </TasksLink>
+                    </div>
                     <DueBadge due={t.due_date!} />
                   </div>
                 ))}
@@ -276,7 +260,7 @@ export function TeamTasksCards() {
         <CardHeader className="flex flex-row items-center justify-between px-5 pt-5 pb-3">
           <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
             <KanbanSquare className="h-4 w-4 text-muted-foreground" />
-            <TasksLink kind="task" className="hover:underline">Задачи (екип)</TasksLink>
+            Задачи (екип)
           </CardTitle>
           <span className="text-xs text-muted-foreground">
             отворени: <strong className="text-foreground">{openTasks.length}</strong>
@@ -294,12 +278,12 @@ export function TeamTasksCards() {
               <div className="divide-y divide-border">
                 {overdueTasks.map(t => (
                   <div key={t.id} className="py-1.5 flex items-center justify-between gap-3 text-sm">
-                    <TasksLink kind="task" className="truncate hover:underline">
+                    <div className="truncate">
                       <span className="font-medium text-foreground">{t.title}</span>
                       {t.assignee_staff_id && (
                         <span className="text-muted-foreground text-xs ml-1.5">{staffById.get(t.assignee_staff_id)}</span>
                       )}
-                    </TasksLink>
+                    </div>
                     <DueBadge due={t.due_date!} />
                   </div>
                 ))}
