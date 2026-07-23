@@ -533,8 +533,6 @@ export function WorkSheetPage() {
             <Loader2 className="h-4 w-4 animate-spin" />
             Зареждане...
           </div>
-        ) : filteredRows.length === 0 ? (
-          <div className="p-10 text-center text-muted-foreground">Няма съвпадения</div>
         ) : (
           <table className="w-full border-collapse min-w-[2050px]">
             <thead className="bg-navy text-white sticky top-0 z-30">
@@ -572,6 +570,16 @@ export function WorkSheetPage() {
               </tr>
             </thead>
             <tbody>
+              {/* Празният резултат е РЕД, не замества таблицата — иначе
+                  хедърът с кликаемите филтри изчезва и няма как да се
+                  изчистят (бъг: „не мога да се върна без рефреш"). */}
+              {filteredRows.length === 0 && (
+                <tr>
+                  <td colSpan={19} className="p-10 text-center text-muted-foreground">
+                    Няма съвпадения — разхлаби филтрите от заглавията на колоните или лентата горе.
+                  </td>
+                </tr>
+              )}
               {filteredRows.map((row, i) => {
                 const w = row.work
                 const isSaving = savingFor.has(row.client.id)
