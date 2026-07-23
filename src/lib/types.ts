@@ -659,9 +659,12 @@ export interface Task {
   status: TaskStatus | string
   kind: TaskKind | string
   inspection_type: InspectionType | string | null  // само за kind='inspection'
+  inspector_name: string | null   // само за kind='inspection'
+  inspector_phone: string | null  // само за kind='inspection'
+  documents_url: string | null    // само за kind='inspection' — линк към документите
   assignee_staff_id: string | null
   client_id: string | null
-  due_date: string | null  // ISO YYYY-MM-DD
+  due_date: string | null  // ISO YYYY-MM-DD; при ревизии = срок за предаване
   position: number
   created_by: string | null
   created_at: string

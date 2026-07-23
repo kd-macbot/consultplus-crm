@@ -1391,7 +1391,7 @@ export async function getTasks(): Promise<Task[]> {
   return withRetry(async () => {
     const { data, error } = await supabase
       .from('crm_tasks')
-      .select('id,title,description,status,kind,inspection_type,assignee_staff_id,client_id,due_date,position,created_by,created_at,updated_at')
+      .select('id,title,description,status,kind,inspection_type,inspector_name,inspector_phone,documents_url,assignee_staff_id,client_id,due_date,position,created_by,created_at,updated_at')
       .order('position')
     if (error) throw error
     return (data ?? []) as Task[]
@@ -1399,7 +1399,7 @@ export async function getTasks(): Promise<Task[]> {
 }
 
 export async function addTask(
-  patch: Pick<Task, 'title'> & Partial<Pick<Task, 'description' | 'status' | 'kind' | 'inspection_type' | 'assignee_staff_id' | 'client_id' | 'due_date'>>,
+  patch: Pick<Task, 'title'> & Partial<Pick<Task, 'description' | 'status' | 'kind' | 'inspection_type' | 'inspector_name' | 'inspector_phone' | 'documents_url' | 'assignee_staff_id' | 'client_id' | 'due_date'>>,
   createdBy?: string | null,
 ): Promise<Task> {
   return await trackSave((async () => {
@@ -1411,6 +1411,9 @@ export async function addTask(
         status: patch.status ?? 'todo',
         kind: patch.kind ?? 'task',
         inspection_type: patch.inspection_type ?? null,
+        inspector_name: patch.inspector_name ?? null,
+        inspector_phone: patch.inspector_phone ?? null,
+        documents_url: patch.documents_url ?? null,
         assignee_staff_id: patch.assignee_staff_id ?? null,
         client_id: patch.client_id ?? null,
         due_date: patch.due_date ?? null,
@@ -1426,7 +1429,7 @@ export async function addTask(
 
 export async function updateTask(
   id: string,
-  patch: Partial<Pick<Task, 'title' | 'description' | 'status' | 'inspection_type' | 'assignee_staff_id' | 'client_id' | 'due_date' | 'position'>>,
+  patch: Partial<Pick<Task, 'title' | 'description' | 'status' | 'inspection_type' | 'inspector_name' | 'inspector_phone' | 'documents_url' | 'assignee_staff_id' | 'client_id' | 'due_date' | 'position'>>,
 ): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase
