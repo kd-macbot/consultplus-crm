@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import logoNavy from '../../assets/brand/logo-navy.png'
+import logoWhite from '../../assets/brand/logo-white.png'
 import { useAuth } from '../../lib/auth'
 
 export function LoginPage() {
@@ -27,8 +29,10 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-light">
       <div className="bg-card rounded-lg shadow-lg p-8 w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-navy dark:text-foreground">Consult Plus</h1>
-          <p className="text-dark/60 mt-2">Система за управление на клиенти</p>
+          {/* Navy логото за светъл фон; в тъмна тема — бялото. */}
+          <img src={logoNavy} alt="Consult Plus" className="h-14 w-auto mx-auto dark:hidden" />
+          <img src={logoWhite} alt="Consult Plus" className="h-14 w-auto mx-auto hidden dark:block" />
+          <p className="text-dark/60 mt-3">Система за управление на клиенти</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
