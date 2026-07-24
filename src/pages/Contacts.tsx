@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/alert-dialog'
+import { usePersistentState } from '../lib/usePersistentState'
 
 interface ClientOption { id: string; name: string }
 
@@ -37,7 +38,7 @@ export function ContactsPage() {
   const [contacts, setContacts] = useState<ContactWithClient[]>([])
   const [clientOptions, setClientOptions] = useState<ClientOption[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = usePersistentState('contacts-search', '')
 
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)

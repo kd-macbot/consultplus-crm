@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/alert-dialog'
+import { usePersistentState } from '../lib/usePersistentState'
 
 const SUB_MARKER = '__sub__'
 
@@ -52,13 +53,13 @@ export function SubscriptionsPage() {
   const [editCell, setEditCell] = useState<{ clientId: string; columnId: string } | null>(null)
   const [showAddCol, setShowAddCol] = useState(false)
   const [confirmDeleteCol, setConfirmDeleteCol] = useState<Column | null>(null)
-  const [search, setSearch] = useState('')
-  const [colFilters, setColFilters] = useState<Record<string, string>>({})
-  const [statusFilter, setStatusFilter] = useState<string[]>([])
-  const [amountBucket, setAmountBucket] = useState<AmountBucket>('all')
-  const [tagFilter, setTagFilter] = useState<string[]>([])
+  const [search, setSearch] = usePersistentState('subs-search', '')
+  const [colFilters, setColFilters] = usePersistentState<Record<string, string>>('subs-cols', {})
+  const [statusFilter, setStatusFilter] = usePersistentState<string[]>('subs-status', [])
+  const [amountBucket, setAmountBucket] = usePersistentState<AmountBucket>('subs-bucket', 'all')
+  const [tagFilter, setTagFilter] = usePersistentState<string[]>('subs-tags', [])
   // Сортиране: клик на заглавие → asc → desc → без. key: '_name' | '_status' | column id
-  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null)
+  const [sort, setSort] = usePersistentState<{ key: string; dir: 'asc' | 'desc' } | null>('subs-sort', null)
   const [markedClients, setMarkedClients] = useState<Set<string>>(new Set())
 
   const isAdmin = user?.role === 'admin'

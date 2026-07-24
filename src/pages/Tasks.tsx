@@ -19,6 +19,7 @@ import {
 import { formatDate, namesMatch } from '../lib/utils'
 import { useMyStaff } from '../lib/useMyStaff'
 import { useRealtime } from '../lib/useRealtime'
+import { usePersistentState } from '../lib/usePersistentState'
 
 const VIEW_KEY = 'tasks-view'  // 'kanban' | 'list' — запомня се per браузър
 const KIND_KEY = 'tasks-kind'  // 'task' | 'inspection'
@@ -134,9 +135,9 @@ export function TasksPage() {
   // Проверки създават само admin и Тийм Лийд (основен или допълнителен отдел).
   const canCreate = !isInspections || isAdmin || inDept('Тийм Лийд')
 
-  const [search, setSearch] = useState('')
-  const [assigneeFilter, setAssigneeFilter] = useState('')
-  const [onlyMine, setOnlyMine] = useState(false)
+  const [search, setSearch] = usePersistentState('tasks-search', '')
+  const [assigneeFilter, setAssigneeFilter] = usePersistentState('tasks-assignee', '')
+  const [onlyMine, setOnlyMine] = usePersistentState('tasks-mine', false)
   const [showArchive, setShowArchive] = useState(false)
   const [modal, setModal] = useState<null | { existing?: Task }>(null)
 

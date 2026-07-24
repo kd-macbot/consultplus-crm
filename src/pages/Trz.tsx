@@ -22,6 +22,7 @@ import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { TRZ_ACTIVE, findTrzColumns } from '../lib/trz'
 import { useRealtime } from '../lib/useRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
+import { usePersistentState } from '../lib/usePersistentState'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -67,13 +68,13 @@ export function TrzPage() {
     return m
   }, [trzWorkQ.data, pending, year, month])
 
-  const [search, setSearch] = useState('')
-  const [formaFilter, setFormaFilter] = useState<string[]>([])
-  const [softwareFilter, setSoftwareFilter] = useState<string[]>([])
-  const [respFilter, setRespFilter] = useState('')
+  const [search, setSearch] = usePersistentState('trz-search', '')
+  const [formaFilter, setFormaFilter] = usePersistentState<string[]>('trz-forma', [])
+  const [softwareFilter, setSoftwareFilter] = usePersistentState<string[]>('trz-software', [])
+  const [respFilter, setRespFilter] = usePersistentState('trz-resp', '')
   const [respStaff, setRespStaff] = useState<string[]>([])
   // Филтри „без тикче" по трите статус полета — toggle всеки независимо.
-  const [missingFilter, setMissingFilter] = useState<{ salaries: boolean; insurance: boolean; payroll: boolean }>({
+  const [missingFilter, setMissingFilter] = usePersistentState<{ salaries: boolean; insurance: boolean; payroll: boolean }>('trz-missing', {
     salaries: false, insurance: false, payroll: false,
   })
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
