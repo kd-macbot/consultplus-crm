@@ -32,7 +32,7 @@ export function LoginPage() {
           {/* Navy логото за светъл фон; в тъмна тема — бялото. */}
           <img src={logoNavy} alt="Consult Plus" className="h-14 w-auto mx-auto dark:hidden" />
           <img src={logoWhite} alt="Consult Plus" className="h-14 w-auto mx-auto hidden dark:block" />
-          <p className="text-dark/60 mt-3">Система за управление на клиенти</p>
+          <p className="text-dark/60 mt-3">360° поглед върху клиентите и екипа</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

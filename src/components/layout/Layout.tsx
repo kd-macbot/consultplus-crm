@@ -195,7 +195,7 @@ export function Layout() {
           {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </Button>
         <img src={logoWhite} alt="Consult Plus" className="h-7 w-auto" />
-        <span className="ml-2 text-white/40 text-sm font-light">CRM</span>
+        <span className="ml-2 text-white/40 text-sm font-light">360</span>
       </div>
 
       {/* Mobile overlay */}
