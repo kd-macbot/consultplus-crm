@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import logoWhite from '../../assets/brand/logo-white.png'
 import { useAuth } from '../../lib/auth'
 import { usePaymentConfigs, usePaymentStatuses, useAbsences, useNews, useTasks } from '../../lib/queries'
 import { previousMonth } from '../../lib/utils'
@@ -193,8 +194,8 @@ export function Layout() {
         >
           {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </Button>
-        <span className="font-bold tracking-tight">Consult Plus</span>
-        <span className="ml-1 text-white/40 text-sm font-light">CRM</span>
+        <img src={logoWhite} alt="Consult Plus" className="h-7 w-auto" />
+        <span className="ml-2 text-white/40 text-sm font-light">360</span>
       </div>
 
       {/* Mobile overlay */}
@@ -213,15 +214,9 @@ export function Layout() {
         'transform transition-transform duration-200 ease-in-out',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       )}>
-        {/* Logo — desktop only */}
-        <div className="hidden md:flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
-          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
-            <span className="text-sm font-bold">C+</span>
-          </div>
-          <div>
-            <p className="font-bold text-sm leading-tight">Consult Plus</p>
-            <p className="text-[10px] text-white/40 leading-tight">CRM платформа</p>
-          </div>
+        {/* Logo — desktop only. Бялата версия за тъмния sidebar, центрирано. */}
+        <div className="hidden md:flex items-center justify-center px-4 py-5 border-b border-white/10">
+          <img src={logoWhite} alt="Consult Plus" className="h-9 w-auto" />
         </div>
 
         {/* Navigation */}
