@@ -25,6 +25,7 @@ import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
 import { MonthReviewersWidget } from '../components/worksheet/MonthReviewers'
+import { usePersistentState } from '../lib/usePersistentState'
 
 function formatCurrency(v: number | null): string {
   if (v == null) return ''
@@ -136,10 +137,10 @@ export function WorkSheetPage() {
   // ОСС: само за последния месец на тримесечието. Запазваме own state.
   const [ossPrior, setOssPrior] = useState<Map<string, number>>(new Map())
 
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string[]>([])
+  const [search, setSearch] = usePersistentState('ws-search', '')
+  const [statusFilter, setStatusFilter] = usePersistentState<string[]>('ws-status', [])
   // Филтър по отметъчните колони: field → 'unchecked' (какво остава) | 'checked'
-  const [checkFilters, setCheckFilters] = useState<Record<string, 'checked' | 'unchecked'>>({})
+  const [checkFilters, setCheckFilters] = usePersistentState<Record<string, 'checked' | 'unchecked'>>('ws-checks', {})
 
   function cycleCheckFilter(field: string) {
     setCheckFilters(prev => {
@@ -150,9 +151,9 @@ export function WorkSheetPage() {
       return next
     })
   }
-  const [accountantFilter, setAccountantFilter] = useState<string>('')
-  const [respFilter, setRespFilter] = useState<string>('')
-  const [onlyMissingSubmitted, setOnlyMissingSubmitted] = useState(false)
+  const [accountantFilter, setAccountantFilter] = usePersistentState<string>('ws-accountant', '')
+  const [respFilter, setRespFilter] = usePersistentState<string>('ws-resp', '')
+  const [onlyMissingSubmitted, setOnlyMissingSubmitted] = usePersistentState('ws-missing-submitted', false)
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
   const [art55ModalFor, setArt55ModalFor] = useState<{ client: Client; name: string } | null>(null)
 

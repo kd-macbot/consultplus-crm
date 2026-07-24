@@ -62,7 +62,7 @@ export function OpportunitiesPage() {
   // повторно отваряне на страницата е МИГНОВЕНО.
   const oppsQ = useOpportunities()
   const staffQ = useStaff()
-  const { invalidateOpportunities } = useInvalidateCrm()
+  const { invalidateOpportunities, invalidateClients, invalidateCells, invalidateContacts } = useInvalidateCrm()
   const opps = useMemo(() => oppsQ.data ?? [], [oppsQ.data])
   const staffList = useMemo(() => staffQ.data ?? [], [staffQ.data])
   const loading = !oppsQ.data || !staffQ.data
@@ -251,6 +251,11 @@ export function OpportunitiesPage() {
       })
       setConvertTarget(null)
       refresh()
+      // Новият клиент живее в кешовете на Клиенти (clients/cells/contacts) —
+      // без invalidate той се появяваше чак след 5-мин staleTime.
+      void invalidateClients()
+      void invalidateCells()
+      void invalidateContacts()
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при конвертиране')
     }

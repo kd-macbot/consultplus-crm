@@ -11,6 +11,7 @@ import {
 } from '../lib/storage'
 import { PAYMENT_TYPES, PAYMENT_TYPE_COLORS, BANKS, type PaymentConfig, type PaymentStatus } from '../lib/types'
 import { queryClient } from '../lib/queryClient'
+import { usePersistentState } from '../lib/usePersistentState'
 
 const MONTHS = [
   'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни',
@@ -21,8 +22,8 @@ const MONTHS_SHORT = ['Ян', 'Фев', 'Мар', 'Апр', 'Май', 'Юни', 
 export function PaymentsPage() {
   const { user } = useAuth()
   const [year, setYear] = useState(new Date().getFullYear())
-  const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState<string[]>([])
+  const [search, setSearch] = usePersistentState('pay-search', '')
+  const [typeFilter, setTypeFilter] = usePersistentState<string[]>('pay-types', [])
   const [showAddModal, setShowAddModal] = useState(false)
 
   const clientsQ = useClients()

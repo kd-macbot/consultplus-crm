@@ -50,6 +50,7 @@ import {
   getViews, getDefaultView, getActiveViewId, setActiveViewId,
   saveView, deleteView, setDefaultView, syncViewsFromDb, type View,
 } from '../../lib/views'
+import { usePersistentState } from '../../lib/usePersistentState'
 
 interface ClientRow {
   clientId: string
@@ -162,10 +163,10 @@ function DraggableHeader({ header }: { header: Header<ClientRow, unknown> }) {
 export function DataTable({ refreshKey, onRefresh }: Props) {
   const { user } = useAuth()
   const [sorting, setSorting] = useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [globalFilter, setGlobalFilter] = useState('')
+  const [columnFilters, setColumnFilters] = usePersistentState<ColumnFiltersState>('clients-colfilters', [])
+  const [globalFilter, setGlobalFilter] = usePersistentState('clients-search', '')
   const [editCell, setEditCell] = useState<{ clientId: string; columnId: string } | null>(null)
-  const [tagFilter, setTagFilter] = useState<string[]>([])
+  const [tagFilter, setTagFilter] = usePersistentState<string[]>('clients-tags', [])
   const [columnOrder, setColumnOrder] = useState<string[]>([])
 
   // Saved views: на mount-а зареждаме default-а (или активния, ако е bookmark-нат)
