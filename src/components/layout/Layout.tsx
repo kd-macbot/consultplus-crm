@@ -214,8 +214,8 @@ export function Layout() {
         'transform transition-transform duration-200 ease-in-out',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       )}>
-        {/* Logo — desktop only. Бялата версия за тъмния sidebar. */}
-        <div className="hidden md:flex items-center px-5 py-5 border-b border-white/10">
+        {/* Logo — desktop only. Бялата версия за тъмния sidebar, центрирано. */}
+        <div className="hidden md:flex items-center justify-center px-4 py-5 border-b border-white/10">
           <img src={logoWhite} alt="Consult Plus" className="h-9 w-auto" />
         </div>
 
