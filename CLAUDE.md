@@ -13,6 +13,9 @@ CRM за българска счетоводна фирма (Консулт Пл
 - Supabase (PostgreSQL + Auth + RLS + Edge Functions + Realtime)
 - React Query (TanStack) с persistent localStorage кеш
 - Cloudflare Pages: branch `dev` → dev preview (dev Supabase), branch `main` → live (prod Supabase)
+- **Live домейн: cplus360.com** (custom domain в CF, + www; добавен в Supabase
+  Redirect URLs). Име на приложението: **Consult Plus 360**. Логата са в
+  `src/assets/brand/` (bundled imports — НЕ в public/, заради base path-а)
 
 ## Работен процес (следвай го стриктно)
 
@@ -80,13 +83,15 @@ CRM за българска счетоводна фирма (Консулт Пл
 `Оставащ = От минали години + За тек. година + Допълнителен − Σ(одобрени vacation работни дни)`
 Използваните дни се смятат АВТОМАТИЧНО от crm_absences (само status=approved).
 
-## Миграции (25→42, всички пуснати на dev + prod)
+## Миграции (25→44, всички пуснати на dev + prod)
 
 025/026 чек лист · 027 additional_departments · 028 профили · 029 колони
 is_hidden · 030 плащания · 031 absences+quota · 032 approval workflow ·
 033 form76 overrides · 034 НЯМА (position съществуваше от 002) · 035 hire_date ·
 036 events · 037 news (5-дневен auto-expire на непиннати) · 038 bank_access ·
-039 app_code · 040 tasks · 041 kind+inspection_type · 042 month_reviewers
+039 app_code · 040 tasks · 041 kind+inspection_type · 042 month_reviewers ·
+043 inspection details (инспектор/телефон/линк; НОВИТЕ колони искат и добавяне
+в изричния select на getTasks!) · 044 inspector_email
 
 ## Известни проблеми / Backlog (по приоритет)
 
