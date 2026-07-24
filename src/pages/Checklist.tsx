@@ -18,29 +18,12 @@ import { isHiddenStatus } from '../lib/statusBadge'
 import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { useMyStaff } from '../lib/useMyStaff'
 import { useRealtime } from '../lib/useRealtime'
+import { usePendingPatches } from '../lib/usePendingPatches'
 
-// ============================================================
-// Pending маркировки — устойчивост срещу „загубена отметка" при stale
-// връзка/idle таб. Всяка отметка се пази локално (localStorage), докато
-// НЕ се потвърди реален запис в базата. Така:
-//   - неуспешен/увиснал запис НЕ отмаркира клетката (не се invalidate-ва)
-//   - маркировката оцелява reload (авто-recovery) и се опитва пак
-// Ключ per (година, месец), за да не се смесват месеците.
-// ============================================================
-type PendingMap = Record<string, Partial<ChecklistRow>>  // clientId → patch
-function pendingStoreKey(year: number, month: number) { return `checklist-pending-${year}-${month}` }
-function readPending(year: number, month: number): PendingMap {
-  try {
-    const raw = localStorage.getItem(pendingStoreKey(year, month))
-    return raw ? (JSON.parse(raw) as PendingMap) : {}
-  } catch { return {} }
-}
-function writePending(year: number, month: number, map: PendingMap) {
-  try {
-    if (Object.keys(map).length === 0) localStorage.removeItem(pendingStoreKey(year, month))
-    else localStorage.setItem(pendingStoreKey(year, month), JSON.stringify(map))
-  } catch { /* quota */ }
-}
+// Pending слоят е споделеният usePendingPatches (моделът от Trz/WorkSheet):
+// отметка се пази в localStorage до потвърден запис, наслагва се над
+// сървърните данни и се опитва отново при mount/фокус. Ключът е същият
+// като старата имплементация → заварени pending записи се поемат безшевно.
 
 const SALES_FIELDS = CHECKLIST_FIELDS.filter(f => f.group === 'sales')
 const PURCHASE_FIELDS = CHECKLIST_FIELDS.filter(f => f.group === 'purchases')
@@ -114,18 +97,21 @@ export function ChecklistPage() {
 
   const checklistQ = useChecklist(year, month)
 
-  // Pending (незапотвърдени) маркировки — hydrate от localStorage per месец.
-  const [pending, setPending] = useState<Map<string, Partial<ChecklistRow>>>(
-    () => new Map(Object.entries(readPending(year, month))),
-  )
-  // При смяна на месец → зареди pending за новия месец.
+  // Durable pending слой — hydrate/persist/flush идват наготово от hook-а.
+  const { pending, addPatch, removeFields } = usePendingPatches<ChecklistRow>({
+    storageKey: `checklist-pending-${year}-${month}`,
+    save: (clientId, patch) => upsertChecklistByKey(clientId, year, month, patch, user?.id),
+    onFlushed: () => invalidateChecklist(year, month),
+  })
+
+  // Хигиена: ако в pending е останал само checked_by (атрибуцията), без
+  // реални полета — записът е минал и остатъкът се чисти (старото поведение).
   useEffect(() => {
-    setPending(new Map(Object.entries(readPending(year, month))))
-  }, [year, month])
-  // Persist pending при всяка промяна.
-  useEffect(() => {
-    writePending(year, month, Object.fromEntries(pending))
-  }, [pending, year, month])
+    pending.forEach((patch, clientId) => {
+      const realKeys = Object.keys(patch).filter(k => k !== 'checked_by')
+      if (realKeys.length === 0 && 'checked_by' in patch) removeFields(clientId, ['checked_by'])
+    })
+  }, [pending, removeFields])
 
   const rows = useMemo(() => {
     const m = new Map<string, ChecklistRow>()
@@ -242,27 +228,14 @@ export function ChecklistPage() {
       return [...prev, { client_id: clientId, year, month, ...patch } as ChecklistRow]
     })
     // Durable pending — наслагва се над RQ данните и оцелява reload.
-    setPending(prev => {
-      const next = new Map(prev)
-      const existing = next.get(clientId) ?? {}
-      next.set(clientId, { ...existing, [key]: value, checked_by: nextCheckedBy })
-      return next
-    })
+    addPatch(clientId, { [key]: value, checked_by: nextCheckedBy } as Partial<ChecklistRow>)
 
     setSavingFor(prev => new Set(prev).add(clientId))
     try {
       await upsertChecklistByKey(clientId, year, month, patch, user?.id)
-      // Успех → махаме ключа от pending. Базата (setQueryData) вече показва
-      // стойността, така че НЯМА визуална дупка. Realtime после потвърждава.
-      setPending(prev => {
-        const next = new Map(prev)
-        const existing = { ...(next.get(clientId) ?? {}) } as Record<string, unknown>
-        delete existing[key as string]
-        const realKeys = Object.keys(existing).filter(k => k !== 'checked_by')
-        if (realKeys.length === 0) next.delete(clientId)
-        else next.set(clientId, existing as Partial<ChecklistRow>)
-        return next
-      })
+      // Успех → полето излиза от pending (janitor ефектът горе чисти
+      // остатъчния checked_by). Базата (setQueryData) показва стойността.
+      removeFields(clientId, [key as string])
     } catch {
       // ВАЖНО: НЕ invalidate-ваме (това връщаше клетката на нечекнато).
       // Маркировката остава в pending → визуално чекнато + ще се опита пак.
@@ -272,36 +245,7 @@ export function ChecklistPage() {
     }
   }
 
-  // Retry на pending маркировки — при mount (напр. след авто-reload) и при
-  // връщане на фокус. Опитва да запише всичко, което още не е потвърдено.
-  // pendingRef държи най-новото pending (за да не чете stale в listener-а).
-  const pendingRef = useRef(pending)
-  useEffect(() => { pendingRef.current = pending }, [pending])
-  const retryingRef = useRef(false)
-  async function flushPending() {
-    if (retryingRef.current) return
-    const snapshot = new Map(pendingRef.current)
-    if (snapshot.size === 0) return
-    retryingRef.current = true
-    try {
-      for (const [clientId, patch] of snapshot) {
-        try {
-          await upsertChecklistByKey(clientId, year, month, patch, user?.id)
-          setPending(prev => { const n = new Map(prev); n.delete(clientId); return n })
-        } catch { /* остава в pending за следващ опит */ }
-      }
-    } finally {
-      retryingRef.current = false
-    }
-  }
-  // Веднъж при mount и при всяко връщане на видимост.
-  useEffect(() => {
-    void flushPending()
-    const onVis = () => { if (document.visibilityState === 'visible') void flushPending() }
-    document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year, month])
+  // Retry-ят на pending (mount + visibilitychange) е вграден в usePendingPatches.
 
   async function saveNotes(clientId: string, notes: string) {
     lastEditRef.current = Date.now()
@@ -312,11 +256,14 @@ export function ChecklistPage() {
       if (idx >= 0) return prev.map((r, i) => i === idx ? { ...r, ...patch } : r)
       return [...prev, { client_id: clientId, year, month, ...patch } as ChecklistRow]
     })
+    // Durable pending и за бележките (както в WorkSheet) — при неуспех НЕ
+    // invalidate-ваме (връщаше старата стойност), а оставяме pending + retry.
+    addPatch(clientId, patch)
     try {
       await upsertChecklistByKey(clientId, year, month, patch, user?.id)
-    } catch (e: any) {
-      toast.error(e.message ?? 'Грешка при запис')
-      invalidateChecklist(year, month)
+      removeFields(clientId, ['notes'])
+    } catch {
+      toast.error('Записът не мина (връзката). Бележката е запазена и ще се опита отново.')
     }
   }
 
