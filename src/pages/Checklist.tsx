@@ -19,6 +19,7 @@ import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { useMyStaff } from '../lib/useMyStaff'
 import { useRealtime } from '../lib/useRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
+import { usePersistentState } from '../lib/usePersistentState'
 
 // Pending слоят е споделеният usePendingPatches (моделът от Trz/WorkSheet):
 // отметка се пази в localStorage до потвърден запис, наслагва се над
@@ -125,7 +126,7 @@ export function ChecklistPage() {
     return m
   }, [checklistQ.data, pending, year, month])
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = usePersistentState('checklist-search', '')
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
   const lastEditRef = useRef(0)
   const deferEdits = () => Date.now() - lastEditRef.current < 3000

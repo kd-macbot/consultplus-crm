@@ -7,6 +7,7 @@ import {
 } from '../lib/queries'
 import { upsertClientProfile, setCellValue } from '../lib/storage'
 import type { ClientProfile } from '../lib/types'
+import { usePersistentState } from '../lib/usePersistentState'
 
 type ProfileField = 'business_activity' | 'business_notes' | 'warnings'
 
@@ -137,7 +138,7 @@ export function ClientProfilesPage() {
     return m
   }, [profilesQ.data])
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = usePersistentState('profiles-search', '')
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
 
   // LEFT JOIN: всички клиенти, дори тези без профил. Подреждаме по име.

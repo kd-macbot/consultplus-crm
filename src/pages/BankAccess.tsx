@@ -15,6 +15,7 @@ import {
   type BankAccess, type BankAccessType,
 } from '../lib/types'
 import { useMyStaff } from '../lib/useMyStaff'
+import { usePersistentState } from '../lib/usePersistentState'
 
 // ============================================================
 // Draft persistence — пази въведеното в „Добави клиент" в sessionStorage,
@@ -129,9 +130,9 @@ export function BankAccessPage() {
     return m
   }, [cells, nameColId])
 
-  const [search, setSearch] = useState('')
-  const [bankFilter, setBankFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState<'' | BankAccessType>('')
+  const [search, setSearch] = usePersistentState('bank-search', '')
+  const [bankFilter, setBankFilter] = usePersistentState('bank-bank', '')
+  const [typeFilter, setTypeFilter] = usePersistentState<'' | BankAccessType>('bank-type', '')
   // Ако при предишно посещение е останала незапазена чернова (F5 при висене),
   // отваряме модала автоматично, за да я възстановим.
   const [addOpen, setAddOpen] = useState(() => hasNonEmptyDraft())
