@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, Search, Loader2, X, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, Loader2, X, Plus, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
@@ -21,6 +21,7 @@ import {
 } from '../lib/tableIndices'
 import { statusBadgeClass, isNoActivityStatus, isNoVatStatus } from '../lib/statusBadge'
 import { findTrzColumns, TRZ_ACTIVE } from '../lib/trz'
+import { exportRowsToExcel } from '../lib/export'
 import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
@@ -404,6 +405,58 @@ export function WorkSheetPage() {
     }
   }
 
+  // ============================================================
+  // Excel експорт на ВИДИМИТЕ редове (с приложените филтри). Името на
+  // файла е на латиница — кирилските имена понякога се чупят на Windows.
+  // ============================================================
+  async function exportSheet() {
+    if (filteredRows.length === 0) { toast.error('Няма редове за експорт'); return }
+    // Мастър-флаг колона: '—' ако не е приложима, иначе Да/Не по отметката.
+    const flag = (applicable: string, done: boolean | undefined) =>
+      applicable !== 'ДА' ? '—' : (done ? 'Да' : 'Не')
+    const headers = [
+      '№', 'Фирма', 'Статус', 'Счетоводител', 'Отговорник',
+      'Резултат €', 'Подадено на', 'Уведомени', 'Бележки',
+      'Аванс. вн.', 'Чл. 55 записи', 'Проверено', 'Амор', 'Банка', 'Заплати',
+      'АКЦИЗ', 'Статистика', 'Интрастат', 'СИДДО', 'ОСС', 'Несъотв. НАП',
+    ]
+    const rows: (string | number)[][] = filteredRows.map((r, i) => {
+      const w = r.work
+      const noVat = isNoVatStatus(r.status)
+      return [
+        i + 1,
+        r.name,
+        r.status,
+        r.accountant,
+        r.responsible,
+        noVat ? 'без ДДС' : (w?.result_amount ?? ''),
+        noVat ? '—' : (w?.submitted_at ?? ''),
+        noVat ? '—' : (w?.notification_method ?? ''),
+        w?.notes ?? '',
+        advanceRelevance(r.advance, month) === 'na' ? '—' : (w?.advance_payment_amount ?? ''),
+        art55Relevance(r.art55, month) === 'na' ? '—' : (art55Entries.get(r.client.id)?.length ?? 0),
+        w?.vat_accounted ? 'Да' : 'Не',
+        w?.amortization_done ? 'Да' : 'Не',
+        w?.bank_done ? 'Да' : 'Не',
+        r.trzActive ? (w?.salaries_done ? 'Да' : 'Не') : '—',
+        flag(r.akciz, w?.akciz_done),
+        flag(r.statistika, w?.statistika_done),
+        flag(r.intrastat, w?.intrastat_done),
+        flag(r.siddo, w?.siddo_done),
+        r.oss === 'ДА' ? (w?.oss_amount ?? '') : '—',
+        w?.npa_inconsistencies ?? '',
+      ]
+    })
+    const isFiltered = filteredRows.length !== tableRows.length
+    const fileName = `CPlus360_WorkSheet_${String(month).padStart(2, '0')}-${year}${isFiltered ? '_filtered' : ''}.xlsx`
+    try {
+      await exportRowsToExcel({ headers, rows, sheetName: 'Работен лист', fileName })
+      toast.success(`Експортирани ${rows.length} реда`)
+    } catch (e) {
+      toast.error((e as Error).message ?? 'Грешка при експорт')
+    }
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Title bar */}
@@ -440,6 +493,10 @@ export function WorkSheetPage() {
               className="h-8 pl-8 w-44 text-sm"
             />
           </div>
+          <Button variant="outline" size="sm" onClick={() => void exportSheet()} title="Excel експорт на видимите редове (с приложените филтри)">
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Експорт</span>
+          </Button>
         </div>
       </div>
 
