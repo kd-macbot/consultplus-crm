@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, Search, X, Loader2, RefreshCw } from 'lucide-react'
+import { exportRowsToExcel } from '../lib/export'
+import { ChevronLeft, ChevronRight, Search, X, Loader2, RefreshCw, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
@@ -260,6 +261,39 @@ export function TrzPage() {
   const isFiltered = hasFilters && filteredRows.length !== tableRows.length
   const doneCount = filteredRows.filter(r => r.work?.salaries_prepared && r.work?.insurance_submitted && r.work?.payroll_sent).length
 
+  // Excel експорт на ВИДИМИТЕ редове (същата логика като Работния лист).
+  // Името на файла е на латиница — кирилските чупят понякога на Windows.
+  async function exportSheet() {
+    if (filteredRows.length === 0) { toast.error('Няма редове за експорт'); return }
+    const headers = [
+      '№', 'Фирма', 'Форма на Осиг.', 'Софтуер', 'ТРЗ отговорник',
+      'Заплати', 'Осигуровки', 'Осиг. подадени на', 'Д1 и Д6', 'Д1/Д6 изпратени на', 'Бележка',
+    ]
+    const rows: (string | number)[][] = filteredRows.map((r, i) => {
+      const w = r.work
+      return [
+        i + 1,
+        r.name,
+        r.forma,
+        r.software,
+        r.resp,
+        w?.salaries_prepared ? 'Да' : 'Не',
+        w?.insurance_submitted ? 'Да' : 'Не',
+        w?.insurance_submitted_at ?? '',
+        w?.payroll_sent ? 'Да' : 'Не',
+        w?.payroll_sent_at ?? '',
+        w?.notes ?? '',
+      ]
+    })
+    const fileName = `CPlus360_TRZ_${String(month).padStart(2, '0')}-${year}${isFiltered ? '_filtered' : ''}.xlsx`
+    try {
+      await exportRowsToExcel({ headers, rows, sheetName: 'ТРЗ Работен лист', fileName })
+      toast.success(`Експортирани ${rows.length} реда`)
+    } catch (e) {
+      toast.error((e as Error).message ?? 'Грешка при експорт')
+    }
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Title bar */}
@@ -321,6 +355,10 @@ export function TrzPage() {
               <X className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Изчисти</span>
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={() => void exportSheet()} title="Excel експорт на видимите редове (с приложените филтри)">
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Експорт</span>
+          </Button>
         </div>
       </div>
 
