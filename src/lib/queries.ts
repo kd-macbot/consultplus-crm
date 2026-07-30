@@ -3,7 +3,7 @@ import {
   getClients, getColumns, getCellValues, getDropdownOptions,
   getContactsWithClients, getExpenses, getOpportunities,
   getTags, getClientTags, getStaff, getAllContacts,
-  getMonthlyWork, getTrzWork, getArt55EntriesForPeriod, getChecklist,
+  getMonthlyWork, getTrzWork, getArt55EntriesForPeriod, getCashLoanEntriesForPeriod, getChecklist,
   getClientProfiles, getPaymentConfigs, getPaymentStatuses,
   getAbsences, getVacationQuotas, getForm76Overrides, getEvents, getNews,
   getBankAccess, getTasks, getMonthReviewers,
@@ -151,6 +151,13 @@ export function useArt55Entries(year: number, months: number[]) {
     enabled: year > 0 && months.length > 0,
   })
 }
+export function useCashLoanEntries(year: number, months: number[]) {
+  return useQuery({
+    queryKey: ['cashLoanEntries', year, months.join(',')] as const,
+    queryFn: () => getCashLoanEntriesForPeriod(year, months),
+    enabled: year > 0 && months.length > 0,
+  })
+}
 export function useChecklist(year: number, month: number) {
   return useQuery({
     queryKey: ['checklist', year, month] as const,
@@ -200,6 +207,10 @@ export function useInvalidateCrm() {
       qc.invalidateQueries({ queryKey: ['trzWork', year, month] }),
     invalidateArt55: (year: number, months: number[]) =>
       qc.invalidateQueries({ queryKey: ['art55Entries', year, months.join(',')] }),
+    // Каси и заеми: инвалидира ВСИЧКИ периоди (месечният от Работния лист
+    // и целогодишният от „Каси и заеми" ползват различни ключове).
+    invalidateCashLoan: () =>
+      qc.invalidateQueries({ queryKey: ['cashLoanEntries'] }),
     invalidateChecklist: (year: number, month: number) =>
       qc.invalidateQueries({ queryKey: ['checklist', year, month] }),
     invalidateAll: () => qc.invalidateQueries(),
