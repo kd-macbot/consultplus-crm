@@ -143,8 +143,20 @@ export function CashLoansPage() {
       <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-base md:text-lg font-semibold text-foreground">💰 Каси и заеми</h1>
-          {/* Табове Каса / Заеми — отделни изгледи, нямат връзка помежду си. */}
-          <div className="flex items-center ml-2 rounded-lg border border-border overflow-hidden">
+          <div className="flex items-center gap-1 ml-2">
+            <Button variant="outline" size="sm" onClick={() => setYear(y => y - 1)}>
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <span className="px-3 py-1 text-sm font-semibold text-foreground min-w-[64px] text-center">{year}</span>
+            <Button variant="outline" size="sm" onClick={() => setYear(y => y + 1)}>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Табове Каса / Заеми — отделни изгледи, нямат връзка помежду си.
+              Горе вдясно до търсенето (консистентно с другите страници). */}
+          <div className="flex items-center rounded-lg border border-border overflow-hidden">
             {(['cash', 'loan'] as const).map(k => (
               <button
                 key={k}
@@ -159,17 +171,6 @@ export function CashLoansPage() {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-1 ml-2">
-            <Button variant="outline" size="sm" onClick={() => setYear(y => y - 1)}>
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            <span className="px-3 py-1 text-sm font-semibold text-foreground min-w-[64px] text-center">{year}</span>
-            <Button variant="outline" size="sm" onClick={() => setYear(y => y + 1)}>
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
