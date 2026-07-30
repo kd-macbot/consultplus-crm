@@ -47,7 +47,9 @@ export function CashLoansPage() {
   })
 
   const [search, setSearch] = usePersistentState('cl-search', '')
-  const [kindFilter, setKindFilter] = usePersistentState<'all' | CashLoanKind>('cl-kind', 'all')
+  // Каса и Заеми са ОТДЕЛНИ табове (нямат връзка помежду си) — няма
+  // комбиниран изглед.
+  const [kind, setKind] = usePersistentState<CashLoanKind>('cl-tab', 'cash')
   const [cumulative, setCumulative] = usePersistentState('cl-cumulative', false)
   const [modalFor, setModalFor] = useState<{ clientId: string; name: string; month: number } | null>(null)
 
@@ -70,10 +72,10 @@ export function CashLoansPage() {
     return m
   }, [entriesQ.data])
 
-  // Сума за клетка (клиент × месец) според филтъра по вид.
+  // Сума за клетка (клиент × месец) за активния таб.
   function monthSum(months: Map<number, CashLoanEntry[]> | undefined, month: number): number {
     if (!months) return 0
-    return (months.get(month) ?? []).reduce((s, e) => s + (kindFilter === 'all' || e.kind === kindFilter ? e.amount : 0), 0)
+    return (months.get(month) ?? []).reduce((s, e) => s + (e.kind === kind ? e.amount : 0), 0)
   }
 
   type Row = { clientId: string; name: string; monthly: number[]; total: number }
@@ -82,15 +84,15 @@ export function CashLoansPage() {
     byClient.forEach((months, clientId) => {
       const monthly = ALL_MONTHS.map(m => monthSum(months, m))
       const total = monthly.reduce((s, v) => s + v, 0)
-      // Клиент без нито един запис от избрания вид не се показва.
+      // Клиент без нито един запис от вида на активния таб не се показва.
       let hasAny = false
-      months.forEach(arr => { if (arr.some(e => kindFilter === 'all' || e.kind === kindFilter)) hasAny = true })
+      months.forEach(arr => { if (arr.some(e => e.kind === kind)) hasAny = true })
       if (!hasAny) return
       rows.push({ clientId, name: clientDisplayName(clientId, columns, cellIdx), monthly, total })
     })
     return rows.sort((a, b) => a.name.localeCompare(b.name, 'bg'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [byClient, kindFilter, columns, cellIdx])
+  }, [byClient, kind, columns, cellIdx])
 
   const filteredRows = useMemo(() => {
     const s = search.trim().toLowerCase()
@@ -113,7 +115,7 @@ export function CashLoansPage() {
 
   async function exportSheet() {
     if (filteredRows.length === 0) { toast.error('Няма редове за експорт'); return }
-    const kindLabel = kindFilter === 'all' ? 'Каса+Заем' : CASH_LOAN_KIND_LABELS[kindFilter]
+    const kindLabel = CASH_LOAN_KIND_LABELS[kind]
     const headers = ['№', 'Фирма', ...MONTH_NAMES.map(m => m.slice(0, 3)), 'Общо']
     const rows: (string | number)[][] = filteredRows.map((r, i) => [
       i + 1,
@@ -121,7 +123,7 @@ export function CashLoansPage() {
       ...ALL_MONTHS.map((_, mi) => displayValue(r, mi) || ''),
       r.total || '',
     ])
-    const suffix = kindFilter === 'all' ? '' : kindFilter === 'cash' ? '_Kasa' : '_Zaem'
+    const suffix = kind === 'cash' ? '_Kasa' : '_Zaem'
     const fileName = `CPlus360_CashLoans_${year}${suffix}${cumulative ? '_cumulative' : ''}.xlsx`
     try {
       await exportRowsToExcel({ headers, rows, sheetName: `${kindLabel} ${year}`, fileName })
@@ -141,6 +143,22 @@ export function CashLoansPage() {
       <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-base md:text-lg font-semibold text-foreground">💰 Каси и заеми</h1>
+          {/* Табове Каса / Заеми — отделни изгледи, нямат връзка помежду си. */}
+          <div className="flex items-center ml-2 rounded-lg border border-border overflow-hidden">
+            {(['cash', 'loan'] as const).map(k => (
+              <button
+                key={k}
+                onClick={() => setKind(k)}
+                className={`px-3 py-1 text-sm font-semibold transition ${
+                  kind === k
+                    ? 'bg-navy text-white dark:bg-primary dark:text-primary-foreground'
+                    : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }`}
+              >
+                {k === 'cash' ? 'Каса' : 'Заеми'}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center gap-1 ml-2">
             <Button variant="outline" size="sm" onClick={() => setYear(y => y - 1)}>
               <ChevronLeft className="h-3.5 w-3.5" />
@@ -170,22 +188,7 @@ export function CashLoansPage() {
 
       {/* Filter strip */}
       <div className="px-3 md:px-5 py-2 border-b border-border bg-card flex flex-wrap items-center gap-3 text-xs">
-        <span className="text-muted-foreground uppercase tracking-wider font-semibold">Вид:</span>
-        {([['all', 'Всички'], ['cash', 'Каса'], ['loan', 'Заеми']] as const).map(([k, label]) => (
-          <button
-            key={k}
-            onClick={() => setKindFilter(k)}
-            className={`px-2 py-0.5 rounded-full font-semibold transition ${
-              kindFilter === k
-                ? 'bg-sky-200 text-sky-900 dark:bg-sky-900/50 dark:text-sky-100'
-                : 'bg-muted/40 text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-
-        <div className="flex items-center gap-1.5 pl-2 border-l border-border">
+        <div className="flex items-center gap-1.5">
           {([[false, 'Месечно'], [true, 'С натрупване']] as const).map(([v, label]) => (
             <button
               key={label}
@@ -231,7 +234,7 @@ export function CashLoansPage() {
               {filteredRows.length === 0 && (
                 <tr>
                   <td colSpan={15} className="p-10 text-center text-muted-foreground">
-                    Няма записи за {year} г. — добавят се от Работния лист (клетката „Каса/Заем" до „Банка") или с клик върху клетка тук.
+                    Няма записи „{kind === 'cash' ? 'Каса' : 'Заем'}" за {year} г. — добавят се от Работния лист (клетката „Каса/Заем" до „Банка") или с клик върху клетка тук.
                   </td>
                 </tr>
               )}
