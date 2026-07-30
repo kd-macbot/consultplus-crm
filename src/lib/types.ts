@@ -194,6 +194,27 @@ export interface Art55Entry {
   updated_at: string
 }
 
+// Каси и заеми — месечни записи за деклариране. Сумата е ДВИЖЕНИЕ за
+// месеца; акумулираното се смята в UI (сбор от началото на годината).
+export type CashLoanKind = 'cash' | 'loan'
+export const CASH_LOAN_KIND_LABELS: Record<CashLoanKind, string> = {
+  cash: 'Каса',
+  loan: 'Заем',
+}
+export interface CashLoanEntry {
+  id: string
+  client_id: string
+  year: number
+  month: number
+  kind: CashLoanKind
+  amount: number
+  note: string | null
+  position: number
+  created_at: string
+  created_by: string | null
+  updated_at: string
+}
+
 export interface Art55QuarterStatus {
   id: string
   client_id: string

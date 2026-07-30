@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -2145,6 +2145,61 @@ export async function updateArt55Entry(id: string, patch: Partial<Art55Entry>): 
 
 export async function deleteArt55Entry(id: string): Promise<void> {
   const { error } = await supabase.from('crm_art55_entries').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ==================== КАСИ И ЗАЕМИ ====================
+
+export async function getCashLoanEntriesForPeriod(year: number, months: number[]): Promise<CashLoanEntry[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_cash_loan_entries')
+      .select('*')
+      .eq('year', year)
+      .in('month', months)
+      .order('position')
+    if (error) throw error
+    return (data ?? []) as CashLoanEntry[]
+  })
+}
+
+export async function addCashLoanEntry(row: {
+  client_id: string; year: number; month: number;
+  kind?: CashLoanKind; amount?: number; note?: string | null;
+  createdBy?: string;
+}): Promise<CashLoanEntry> {
+  const { data: existing } = await supabase
+    .from('crm_cash_loan_entries')
+    .select('position')
+    .eq('client_id', row.client_id).eq('year', row.year).eq('month', row.month)
+    .order('position', { ascending: false }).limit(1)
+  const pos = (existing?.[0]?.position ?? -1) + 1
+
+  const { data, error } = await supabase
+    .from('crm_cash_loan_entries')
+    .insert([{
+      client_id: row.client_id, year: row.year, month: row.month,
+      kind: row.kind ?? 'cash',
+      amount: row.amount ?? 0,
+      note: row.note ?? null,
+      position: pos,
+      created_by: row.createdBy ?? null,
+    }])
+    .select().single()
+  if (error) throw error
+  return data as CashLoanEntry
+}
+
+export async function updateCashLoanEntry(id: string, patch: Partial<CashLoanEntry>): Promise<void> {
+  const { error } = await supabase
+    .from('crm_cash_loan_entries')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteCashLoanEntry(id: string): Promise<void> {
+  const { error } = await supabase.from('crm_cash_loan_entries').delete().eq('id', id)
   if (error) throw error
 }
 

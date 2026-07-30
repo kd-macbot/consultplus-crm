@@ -11,10 +11,11 @@ import {
 } from '../lib/storage'
 import {
   useClients, useColumns, useCellValues, useDropdownOptions,
-  useMonthlyWork, useArt55Entries, useInvalidateCrm,
+  useMonthlyWork, useArt55Entries, useCashLoanEntries, useInvalidateCrm,
 } from '../lib/queries'
 import { queryClient } from '../lib/queryClient'
-import { NOTIFICATION_METHODS, ART55_INCOME_TYPES, type MonthlyWork, type Client, type Art55Entry } from '../lib/types'
+import { NOTIFICATION_METHODS, ART55_INCOME_TYPES, type MonthlyWork, type Client, type Art55Entry, type CashLoanEntry } from '../lib/types'
+import { CashLoanModal } from '../components/CashLoanModal'
 import {
   buildCellIndex, buildDropdownIndex, clientDisplayName,
   resolveDropdownText, cellKey,
@@ -104,7 +105,8 @@ export function WorkSheetPage() {
   // в persisted localStorage. Повторно посещение на същия месец = МИГНОВЕНО.
   const monthlyWorkQ = useMonthlyWork(year, month)
   const art55Q = useArt55Entries(year, [month])
-  const { invalidateMonthlyWork, invalidateArt55 } = useInvalidateCrm()
+  const cashLoanQ = useCashLoanEntries(year, [month])
+  const { invalidateMonthlyWork, invalidateArt55, invalidateCashLoan } = useInvalidateCrm()
 
   // Durable pending слой (моделът от Личен чек лист): непотвърдена промяна
   // се пази в localStorage, наслагва се над сървърните данни и се опитва
@@ -134,6 +136,15 @@ export function WorkSheetPage() {
     })
     return m
   }, [art55Q.data])
+  const cashLoanEntries = useMemo(() => {
+    const m = new Map<string, CashLoanEntry[]>()
+    ;(cashLoanQ.data ?? []).forEach(e => {
+      const arr = m.get(e.client_id) ?? []
+      arr.push(e)
+      m.set(e.client_id, arr)
+    })
+    return m
+  }, [cashLoanQ.data])
 
   // ОСС: само за последния месец на тримесечието. Запазваме own state.
   const [ossPrior, setOssPrior] = useState<Map<string, number>>(new Map())
@@ -157,6 +168,7 @@ export function WorkSheetPage() {
   const [onlyMissingSubmitted, setOnlyMissingSubmitted] = usePersistentState('ws-missing-submitted', false)
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
   const [art55ModalFor, setArt55ModalFor] = useState<{ client: Client; name: string } | null>(null)
+  const [cashLoanModalFor, setCashLoanModalFor] = useState<{ client: Client; name: string } | null>(null)
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'employee'
 
@@ -227,10 +239,11 @@ export function WorkSheetPage() {
   })
   useRealtime({
     channel: 'worksheet-month',
-    tables: ['crm_monthly_work', 'crm_art55_entries'],
+    tables: ['crm_monthly_work', 'crm_art55_entries', 'crm_cash_loan_entries'],
     onChange: () => {
       invalidateMonthlyWork(year, month)
       invalidateArt55(year, [month])
+      invalidateCashLoan()
     },
     shouldDefer: deferEdits,
   })
@@ -417,7 +430,7 @@ export function WorkSheetPage() {
     const headers = [
       '№', 'Фирма', 'Статус', 'Счетоводител', 'Отговорник',
       'Резултат €', 'Подадено на', 'Уведомени', 'Бележки',
-      'Аванс. вн.', 'Чл. 55 записи', 'Проверено', 'Амор', 'Банка', 'Заплати',
+      'Аванс. вн.', 'Чл. 55 записи', 'Проверено', 'Амор', 'Банка', 'Каса €', 'Заем €', 'Заплати',
       'АКЦИЗ', 'Статистика', 'Интрастат', 'СИДДО', 'ОСС', 'Несъотв. НАП',
     ]
     const rows: (string | number)[][] = filteredRows.map((r, i) => {
@@ -438,6 +451,8 @@ export function WorkSheetPage() {
         w?.vat_accounted ? 'Да' : 'Не',
         w?.amortization_done ? 'Да' : 'Не',
         w?.bank_done ? 'Да' : 'Не',
+        (cashLoanEntries.get(r.client.id) ?? []).reduce((s, e) => s + (e.kind === 'cash' ? e.amount : 0), 0) || '',
+        (cashLoanEntries.get(r.client.id) ?? []).reduce((s, e) => s + (e.kind === 'loan' ? e.amount : 0), 0) || '',
         r.trzActive ? (w?.salaries_done ? 'Да' : 'Не') : '—',
         flag(r.akciz, w?.akciz_done),
         flag(r.statistika, w?.statistika_done),
@@ -614,10 +629,12 @@ export function WorkSheetPage() {
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="Авансова вноска корпоративен данък">Аванс. вн.</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="Декларация чл. 55 ЗДДФЛ">Чл. 55</th>
                 {/* Отметъчните колони: клик на заглавието цикли филтъра
-                    всички → ☐ само без отметка → ☑ само с отметка. */}
+                    всички → ☐ само без отметка → ☑ само с отметка.
+                    „Каса/Заем" стои между Банка и Заплати — попълва се
+                    веднага след разнасянето на банката. */}
                 {CHECK_COLUMNS.map(({ field, label, title }) => {
                   const mode = checkFilters[field]
-                  return (
+                  const th = (
                     <th
                       key={field}
                       onClick={() => cycleCheckFilter(field)}
@@ -627,6 +644,11 @@ export function WorkSheetPage() {
                       {label}{mode === 'unchecked' ? ' ☐' : mode === 'checked' ? ' ☑' : ''}
                     </th>
                   )
+                  if (field !== 'salaries_done') return th
+                  return [
+                    <th key="cash_loan" className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap" title="Каси и заеми за деклариране — движение за месеца">Каса/Заем</th>,
+                    th,
+                  ]
                 })}
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">АКЦИЗ</th>
                 <th className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider whitespace-nowrap">Статист.</th>
@@ -642,7 +664,7 @@ export function WorkSheetPage() {
                   изчистят (бъг: „не мога да се върна без рефреш"). */}
               {filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={19} className="p-10 text-center text-muted-foreground">
+                  <td colSpan={20} className="p-10 text-center text-muted-foreground">
                     Няма съвпадения — разхлаби филтрите от заглавията на колоните или лентата горе.
                   </td>
                 </tr>
@@ -734,6 +756,10 @@ export function WorkSheetPage() {
                           className="h-4 w-4 cursor-pointer accent-emerald-600" />
                       </td>
                     ))}
+                    <CashLoanSummaryCell
+                      entries={cashLoanEntries.get(row.client.id) ?? []}
+                      onOpen={() => setCashLoanModalFor({ client: row.client, name: row.name })}
+                    />
                     {/* Заплати — само за фирми с ТРЗ Статус „Активна";
                         иначе „не", както АКЦИЗ/Статистика/Интрастат. */}
                     {row.trzActive ? (
@@ -773,6 +799,20 @@ export function WorkSheetPage() {
           </table>
         )}
       </div>
+
+      {cashLoanModalFor && (
+        <CashLoanModal
+          clientId={cashLoanModalFor.client.id}
+          clientName={cashLoanModalFor.name}
+          year={year}
+          month={month}
+          entries={cashLoanEntries.get(cashLoanModalFor.client.id) ?? []}
+          disabled={!canEdit}
+          onClose={() => setCashLoanModalFor(null)}
+          onChanged={() => invalidateCashLoan()}
+          createdBy={user?.id}
+        />
+      )}
 
       {art55ModalFor && (
         <Art55Modal
@@ -882,6 +922,40 @@ function AdvanceAmountCell({ relevance, deadline, amount, disabled, onChange }: 
           <span className="text-[9px] font-semibold leading-none text-amber-700 dark:text-amber-300">{deadline}</span>
         )}
       </div>
+    </td>
+  )
+}
+
+// Клетка „Каса/Заем" — до „Банка". Без master флаг: всяка фирма може да
+// има запис. Празна → дискретен „+"; със записи → сумите К/З за месеца.
+function CashLoanSummaryCell({ entries, onOpen }: {
+  entries: CashLoanEntry[]
+  onOpen: () => void
+}) {
+  const sumCash = entries.reduce((s, e) => s + (e.kind === 'cash' ? e.amount : 0), 0)
+  const sumLoan = entries.reduce((s, e) => s + (e.kind === 'loan' ? e.amount : 0), 0)
+  const has = entries.length > 0
+  return (
+    <td className="px-1 py-1 text-center">
+      <button
+        onClick={onOpen}
+        className={`rounded px-2 py-1 inline-flex flex-col items-center gap-0.5 hover:brightness-95 transition min-w-[70px] ${
+          has ? 'bg-sky-50 dark:bg-sky-900/20' : 'bg-muted/20'
+        }`}
+        title={has
+          ? `${entries.length} запис${entries.length === 1 ? '' : 'а'} — каса ${formatCurrency(sumCash)}, заем ${formatCurrency(sumLoan)}`
+          : 'Добави каса / заем за месеца'}
+      >
+        {has ? (
+          <>
+            {sumCash !== 0 && <span className="text-[10px] font-semibold tabular-nums text-foreground whitespace-nowrap">К: {formatCurrency(sumCash)}</span>}
+            {sumLoan !== 0 && <span className="text-[10px] font-semibold tabular-nums text-foreground whitespace-nowrap">З: {formatCurrency(sumLoan)}</span>}
+            {sumCash === 0 && sumLoan === 0 && <span className="text-[9px] text-muted-foreground">{entries.length} зап.</span>}
+          </>
+        ) : (
+          <Plus className="h-3 w-3 text-muted-foreground" />
+        )}
+      </button>
     </td>
   )
 }
