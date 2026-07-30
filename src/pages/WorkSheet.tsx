@@ -948,8 +948,9 @@ function CashLoanSummaryCell({ entries, onOpen }: {
       >
         {has ? (
           <>
-            {sumCash !== 0 && <span className="text-[10px] font-semibold tabular-nums text-foreground whitespace-nowrap">К: {formatCurrency(sumCash)}</span>}
-            {sumLoan !== 0 && <span className="text-[10px] font-semibold tabular-nums text-foreground whitespace-nowrap">З: {formatCurrency(sumLoan)}</span>}
+            {/* + зелено / − червено — конвенцията от Годишния изглед. */}
+            {sumCash !== 0 && <span className={`text-[10px] font-semibold tabular-nums whitespace-nowrap ${sumCash > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>К: {formatCurrency(sumCash)}</span>}
+            {sumLoan !== 0 && <span className={`text-[10px] font-semibold tabular-nums whitespace-nowrap ${sumLoan > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>З: {formatCurrency(sumLoan)}</span>}
             {sumCash === 0 && sumLoan === 0 && <span className="text-[9px] text-muted-foreground">{entries.length} зап.</span>}
           </>
         ) : (
