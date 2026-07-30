@@ -225,6 +225,43 @@ async function checkVies(eik: string): Promise<boolean | null> {
 
 function parseDetails(d: any): ParsedCompany {
   const eik: string | null = d?.identifier ?? null
+
+  // ============================================================
+  // ДДС статус — ДВА модела:
+  //
+  // НОВ (vat2, от 07.2026 — старото vat е замразено от НАП): епизоди на
+  // регистрация в items[]: { typeId, registrationDate, terminationDate }.
+  //   - активна регистрация = запис с registrationDate БЕЗ terminationDate
+  //   - typeId 9 (чл. 151а, касова отчетност) е ПОД-режим — не носи базова
+  //     ДДС регистрация (еквивалент на старите неутрални D3/D4/D5)
+  //
+  // СТАР (vat.states, fallback ако vat2 липсва): поток от събития с кодове
+  // D1–D37; статусът се определя от последното релевантно събитие.
+  // ============================================================
+  let vatActive = false
+  let vat_registered_at: string | null = null
+
+  if (d?.vat2 && typeof d.vat2 === "object") {
+    const items: Array<{ typeId?: number; registrationDate?: string; terminationDate?: string }> =
+      Array.isArray(d.vat2.items) ? d.vat2.items : []
+    const base = items.filter((i) => i?.typeId !== 9 && i?.registrationDate)
+    const active = base.filter((i) => !i.terminationDate)
+    vatActive = active.length > 0
+    if (vatActive) {
+      // Датата на ПОСЛЕДНАТА активна регистрация (при повторна е по-точна).
+      const lastReg = active.map((i) => String(i.registrationDate)).sort().pop()
+      vat_registered_at = lastReg ? lastReg.split("T")[0] : null
+    }
+    const vat_number = vatActive && eik ? `BG${eik}` : null
+    const address = formatAddress(d?.addresses?.[0] ?? d.vat2.address ?? d?.vat?.address) ?? null
+    const owner_name = d?.owners?.[0]?.name ?? null
+    const managers: string[] = (d?.managers ?? []).map((m: any) => m?.name).filter(Boolean)
+    const manager_name = managers.length ? managers.slice(0, 3).join(", ") : null
+    const public_url: string | null = typeof d?.url === "string" ? d.url : null
+    return { eik, vat_number, vat_registered_at, address, owner_name, manager_name, public_url, vat_data_present: true }
+  }
+
+  // ---- Fallback: старият модел (vat.states) ----
   const states: Array<{ date?: string; code?: string }> = Array.isArray(d?.vat?.states) ? d.vat.states : []
   // Сортираме по дата ascending → последния запис е актуалното състояние
   const sortedStates = [...states].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""))
@@ -250,7 +287,6 @@ function parseDetails(d: any): ParsedCompany {
   // Актуалният статус се определя от ПОСЛЕДНОТО релевантно (не-неутрално) събитие.
   const relevant = sortedStates.filter((s) => !VAT_NEUTRAL_CODES.has(s.code ?? ""))
   const lastCode = relevant[relevant.length - 1]?.code ?? ""
-  let vatActive: boolean
   if (VAT_DEREGISTER_CODES.has(lastCode)) vatActive = false
   else if (VAT_REGISTER_CODES.has(lastCode)) vatActive = true
   else vatActive = relevant.length > 0 // непознат код → консервативно: има събитие = активна
@@ -259,7 +295,6 @@ function parseDetails(d: any): ParsedCompany {
 
   // Дата на регистрация: датата на ПОСЛЕДНОТО регистрационно събитие
   // (при повторна регистрация е по-точно); fallback — първото състояние.
-  let vat_registered_at: string | null = null
   if (vatActive) {
     const lastReg = [...relevant].reverse().find((s) => VAT_REGISTER_CODES.has(s.code ?? ""))
     const regDate = lastReg?.date ?? sortedStates[0]?.date
@@ -271,7 +306,7 @@ function parseDetails(d: any): ParsedCompany {
   const managers: string[] = (d?.managers ?? []).map((m: any) => m?.name).filter(Boolean)
   const manager_name = managers.length ? managers.slice(0, 3).join(", ") : null
   const public_url: string | null = typeof d?.url === "string" ? d.url : null
-  const vat_data_present = !!d?.vat
+  const vat_data_present = !!(d?.vat2 ?? d?.vat)
   return { eik, vat_number, vat_registered_at, address, owner_name, manager_name, public_url, vat_data_present }
 }
 
