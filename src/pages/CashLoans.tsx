@@ -208,7 +208,9 @@ export function CashLoansPage() {
 
         <div className="ml-auto flex items-center gap-4">
           <span><strong className="text-foreground">{filteredRows.length}</strong> {filteredRows.length === 1 ? 'фирма' : 'фирми'}</span>
-          <span>Общо за годината: <strong className="text-foreground tabular-nums">{fmt(footerTotals.grand) || '0,00'} €</strong></span>
+          <span>Общо за годината: <strong className={`tabular-nums ${
+            footerTotals.grand > 0 ? 'text-emerald-700 dark:text-emerald-400' : footerTotals.grand < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'
+          }`}>{fmt(footerTotals.grand) || '0,00'} €</strong></span>
         </div>
       </div>
 
@@ -249,22 +251,25 @@ export function CashLoansPage() {
                     </td>
                     {ALL_MONTHS.map((m, mi) => {
                       const v = displayValue(row, mi)
-                      const hasOwn = row.monthly[mi] !== 0
+                      // Цветовете следват Годишния изглед: + зелено, − червено.
+                      const cls = v === 0
+                        ? 'text-muted-foreground/50'
+                        : v > 0 ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-rose-600 dark:text-rose-400 font-semibold'
                       return (
                         <td key={m} className="px-1 py-0.5 text-right">
                           <button
                             onClick={() => setModalFor({ clientId: row.clientId, name: row.name, month: m })}
                             title={`${MONTH_NAMES[mi]} ${year} — клик за записите`}
-                            className={`w-full rounded px-1 py-1 text-xs tabular-nums text-right hover:bg-sky-100 dark:hover:bg-sky-900/30 transition ${
-                              hasOwn ? 'font-semibold text-foreground' : 'text-muted-foreground/50'
-                            }`}
+                            className={`w-full rounded px-1 py-1 text-xs tabular-nums text-right hover:bg-sky-100 dark:hover:bg-sky-900/30 transition ${cls}`}
                           >
                             {fmt(v) || '—'}
                           </button>
                         </td>
                       )
                     })}
-                    <td className="px-3 py-1.5 text-right text-xs font-semibold tabular-nums text-foreground whitespace-nowrap">
+                    <td className={`px-3 py-1.5 text-right text-xs font-semibold tabular-nums whitespace-nowrap ${
+                      row.total > 0 ? 'text-emerald-700 dark:text-emerald-400' : row.total < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
+                    }`}>
                       {fmt(row.total)}
                     </td>
                   </tr>
@@ -277,9 +282,13 @@ export function CashLoansPage() {
                   <td className="px-3 py-2"></td>
                   <td className="px-3 py-2 sticky left-0 bg-muted/30 z-20">Общо</td>
                   {footerTotals.perMonth.map((v, i) => (
-                    <td key={i} className="px-2 py-2 text-right text-xs tabular-nums whitespace-nowrap">{fmt(v)}</td>
+                    <td key={i} className={`px-2 py-2 text-right text-xs tabular-nums whitespace-nowrap ${
+                      v > 0 ? 'text-emerald-700 dark:text-emerald-400' : v < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
+                    }`}>{fmt(v)}</td>
                   ))}
-                  <td className="px-3 py-2 text-right text-xs tabular-nums whitespace-nowrap">{fmt(footerTotals.grand)}</td>
+                  <td className={`px-3 py-2 text-right text-xs tabular-nums whitespace-nowrap ${
+                    footerTotals.grand > 0 ? 'text-emerald-700 dark:text-emerald-400' : footerTotals.grand < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
+                  }`}>{fmt(footerTotals.grand)}</td>
                 </tr>
               </tfoot>
             )}
