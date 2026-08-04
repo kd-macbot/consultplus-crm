@@ -46,10 +46,13 @@ function advanceRelevance(profile: string, month: number): Relevance {
   return 'na'
 }
 
-/** Чл. 55 ЗДДФЛ: подава се тримесечно (срок: края на месеца след тримесечието) */
+/** Чл. 55 ЗДДФЛ: тримесечно. Редът е МЕСЕЦЪТ С ДАННИТЕ (работният месец),
+ * затова „дължимо" е на последния месец от тримесечието — той се обработва
+ * през следващия месец, точно когато изтича срокът (края на месеца след
+ * тримесечието). Същата конвенция като ОСС. */
 function art55Relevance(applies: string, month: number): Relevance {
   if (applies !== 'ДА') return 'na'
-  return [1, 4, 7, 10].includes(month) ? 'due' : 'optional'
+  return month % 3 === 0 ? 'due' : 'optional'
 }
 
 function advanceDeadline(profile: string, month: number): string | null {
@@ -60,9 +63,11 @@ function advanceDeadline(profile: string, month: number): string | null {
 
 function art55Deadline(applies: string, month: number): string | null {
   if (applies !== 'ДА') return null
-  if (![1, 4, 7, 10].includes(month)) return null
-  const lastDay = new Date(2024, month, 0).getDate()
-  return `до ${lastDay}.${String(month).padStart(2, '0')}`
+  if (month % 3 !== 0) return null
+  // Срокът е края на месеца СЛЕД тримесечието: 30.04 / 31.07 / 31.10 / 31.01.
+  const next = month === 12 ? 1 : month + 1
+  const lastDay = new Date(2024, next, 0).getDate()
+  return `до ${lastDay}.${String(next).padStart(2, '0')}`
 }
 
 // masterValue беше O(N) — заменен с resolveDropdownText от tableIndices.
@@ -104,7 +109,11 @@ export function WorkSheetPage() {
   // Месечните данни идват от React Query — кешират се по (year, month) ключ
   // в persisted localStorage. Повторно посещение на същия месец = МИГНОВЕНО.
   const monthlyWorkQ = useMonthlyWork(year, month)
-  const art55Q = useArt55Entries(year, [month])
+  // Чл. 55: на дължимия месец (последен от тримесечието) дотегляме цялото
+  // тримесечие — броячът и баджът гледат записите на трите месеца, не само
+  // на текущия (доход може да има само в първия месец от тримесечието).
+  const art55Months = useMemo(() => month % 3 === 0 ? [month - 2, month - 1, month] : [month], [month])
+  const art55Q = useArt55Entries(year, art55Months)
   const cashLoanQ = useCashLoanEntries(year, [month])
   const { invalidateMonthlyWork, invalidateArt55, invalidateCashLoan } = useInvalidateCrm()
 
@@ -127,14 +136,20 @@ export function WorkSheetPage() {
     })
     return m
   }, [monthlyWorkQ.data, pending, year, month])
+  // Клетката/модалът показват само ТЕКУЩИЯ месец; тримесечният Set е за
+  // брояча и за баджа „дължимо" (изпълнено = записи някъде в тримесечието).
   const art55Entries = useMemo(() => {
     const m = new Map<string, Art55Entry[]>()
     ;(art55Q.data ?? []).forEach(e => {
+      if (e.month !== month) return
       const arr = m.get(e.client_id) ?? []
       arr.push(e)
       m.set(e.client_id, arr)
     })
     return m
+  }, [art55Q.data, month])
+  const art55QuarterHas = useMemo(() => {
+    return new Set((art55Q.data ?? []).map(e => e.client_id))
   }, [art55Q.data])
   const cashLoanEntries = useMemo(() => {
     const m = new Map<string, CashLoanEntry[]>()
@@ -242,7 +257,7 @@ export function WorkSheetPage() {
     tables: ['crm_monthly_work', 'crm_art55_entries', 'crm_cash_loan_entries'],
     onChange: () => {
       invalidateMonthlyWork(year, month)
-      invalidateArt55(year, [month])
+      invalidateArt55(year, art55Months)
       invalidateCashLoan()
     },
     shouldDefer: deferEdits,
@@ -374,11 +389,12 @@ export function WorkSheetPage() {
       }
       if (art55Relevance(r.art55, month) === 'due') {
         art55Due++
-        if ((art55Entries.get(r.client.id)?.length ?? 0) > 0) art55Done++
+        // Изпълнено = записи НЯКЪДЕ в тримесечието, не само в текущия месец.
+        if (art55QuarterHas.has(r.client.id)) art55Done++
       }
     })
     return { totalResult, submitted, advDue, advDone, art55Due, art55Done, total: vatTotal }
-  }, [filteredRows, month, art55Entries])
+  }, [filteredRows, month, art55QuarterHas])
 
   function changeMonth(delta: number) {
     let m = month + delta
@@ -746,6 +762,7 @@ export function WorkSheetPage() {
                       relevance={art55Relevance(row.art55, month)}
                       deadline={art55Deadline(row.art55, month)}
                       entries={art55Entries.get(row.client.id) ?? []}
+                      quarterDone={art55QuarterHas.has(row.client.id)}
                       onOpen={() => setArt55ModalFor({ client: row.client, name: row.name })}
                     />
                     {(['vat_accounted', 'amortization_done', 'bank_done'] as const).map(field => (
@@ -823,7 +840,7 @@ export function WorkSheetPage() {
           entries={art55Entries.get(art55ModalFor.client.id) ?? []}
           disabled={!canEdit}
           onClose={() => setArt55ModalFor(null)}
-          onChanged={() => invalidateArt55(year, [month])}
+          onChanged={() => invalidateArt55(year, art55Months)}
           createdBy={user?.id}
         />
       )}
@@ -961,10 +978,13 @@ function CashLoanSummaryCell({ entries, onOpen }: {
   )
 }
 
-function Art55SummaryCell({ relevance, deadline, entries, onOpen }: {
+function Art55SummaryCell({ relevance, deadline, entries, quarterDone, onOpen }: {
   relevance: Relevance
   deadline: string | null
   entries: Art55Entry[]
+  // Записи някъде в тримесечието (не само в текущия месец) — гаси
+  // „дължимия" бадж, ако доходът е бил в по-ранен месец от тримесечието.
+  quarterDone: boolean
   onOpen: () => void
 }) {
   if (relevance === 'na') {
@@ -974,7 +994,7 @@ function Art55SummaryCell({ relevance, deadline, entries, onOpen }: {
   const sumTax = entries.reduce((s, e) => s + (e.tax_amount ?? 0), 0)
   const isDue = relevance === 'due'
   const has = entries.length > 0
-  const ringCls = isDue && !has
+  const ringCls = isDue && !quarterDone
     ? 'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-300 dark:ring-indigo-700/50'
     : has
       ? 'bg-emerald-50 dark:bg-emerald-900/20'
@@ -994,7 +1014,7 @@ function Art55SummaryCell({ relevance, deadline, entries, onOpen }: {
         ) : (
           <>
             <Plus className="h-3 w-3 text-muted-foreground" />
-            {isDue && deadline && (
+            {isDue && !quarterDone && deadline && (
               <span className="text-[9px] font-semibold leading-none text-indigo-700 dark:text-indigo-300">{deadline}</span>
             )}
           </>
