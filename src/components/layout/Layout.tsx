@@ -7,7 +7,7 @@ import { previousMonth } from '../../lib/utils'
 import { useMyStaff } from '../../lib/useMyStaff'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
-  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark, KanbanSquare, Coins,
+  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark, KanbanSquare, Coins, MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -50,6 +50,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
       { to: '/profiles', label: 'Профили', icon: IdCard, roles: ['admin', 'manager', 'employee'] },
       { to: '/payments', label: 'Плащания', icon: Banknote, roles: ['admin', 'manager'], badgeKeys: ['paymentsUnpaid'] },
+      { to: '/messages', label: 'Съобщения', icon: MessageSquare, roles: ['admin', 'manager', 'employee'] },
     ],
   },
   {

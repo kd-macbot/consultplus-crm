@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { getContactsWithClients, getClientNames, upsertContact, deleteContact, lookupEikByName, lookupByEik } from '../lib/storage'
+import { queryClient } from '../lib/queryClient'
+import { qk } from '../lib/queries'
 import type { ContactWithClient } from '../lib/types'
 import { useAuth } from '../lib/auth'
 import { Plus, Pencil, Trash2, Search, X, Download, Loader2 } from 'lucide-react'
@@ -134,6 +136,10 @@ export function ContactsPage() {
       toast.success(editingId ? 'Контактът е обновен' : 'Контактът е добавен')
       setShowModal(false)
       await load()
+      // Страницата има собствен load(), но други страници (Съобщения,
+      // Клиенти) четат контактите през споделения RQ кеш — инвалидираме.
+      void queryClient.invalidateQueries({ queryKey: qk.allContacts })
+      void queryClient.invalidateQueries({ queryKey: qk.contacts })
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка при запис')
     }
@@ -192,6 +198,8 @@ export function ContactsPage() {
       toast.success(`Контактът за "${c.client_name}" е изтрит`)
       setConfirmDelete(null)
       await load()
+      void queryClient.invalidateQueries({ queryKey: qk.allContacts })
+      void queryClient.invalidateQueries({ queryKey: qk.contacts })
     } catch (e: any) {
       toast.error(e.message ?? 'Грешка')
     }

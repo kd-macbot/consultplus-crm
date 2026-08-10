@@ -194,6 +194,43 @@ export interface Art55Entry {
   updated_at: string
 }
 
+// Съобщения към клиенти (Mobica: Viber + SMS fallback)
+export type MessageStatus = 'accepted' | 'rejected' | 'delivered' | 'undelivered' | 'unknown' | 'error'
+export const MESSAGE_STATUS_LABELS: Record<MessageStatus, string> = {
+  accepted: 'Прието',
+  rejected: 'Отхвърлено',
+  delivered: 'Доставено',
+  undelivered: 'Недоставено',
+  unknown: 'Неизвестно',
+  error: 'Грешка',
+}
+export interface ClientMessage {
+  id: string
+  client_id: string | null
+  client_name: string
+  phone: string
+  text: string
+  sms_text: string | null
+  idd: string
+  tag: string | null
+  status: MessageStatus
+  status_code: string | null
+  status_desc: string | null
+  delivered_channel: string | null
+  date_report: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+export interface MessageTemplate {
+  id: string
+  name: string
+  body: string
+  position: number
+  created_at: string
+  updated_at: string
+}
+
 // Каси и заеми — месечни записи за деклариране. Сумата е ДВИЖЕНИЕ за
 // месеца; акумулираното се смята в UI (сбор от началото на годината).
 export type CashLoanKind = 'cash' | 'loan'
