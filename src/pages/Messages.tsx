@@ -81,12 +81,23 @@ export function MessagesPage() {
 
   const messagesQ = useClientMessages()
   const templatesQ = useMessageTemplates()
-  const { invalidateClientMessages, invalidateMessageTemplates } = useInvalidateCrm()
+  const { invalidateClientMessages, invalidateMessageTemplates, invalidateAllContacts, invalidateContacts, invalidateMonthlyWork } = useInvalidateCrm()
 
   useRealtime({
     channel: 'client-messages',
     tables: ['crm_client_messages'],
     onChange: () => invalidateClientMessages(),
+  })
+  // Телефоните (Контакти) и сумите (Работен лист) идват от споделения кеш —
+  // при промяна от друга страница/колега ги освежаваме тихо.
+  useRealtime({
+    channel: 'messages-master',
+    tables: ['crm_contacts', 'crm_monthly_work'],
+    onChange: () => {
+      invalidateAllContacts()
+      invalidateContacts()
+      invalidateMonthlyWork(work.year, work.month)
+    },
   })
 
   const columns = useMemo(() => columnsQ.data ?? [], [columnsQ.data])
