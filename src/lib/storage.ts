@@ -2173,10 +2173,11 @@ async function invokeMobica<T = unknown>(body: object): Promise<T> {
   return data as T
 }
 
-export async function sendMobicaMessages(messages: Array<{
-  idd: string; phone: string; text: string; sms_text?: string; tag?: string
-}>): Promise<{ code: string; description: string }> {
-  return invokeMobica({ action: 'send', messages })
+export async function sendMobicaMessages(
+  messages: Array<{ idd: string; phone: string; text: string; sms_text?: string; tag?: string; from?: string }>,
+  channel: 'sms' | 'viber' = 'sms',
+): Promise<{ code: string; description: string; channel: string }> {
+  return invokeMobica({ action: 'send', channel, messages })
 }
 
 export interface MobicaDlrRecord {

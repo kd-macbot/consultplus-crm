@@ -157,6 +157,9 @@ export function MessagesPage() {
   const [accountantFilter, setAccountantFilter] = usePersistentState<string>('msg-accountant', '')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [body, setBody] = usePersistentState('msg-body', '')
+  // Канал: „sms" (директен SMS — работи веднага) или „viber" (Viber +
+  // SMS fallback — иска одобрен Viber sender при Mobica).
+  const [channel, setChannel] = usePersistentState<'sms' | 'viber'>('msg-channel', 'sms')
   const [sending, setSending] = useState(false)
   const [checkingDlr, setCheckingDlr] = useState(false)
   const [balance, setBalance] = useState<string | null>(null)
@@ -217,8 +220,9 @@ export function MessagesPage() {
     if (readyRows.length === 0) { toast.error('Няма готови съобщения за изпращане'); return }
     if (!body.trim()) { toast.error('Напиши текст на съобщението'); return }
     const skipped = selectedRows.length - readyRows.length
+    const channelLabel = channel === 'viber' ? 'Viber + SMS fallback' : 'SMS'
     const ok = window.confirm(
-      `Ще изпратиш ${readyRows.length} съобщения (Viber + SMS fallback).` +
+      `Ще изпратиш ${readyRows.length} съобщения (${channelLabel}).` +
       (skipped > 0 ? `\n${skipped} избрани ще бъдат пропуснати (липсва телефон или сума).` : '') +
       `\n\nВсяко съобщение се таксува от Mobica акаунта. Продължи?`,
     )
@@ -240,7 +244,7 @@ export function MessagesPage() {
         let status: MessageStatus = 'accepted'
         let statusDesc: string | null = null
         try {
-          const resp = await sendMobicaMessages(batch.map(({ row: _r, ...m }) => m))
+          const resp = await sendMobicaMessages(batch.map(({ row: _r, ...m }) => m), channel)
           statusDesc = resp.description
         } catch (e) {
           status = 'error'
@@ -451,6 +455,19 @@ export function MessagesPage() {
                   <Pencil className="h-3 w-3 mr-1" /> Шаблони
                 </Button>
               )}
+              {/* Канал: SMS работи веднага; Viber иска одобрен sender. */}
+              <div className="flex items-center rounded-md border border-border overflow-hidden">
+                {(['sms', 'viber'] as const).map(c => (
+                  <button key={c}
+                    onClick={() => setChannel(c)}
+                    title={c === 'sms' ? 'Директен SMS' : 'Viber + SMS fallback (иска одобрен Viber sender)'}
+                    className={`px-2 py-0.5 text-xs font-semibold transition ${
+                      channel === c ? 'bg-navy text-white dark:bg-primary dark:text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-muted/50'
+                    }`}>
+                    {c === 'sms' ? 'SMS' : 'Viber'}
+                  </button>
+                ))}
+              </div>
               <span className="ml-auto text-muted-foreground">
                 Работен месец: <strong className="text-foreground">{workMonthLabel}</strong> • Срок: <strong className="text-foreground">{deadline}</strong>
               </span>
