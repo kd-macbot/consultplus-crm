@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -2145,6 +2145,138 @@ export async function updateArt55Entry(id: string, patch: Partial<Art55Entry>): 
 
 export async function deleteArt55Entry(id: string): Promise<void> {
   const { error } = await supabase.from('crm_art55_entries').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ==================== СЪОБЩЕНИЯ КЪМ КЛИЕНТИ (MOBICA) ====================
+
+async function invokeMobica<T = unknown>(body: object): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('mobica-send', { body })
+  if (error) {
+    const ctx = (error as any).context
+    if (ctx && typeof ctx.text === 'function') {
+      try {
+        const text = await ctx.text()
+        try {
+          const parsed = JSON.parse(text)
+          throw new Error(parsed?.error ?? text ?? error.message)
+        } catch {
+          throw new Error(text || error.message)
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message !== error.message) throw e
+      }
+    }
+    throw error
+  }
+  if ((data as any)?.error) throw new Error((data as any).error)
+  return data as T
+}
+
+export async function sendMobicaMessages(messages: Array<{
+  idd: string; phone: string; text: string; sms_text?: string; tag?: string
+}>): Promise<{ code: string; description: string }> {
+  return invokeMobica({ action: 'send', messages })
+}
+
+export interface MobicaDlrRecord {
+  channel: string
+  id: string
+  msisdn: number
+  code: number
+  description: string
+  date_submit: string
+  date_report: string
+}
+
+export async function fetchMobicaDlr(referenceIds: string[]): Promise<Record<string, MobicaDlrRecord[]>> {
+  return invokeMobica({ action: 'dlr', reference_ids: referenceIds })
+}
+
+export async function fetchMobicaBalance(): Promise<{ username: string; amount: string; currency: string }> {
+  return invokeMobica({ action: 'balance' })
+}
+
+export async function getClientMessages(limit = 500): Promise<ClientMessage[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_client_messages')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return (data ?? []) as ClientMessage[]
+  })
+}
+
+export async function addClientMessages(rows: Array<{
+  client_id: string | null; client_name: string; phone: string;
+  text: string; sms_text?: string | null; idd: string; tag?: string | null;
+  status: MessageStatus; status_code?: string | null; status_desc?: string | null;
+  createdBy?: string;
+}>): Promise<void> {
+  const { error } = await supabase
+    .from('crm_client_messages')
+    .insert(rows.map(r => ({
+      client_id: r.client_id,
+      client_name: r.client_name,
+      phone: r.phone,
+      text: r.text,
+      sms_text: r.sms_text ?? null,
+      idd: r.idd,
+      tag: r.tag ?? null,
+      status: r.status,
+      status_code: r.status_code ?? null,
+      status_desc: r.status_desc ?? null,
+      created_by: r.createdBy ?? null,
+    })))
+  if (error) throw error
+}
+
+export async function updateClientMessageStatus(idd: string, patch: {
+  status: MessageStatus; status_code?: string | null; status_desc?: string | null;
+  delivered_channel?: string | null; date_report?: string | null;
+}): Promise<void> {
+  const { error } = await supabase
+    .from('crm_client_messages')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('idd', idd)
+  if (error) throw error
+}
+
+export async function getMessageTemplates(): Promise<MessageTemplate[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_message_templates')
+      .select('*')
+      .order('position')
+    if (error) throw error
+    return (data ?? []) as MessageTemplate[]
+  })
+}
+
+export async function addMessageTemplate(name: string, body: string): Promise<void> {
+  const { data: existing } = await supabase
+    .from('crm_message_templates')
+    .select('position')
+    .order('position', { ascending: false }).limit(1)
+  const pos = (existing?.[0]?.position ?? -1) + 1
+  const { error } = await supabase
+    .from('crm_message_templates')
+    .insert([{ name, body, position: pos }])
+  if (error) throw error
+}
+
+export async function updateMessageTemplate(id: string, patch: { name?: string; body?: string }): Promise<void> {
+  const { error } = await supabase
+    .from('crm_message_templates')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteMessageTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from('crm_message_templates').delete().eq('id', id)
   if (error) throw error
 }
 
