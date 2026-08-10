@@ -32,6 +32,7 @@ interface SendMessage {
   text: string
   sms_text?: string
   tag?: string
+  validity_period_sec?: number
 }
 
 function creds(): { user: string; pass: string } {
@@ -108,8 +109,11 @@ Deno.serve(async (req) => {
           button_text: "",
           // Текст без бутон/картинка = transactional (Table 3)
           is_promotional: 0,
-          // 1 час за Viber доставка, после SMS fallback
-          validity_period_sec: 3600,
+          // Прозорец за Viber доставка, после SMS fallback. Кратък (60s),
+          // за да падне бързо на SMS, докато няма одобрен Viber sender —
+          // иначе съобщението виси в опит за Viber до изтичане на прозореца.
+          // Клиентът може да го подаде явно (validity_period_sec).
+          validity_period_sec: typeof m.validity_period_sec === "number" ? m.validity_period_sec : 60,
           sms_text: m.sms_text ?? m.text,
         })),
       }
