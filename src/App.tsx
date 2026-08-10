@@ -25,6 +25,7 @@ const SubscriptionsPage = lazy(() => import('./pages/Subscriptions').then(m => (
 const TrzPage = lazy(() => import('./pages/Trz').then(m => ({ default: m.TrzPage })))
 const ChecklistPage = lazy(() => import('./pages/Checklist').then(m => ({ default: m.ChecklistPage })))
 const CashLoansPage = lazy(() => import('./pages/CashLoans').then(m => ({ default: m.CashLoansPage })))
+const MessagesPage = lazy(() => import('./pages/Messages').then(m => ({ default: m.MessagesPage })))
 const ClientProfilesPage = lazy(() => import('./pages/ClientProfiles').then(m => ({ default: m.ClientProfilesPage })))
 const PaymentsPage = lazy(() => import('./pages/Payments').then(m => ({ default: m.PaymentsPage })))
 const CalendarPage = lazy(() => import('./pages/Calendar').then(m => ({ default: m.CalendarPage })))
@@ -70,6 +71,8 @@ export default function App() {
                 <Route path="/trz" element={<TrzPage />} />
                 <Route path="/checklist" element={<ChecklistPage />} />
                 <Route path="/cash-loans" element={<CashLoansPage />} />
+                {/* Всички виждат историята; изпращането е гейтнато вътре (admin/manager). */}
+                <Route path="/messages" element={<MessagesPage />} />
                 <Route path="/profiles" element={<ClientProfilesPage />} />
                 <Route path="/payments" element={
                   <ProtectedRoute allowedRoles={['admin', 'manager']}><PaymentsPage /></ProtectedRoute>
