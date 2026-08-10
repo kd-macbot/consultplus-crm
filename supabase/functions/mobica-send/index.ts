@@ -32,6 +32,7 @@ interface SendMessage {
   text: string
   sms_text?: string
   tag?: string
+  from?: string
   validity_period_sec?: number
 }
 
@@ -81,8 +82,12 @@ Deno.serve(async (req) => {
     const payload = await req.json()
     const { user, pass } = creds()
 
-    // ---------- Изпращане (Viber + SMS fallback в една заявка) ----------
+    // ---------- Изпращане ----------
+    // channel = "sms"   → директен SMS (sms.php)
+    // channel = "viber" → Viber с автоматичен SMS fallback (viber.php);
+    //                     иска одобрен Viber sender при Mobica
     if (payload.action === "send") {
+      const channel = payload.channel === "viber" ? "viber" : "sms"
       const messages: SendMessage[] = Array.isArray(payload.messages) ? payload.messages : []
       if (messages.length === 0) return json({ error: "messages е празен" }, 400)
       if (messages.length > 100) return json({ error: "максимум 100 съобщения на заявка" }, 400)
@@ -96,35 +101,51 @@ Deno.serve(async (req) => {
         }
       }
 
-      const body = {
-        user,
-        pass,
-        viber: messages.map((m) => ({
-          idd: m.idd,
-          tag: m.tag ?? "cplus360",
-          phone: m.phone,
-          text: m.text,
-          image_url: "",
-          button_url: "",
-          button_text: "",
-          // Текст без бутон/картинка = transactional (Table 3)
-          is_promotional: 0,
-          // Прозорец за Viber доставка, после SMS fallback. Кратък (60s),
-          // за да падне бързо на SMS, докато няма одобрен Viber sender —
-          // иначе съобщението виси в опит за Viber до изтичане на прозореца.
-          // Клиентът може да го подаде явно (validity_period_sec).
-          validity_period_sec: typeof m.validity_period_sec === "number" ? m.validity_period_sec : 60,
-          sms_text: m.sms_text ?? m.text,
-        })),
+      let path: string
+      let body: object
+      if (channel === "sms") {
+        path = "multi/json/sms.php"
+        body = {
+          user,
+          pass,
+          sms: messages.map((m) => ({
+            idd: m.idd,
+            phone: m.phone,
+            message: m.text,
+            // Sender ID (до 11 знака) — ако маршрутът позволява alpha sender.
+            ...(m.from ? { from: m.from } : {}),
+          })),
+        }
+      } else {
+        path = "multi/json/viber.php"
+        body = {
+          user,
+          pass,
+          viber: messages.map((m) => ({
+            idd: m.idd,
+            tag: m.tag ?? "cplus360",
+            phone: m.phone,
+            text: m.text,
+            image_url: "",
+            button_url: "",
+            button_text: "",
+            // Текст без бутон/картинка = transactional (Table 3)
+            is_promotional: 0,
+            // Прозорец за Viber доставка, после SMS fallback. Кратък (60s),
+            // за да падне бързо на SMS. Клиентът може да го подаде явно.
+            validity_period_sec: typeof m.validity_period_sec === "number" ? m.validity_period_sec : 60,
+            sms_text: m.sms_text ?? m.text,
+          })),
+        }
       }
 
-      const resp = await mobicaPost("multi/json/viber.php", body) as { code?: string; description?: string }
+      const resp = await mobicaPost(path, body) as { code?: string; description?: string }
       const code = String(resp?.code ?? "")
       if (code !== "1004") {
         const desc = REJECT_DESCRIPTIONS[code] ?? resp?.description ?? "неизвестна грешка"
         return json({ error: `Mobica отказа заявката (${code}): ${desc}`, code, description: resp?.description ?? null }, 502)
       }
-      return json({ code, description: resp?.description ?? "Message accepted" })
+      return json({ code, description: resp?.description ?? "Message accepted", channel })
     }
 
     // ---------- DLR: статуси по нашите reference id-та ----------
