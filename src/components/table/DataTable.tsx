@@ -51,6 +51,7 @@ import {
   saveView, deleteView, setDefaultView, syncViewsFromDb, type View,
 } from '../../lib/views'
 import { usePersistentState } from '../../lib/usePersistentState'
+import { statusBadgeClass } from '../../lib/statusBadge'
 
 interface ClientRow {
   clientId: string
@@ -581,16 +582,32 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           }
 
           const val = info.getValue() as string
+          // Цветове за бърз scan: „Статус" → баджовете от Работния лист;
+          // ДА → зелено, НЕ → червено (важи за всички ДА/НЕ колони).
+          const valUpper = val.trim().toUpperCase()
           return (
             <div
               className={`truncate ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
               onClick={() => canEdit && setEditCell({ clientId, columnId: col.id })}
               title={val}
             >
-              {val
-                ? <Highlight text={val} query={globalFilter} />
-                : <span className="text-dark/20">—</span>
-              }
+              {!val ? (
+                <span className="text-dark/20">—</span>
+              ) : col.name === 'Статус' ? (
+                <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadgeClass(val)}`}>
+                  <Highlight text={val} query={globalFilter} />
+                </span>
+              ) : valUpper === 'ДА' ? (
+                <span className="inline-block text-[11px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  <Highlight text={val} query={globalFilter} />
+                </span>
+              ) : valUpper === 'НЕ' ? (
+                <span className="inline-block text-[11px] px-2 py-0.5 rounded-full font-semibold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
+                  <Highlight text={val} query={globalFilter} />
+                </span>
+              ) : (
+                <Highlight text={val} query={globalFilter} />
+              )}
             </div>
           )
         },
