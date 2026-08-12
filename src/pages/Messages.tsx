@@ -24,9 +24,10 @@ import { usePersistentState } from '../lib/usePersistentState'
 // Съобщения към клиенти — Mobica (Viber + автоматичен SMS fallback).
 // Изпращат: admin + manager; служителите виждат само историята.
 // Телефоните идват от Контакти (owner_phone). Шаблони с placeholder-и:
-//   {фирма} {месец} {сума} {срок}
-// „Месец" и „сума" са за РАБОТНИЯ месец (предходния календарен);
-// срокът за ДДС е 14-о число на месеца след работния (конвенцията).
+//   {фирма} {месец} {сума} {срок_ддс} {срок_осиг} {срок_аванс} {срок_годишен}
+// „Месец" и „сума" са за РАБОТНИЯ месец (предходния календарен). Сроковете:
+//   ддс=14, осиг=25, аванс=15 (число на месеца СЛЕД работния);
+//   годишен=30.06 на текущата година (данък печалба, ГДД чл. 92 ЗКПО).
 // ============================================================
 
 /** 0888123456 / +359888123456 / 359 888 123 456 → 359888123456 (или null) */
@@ -185,11 +186,20 @@ export function MessagesPage() {
   }, [tableRows, search, statusFilter, accountantFilter])
 
   const workMonthLabel = `${MONTH_NAMES[work.month - 1]} ${work.year}`
-  const deadline = useMemo(() => {
-    // ДДС срок: 14-о число на месеца СЛЕД работния.
+  // Сроковете се смятат спрямо работния месец (предходния календарен).
+  // Всеки вид задължение има фиксирано число на месеца СЛЕД работния;
+  // годишният данък печалба е фиксиран 30.06 на текущата година.
+  const deadlines = useMemo(() => {
     const m = work.month === 12 ? 1 : work.month + 1
     const y = work.month === 12 ? work.year + 1 : work.year
-    return `14.${String(m).padStart(2, '0')}.${y}`
+    const mm = String(m).padStart(2, '0')
+    const on = (day: number) => `${day}.${mm}.${y}`
+    return {
+      dds: on(14),        // ДДС — 14-о число на месеца след работния
+      osig: on(25),       // Осигуровки — 25-о число
+      avans: on(15),      // Авансови вноски — 15-о число
+      godishen: `30.06.${new Date().getFullYear()}`, // Данък печалба (ГДД чл. 92 ЗКПО)
+    }
   }, [work])
 
   function resolveText(template: string, r: Row): string {
@@ -197,12 +207,15 @@ export function MessagesPage() {
       .split('{фирма}').join(r.name)
       .split('{месец}').join(workMonthLabel)
       .split('{сума}').join(r.amount != null ? `${fmtAmount(r.amount)} €` : '{сума}')
-      .split('{срок}').join(deadline)
+      .split('{срок_ддс}').join(deadlines.dds)
+      .split('{срок_осиг}').join(deadlines.osig)
+      .split('{срок_аванс}').join(deadlines.avans)
+      .split('{срок_годишен}').join(deadlines.godishen)
   }
 
   const selectedRows = useMemo(() => filteredRows.filter(r => selected.has(r.clientId)), [filteredRows, selected])
   // Съобщение не тръгва с неразрешен placeholder ({сума} без Резултат).
-  const readyRows = useMemo(() => selectedRows.filter(r => r.phone && !resolveText(body, r).includes('{сума}')), [selectedRows, body, workMonthLabel, deadline]) // eslint-disable-line react-hooks/exhaustive-deps
+  const readyRows = useMemo(() => selectedRows.filter(r => r.phone && !resolveText(body, r).includes('{сума}')), [selectedRows, body, workMonthLabel, deadlines]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleAllVisible() {
     setSelected(prev => {
@@ -469,7 +482,7 @@ export function MessagesPage() {
                 ))}
               </div>
               <span className="ml-auto text-muted-foreground">
-                Работен месец: <strong className="text-foreground">{workMonthLabel}</strong> • Срок: <strong className="text-foreground">{deadline}</strong>
+                Работен месец: <strong className="text-foreground">{workMonthLabel}</strong> • ДДС срок: <strong className="text-foreground">{deadlines.dds}</strong>
               </span>
             </div>
             <div className="p-3 border-b border-border">
@@ -478,11 +491,11 @@ export function MessagesPage() {
                 onChange={e => setBody(e.target.value)}
                 rows={4}
                 maxLength={1000}
-                placeholder="Текст на съобщението... Ползвай {фирма}, {месец}, {сума}, {срок}"
+                placeholder="Текст на съобщението... Ползвай {фирма}, {месец}, {сума} и срок ({срок_ддс}, {срок_осиг}, {срок_аванс}, {срок_годишен})"
                 className="w-full text-sm border border-border rounded-lg p-2 bg-background focus:border-primary focus:outline-none resize-y"
               />
               <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-muted-foreground">
-                {(['{фирма}', '{месец}', '{сума}', '{срок}'] as const).map(p => (
+                {(['{фирма}', '{месец}', '{сума}', '{срок_ддс}', '{срок_осиг}', '{срок_аванс}', '{срок_годишен}'] as const).map(p => (
                   <button key={p} onClick={() => setBody(b => b + p)}
                     className="px-1.5 py-0.5 rounded bg-muted/40 hover:bg-muted font-mono">{p}</button>
                 ))}
@@ -600,7 +613,7 @@ function TemplatesModal({ templates, onClose, onChanged }: {
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div>
             <h2 className="text-base font-semibold text-foreground">Шаблони за съобщения</h2>
-            <p className="text-xs text-muted-foreground">Placeholder-и: {'{фирма} {месец} {сума} {срок}'}</p>
+            <p className="text-xs text-muted-foreground">Placeholder-и: {'{фирма} {месец} {сума} {срок_ддс} {срок_осиг} {срок_аванс} {срок_годишен}'}</p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1"><X className="h-4 w-4" /></button>
         </div>
