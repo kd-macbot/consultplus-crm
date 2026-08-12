@@ -42,6 +42,11 @@ function normalizePhone(raw: string | null | undefined): string | null {
 function fmtAmount(v: number): string {
   return new Intl.NumberFormat('bg-BG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 }
+/** ISO дата → „DD.MM" (за кратък маркер „уведомен на …") */
+function shortDate(iso: string): string {
+  const d = new Date(iso)
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`
+}
 
 const STATUS_BADGE_CLS: Record<MessageStatus, string> = {
   accepted: 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200',
@@ -165,6 +170,9 @@ export function MessagesPage() {
   const [checkingDlr, setCheckingDlr] = useState(false)
   const [balance, setBalance] = useState<string | null>(null)
   const [templatesOpen, setTemplatesOpen] = useState(false)
+  // Активната кампания = избраният шаблон (пази се между сесиите).
+  const [selectedTemplateId, setSelectedTemplateId] = usePersistentState('msg-template', '')
+  const [hideNotified, setHideNotified] = usePersistentState('msg-hide-notified', false)
 
   const statusOptions = useMemo(() => {
     if (!statusCol) return [] as string[]
@@ -175,15 +183,35 @@ export function MessagesPage() {
     [...new Set(tableRows.map(r => r.accountant).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'bg')),
   [tableRows])
 
+  // Активна кампания = избраният шаблон (или „свободен текст"). Уведомените
+  // се броят ПО КАМПАНИЯ за работния месец — при няколко кампании в месеца
+  // всяка има свой маркер. Таг на изпратеното: „<кампания>#<год-месец>".
+  const periodKey = `${work.year}-${String(work.month).padStart(2, '0')}`
+  const selectedTemplate = useMemo(() => (templatesQ.data ?? []).find(t => t.id === selectedTemplateId), [templatesQ.data, selectedTemplateId])
+  const campaignKey = selectedTemplate ? selectedTemplate.name : 'свободен текст'
+  const campaignTag = `${campaignKey}#${periodKey}`
+  // client_id → последното успешно съобщение за тази кампания (не броим грешки).
+  const notifiedByClient = useMemo(() => {
+    const m = new Map<string, ClientMessage>()
+    ;(messagesQ.data ?? []).forEach(msg => {
+      if (msg.tag !== campaignTag || !msg.client_id) return
+      if (msg.status === 'error' || msg.status === 'rejected') return
+      const prev = m.get(msg.client_id)
+      if (!prev || msg.created_at > prev.created_at) m.set(msg.client_id, msg)
+    })
+    return m
+  }, [messagesQ.data, campaignTag])
+
   const filteredRows = useMemo(() => {
     const s = search.trim().toLowerCase()
     return tableRows.filter(r => {
       if (statusFilter.length > 0 && !statusFilter.includes(r.status)) return false
       if (accountantFilter && r.accountant !== accountantFilter) return false
+      if (hideNotified && notifiedByClient.has(r.clientId)) return false
       if (s && !r.name.toLowerCase().includes(s)) return false
       return true
     })
-  }, [tableRows, search, statusFilter, accountantFilter])
+  }, [tableRows, search, statusFilter, accountantFilter, hideNotified, notifiedByClient])
 
   const workMonthLabel = `${MONTH_NAMES[work.month - 1]} ${work.year}`
   // Сроковете се смятат спрямо работния месец (предходния календарен).
@@ -248,7 +276,7 @@ export function MessagesPage() {
         idd: `cp360-${stamp}-${i}`,
         phone: r.phone!,
         text: resolveText(body, r),
-        tag: `cplus360-${work.year}-${String(work.month).padStart(2, '0')}`,
+        tag: campaignTag,
         row: r,
       }))
       // Партиди по 100 (лимитът на edge функцията).
@@ -410,6 +438,13 @@ export function MessagesPage() {
                   {accountantOptions.map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
               )}
+              <button onClick={() => setHideNotified(v => !v)}
+                title="Крие фирмите, вече уведомени за тази кампания този месец"
+                className={`px-2 py-0.5 rounded-full font-semibold transition ${
+                  hideNotified ? 'bg-emerald-200 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100' : 'bg-muted/40 text-muted-foreground hover:bg-muted'
+                }`}>
+                Скрий уведомените
+              </button>
               <button onClick={toggleAllVisible} className="ml-auto text-primary hover:underline font-semibold">
                 Избери видимите
               </button>
@@ -427,7 +462,15 @@ export function MessagesPage() {
                         <td className="px-3 py-1.5 w-8">
                           <input type="checkbox" checked={isSel} disabled={noPhone} readOnly className="h-4 w-4 accent-sky-600 pointer-events-none" />
                         </td>
-                        <td className="px-2 py-1.5 font-medium text-foreground">{r.name}</td>
+                        <td className="px-2 py-1.5 font-medium text-foreground">
+                          {r.name}
+                          {notifiedByClient.has(r.clientId) && (
+                            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200 whitespace-nowrap"
+                              title={`Вече уведомен за „${campaignKey}" на ${shortDate(notifiedByClient.get(r.clientId)!.created_at)}`}>
+                              ✓ {shortDate(notifiedByClient.get(r.clientId)!.created_at)}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-2 py-1.5">
                           {r.status && <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadgeClass(r.status)}`}>{r.status}</span>}
                         </td>
@@ -444,23 +487,28 @@ export function MessagesPage() {
               </table>
             </div>
             <div className="px-3 py-2 border-t border-border bg-card text-xs text-muted-foreground">
-              Избрани: <strong className="text-foreground">{selected.size}</strong> • Телефоните идват от Контакти (Собственик)
+              Избрани: <strong className="text-foreground">{selected.size}</strong>
+              {' • '}Уведомени за „<strong className="text-foreground">{campaignKey}</strong>": <strong className="text-emerald-700 dark:text-emerald-400">{notifiedByClient.size}</strong>
+              {' • '}Телефоните идват от Контакти
             </div>
           </div>
 
           {/* ---------- Дясно: текст + preview + изпращане ---------- */}
           <div className="flex-1 flex flex-col min-h-0">
             <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center gap-2 text-xs">
+              {/* Изборът на шаблон = активната кампания (маркерите „уведомен"
+                  се броят спрямо нея). „Свободен текст" е отделна кампания. */}
               <select
+                value={selectedTemplateId}
                 onChange={e => {
+                  setSelectedTemplateId(e.target.value)
                   const t = (templatesQ.data ?? []).find(t => t.id === e.target.value)
                   if (t) setBody(t.body)
-                  e.target.value = ''
                 }}
-                defaultValue=""
+                title="Активна кампания — маркерите за уведомяване се броят спрямо нея"
                 className="h-7 px-1 text-xs border border-border rounded bg-background focus:border-primary"
               >
-                <option value="" disabled>Зареди шаблон...</option>
+                <option value="">— Свободен текст —</option>
                 {(templatesQ.data ?? []).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
               {isAdmin && (
