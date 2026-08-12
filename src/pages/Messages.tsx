@@ -24,8 +24,11 @@ import { usePersistentState } from '../lib/usePersistentState'
 // Съобщения към клиенти — Mobica (Viber + автоматичен SMS fallback).
 // Изпращат: admin + manager; служителите виждат само историята.
 // Телефоните идват от Контакти (owner_phone). Шаблони с placeholder-и:
-//   {фирма} {месец} {сума} {срок_ддс} {срок_осиг} {срок_аванс} {срок_годишен}
-// „Месец" и „сума" са за РАБОТНИЯ месец (предходния календарен). Сроковете:
+//   {фирма} {месец} {период} {сума} {сума_аванс} {срок_ддс} {срок_осиг}
+//   {срок_аванс} {срок_годишен}
+// За РАБОТНИЯ месец (предходния календарен): {месец} = месеца; {сума} =
+// Резултат €; {сума_аванс} = Авансова вноска €; {период} = месеца, а за
+// фирми с „Авансови вноски"=Тримесечни → тримесечието. Сроковете:
 //   ддс=14, осиг=25, аванс=15 (число на месеца СЛЕД работния);
 //   годишен=30.06 на текущата година (данък печалба, ГДД чл. 92 ЗКПО).
 // ============================================================
@@ -111,6 +114,7 @@ export function MessagesPage() {
   const dropdownIdx = useMemo(() => buildDropdownIndex(dropdownsQ.data ?? []), [dropdownsQ.data])
   const statusCol = useMemo(() => columns.find(c => c.name === 'Статус'), [columns])
   const accountantCol = useMemo(() => columns.find(c => c.name === 'Счетоводител'), [columns])
+  const advanceCol = useMemo(() => columns.find(c => c.name === 'Авансови вноски'), [columns])
 
   // client_id → телефон (първият валиден owner_phone от Контакти).
   const phoneByClient = useMemo(() => {
@@ -132,6 +136,15 @@ export function MessagesPage() {
     return m
   }, [monthlyWorkQ.data])
 
+  // client_id → Авансова вноска € за работния месец ({сума_аванс}).
+  const advanceAmountByClient = useMemo(() => {
+    const m = new Map<string, number>()
+    ;(monthlyWorkQ.data ?? []).forEach(w => {
+      if (w.advance_payment_amount != null) m.set(w.client_id, w.advance_payment_amount)
+    })
+    return m
+  }, [monthlyWorkQ.data])
+
   function accountantOf(clientId: string): string {
     if (!accountantCol) return ''
     const cell = cellIdx.get(cellKey(clientId, accountantCol.id))
@@ -141,7 +154,7 @@ export function MessagesPage() {
     return ''
   }
 
-  type Row = { clientId: string; name: string; status: string; accountant: string; phone: string | null; amount: number | null }
+  type Row = { clientId: string; name: string; status: string; accountant: string; phone: string | null; amount: number | null; advanceAmount: number | null; advanceProfile: string }
   const tableRows: Row[] = useMemo(() => {
     return (clientsQ.data ?? [])
       .map(c => ({
@@ -151,11 +164,13 @@ export function MessagesPage() {
         accountant: accountantOf(c.id),
         phone: phoneByClient.get(c.id) ?? null,
         amount: amountByClient.get(c.id) ?? null,
+        advanceAmount: advanceAmountByClient.get(c.id) ?? null,
+        advanceProfile: resolveDropdownText(c.id, advanceCol, cellIdx, dropdownIdx),
       }))
       .filter(r => !isNoActivityStatus(r.status))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientsQ.data, columns, cellIdx, dropdownIdx, statusCol, accountantCol, phoneByClient, amountByClient])
+  }, [clientsQ.data, columns, cellIdx, dropdownIdx, statusCol, accountantCol, advanceCol, phoneByClient, amountByClient, advanceAmountByClient])
 
   // ---------- Compose state ----------
   const [search, setSearch] = usePersistentState('msg-search', '')
@@ -230,11 +245,21 @@ export function MessagesPage() {
     }
   }, [work])
 
+  // {период} за авансови вноски — според профила на фирмата („Авансови
+  // вноски"): Тримесечни → тримесечието; иначе → работния месец.
+  const QUARTER_LABELS = ['1-во', '2-ро', '3-то', '4-то']
+  const quarterLabel = `${QUARTER_LABELS[Math.ceil(work.month / 3) - 1]} тримесечие ${work.year}`
+  function periodOf(r: Row): string {
+    return r.advanceProfile.trim().toLowerCase().includes('тримесеч') ? quarterLabel : workMonthLabel
+  }
+
   function resolveText(template: string, r: Row): string {
     return template
       .split('{фирма}').join(r.name)
       .split('{месец}').join(workMonthLabel)
+      .split('{период}').join(periodOf(r))
       .split('{сума}').join(r.amount != null ? `${fmtAmount(r.amount)} €` : '{сума}')
+      .split('{сума_аванс}').join(r.advanceAmount != null ? `${fmtAmount(r.advanceAmount)} €` : '{сума_аванс}')
       .split('{срок_ддс}').join(deadlines.dds)
       .split('{срок_осиг}').join(deadlines.osig)
       .split('{срок_аванс}').join(deadlines.avans)
@@ -242,8 +267,9 @@ export function MessagesPage() {
   }
 
   const selectedRows = useMemo(() => filteredRows.filter(r => selected.has(r.clientId)), [filteredRows, selected])
-  // Съобщение не тръгва с неразрешен placeholder ({сума} без Резултат).
-  const readyRows = useMemo(() => selectedRows.filter(r => r.phone && !resolveText(body, r).includes('{сума}')), [selectedRows, body, workMonthLabel, deadlines]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Съобщение не тръгва с неразрешена сума ({сума} или {сума_аванс} без
+  // въведена стойност) — префиксът „{сума" покрива и двете.
+  const readyRows = useMemo(() => selectedRows.filter(r => r.phone && !resolveText(body, r).includes('{сума')), [selectedRows, body, workMonthLabel, deadlines]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleAllVisible() {
     setSelected(prev => {
@@ -539,11 +565,11 @@ export function MessagesPage() {
                 onChange={e => setBody(e.target.value)}
                 rows={4}
                 maxLength={1000}
-                placeholder="Текст на съобщението... Ползвай {фирма}, {месец}, {сума} и срок ({срок_ддс}, {срок_осиг}, {срок_аванс}, {срок_годишен})"
+                placeholder="Текст... {фирма} {месец} {период} {сума} {сума_аванс} и срок ({срок_ддс}, {срок_осиг}, {срок_аванс}, {срок_годишен})"
                 className="w-full text-sm border border-border rounded-lg p-2 bg-background focus:border-primary focus:outline-none resize-y"
               />
               <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-muted-foreground">
-                {(['{фирма}', '{месец}', '{сума}', '{срок_ддс}', '{срок_осиг}', '{срок_аванс}', '{срок_годишен}'] as const).map(p => (
+                {(['{фирма}', '{месец}', '{период}', '{сума}', '{сума_аванс}', '{срок_ддс}', '{срок_осиг}', '{срок_аванс}', '{срок_годишен}'] as const).map(p => (
                   <button key={p} onClick={() => setBody(b => b + p)}
                     className="px-1.5 py-0.5 rounded bg-muted/40 hover:bg-muted font-mono">{p}</button>
                 ))}
@@ -556,8 +582,8 @@ export function MessagesPage() {
               ) : (
                 selectedRows.map(r => {
                   const resolved = resolveText(body, r)
-                  const missingAmount = resolved.includes('{сума}')
-                  const problem = !r.phone ? 'липсва телефон' : missingAmount ? 'липсва Резултат € за работния месец' : null
+                  const missingAmount = resolved.includes('{сума')
+                  const problem = !r.phone ? 'липсва телефон' : missingAmount ? 'липсва сума за работния месец (Резултат / Аванс)' : null
                   return (
                     <div key={r.clientId} className={`border rounded-lg p-2 text-sm ${problem ? 'border-rose-300 dark:border-rose-700/60 bg-rose-50/50 dark:bg-rose-900/10' : 'border-border bg-card'}`}>
                       <div className="flex items-center gap-2 text-xs mb-1">
@@ -661,7 +687,7 @@ function TemplatesModal({ templates, onClose, onChanged }: {
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div>
             <h2 className="text-base font-semibold text-foreground">Шаблони за съобщения</h2>
-            <p className="text-xs text-muted-foreground">Placeholder-и: {'{фирма} {месец} {сума} {срок_ддс} {срок_осиг} {срок_аванс} {срок_годишен}'}</p>
+            <p className="text-xs text-muted-foreground">Placeholder-и: {'{фирма} {месец} {период} {сума} {сума_аванс} {срок_ддс} {срок_осиг} {срок_аванс} {срок_годишен}'}</p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1"><X className="h-4 w-4" /></button>
         </div>
