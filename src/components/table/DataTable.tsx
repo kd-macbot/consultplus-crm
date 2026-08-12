@@ -25,7 +25,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, SlidersHorizontal, X, RefreshCw } from 'lucide-react'
+import { GripVertical, SlidersHorizontal, X, RefreshCw, Copy } from 'lucide-react'
 import type { Column, CellValue, DropdownOption, Client, Contact } from '../../lib/types'
 import {
   softDeleteClient, updateColumnPositions,
@@ -639,7 +639,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
       {
         id: '_eik',
         header: 'ЕИК',
-        size: 130,
+        size: 150,
         enableSorting: true,
         enableColumnFilter: true,
         accessorFn: (row: ClientRow) => {
@@ -685,16 +685,32 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           }
 
           return (
-            <div
-              className={`font-mono text-xs truncate ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
-              onClick={() => {
-                if (!canEdit) return
-                setEikDraft(eik)
-                setEditingEikFor(clientId)
-              }}
-              title={eik}
-            >
-              {eik || <span className="text-dark/20">—</span>}
+            <div className="flex items-center gap-1">
+              <div
+                className={`font-mono text-sm truncate ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
+                onClick={() => {
+                  if (!canEdit) return
+                  setEikDraft(eik)
+                  setEditingEikFor(clientId)
+                }}
+                title={eik}
+              >
+                {eik || <span className="text-dark/20">—</span>}
+              </div>
+              {eik && (
+                <button
+                  onClick={e => {
+                    e.stopPropagation()
+                    navigator.clipboard.writeText(eik)
+                      .then(() => toast.success('ЕИК копиран'))
+                      .catch(() => toast.error('Копирането не мина'))
+                  }}
+                  className="shrink-0 opacity-60 hover:opacity-100 text-muted-foreground hover:text-primary transition"
+                  title="Копирай ЕИК"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           )
         },
