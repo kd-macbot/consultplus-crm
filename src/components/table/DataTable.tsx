@@ -602,7 +602,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           const isPositive = !isNegation && (colorOptionCols.has(col.id) || valUpper === 'ДА' || valUpper === 'АКТИВНА')
           return (
             <div
-              className={`truncate ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
+              className={`truncate ${col.id === nameColId ? 'font-semibold text-foreground' : ''} ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
               onClick={() => canEdit && setEditCell({ clientId, columnId: col.id })}
               title={val}
             >
