@@ -687,7 +687,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           return (
             <div className="flex items-center gap-1">
               <div
-                className={`font-mono text-sm truncate ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
+                className={`font-mono text-base truncate ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
                 onClick={() => {
                   if (!canEdit) return
                   setEikDraft(eik)
