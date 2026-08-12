@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -2278,6 +2278,53 @@ export async function updateMessageTemplate(id: string, patch: { name?: string; 
 
 export async function deleteMessageTemplate(id: string): Promise<void> {
   const { error } = await supabase.from('crm_message_templates').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ==================== ФИНАНСОВИ ПРИКЛЮЧВАНИЯ ====================
+
+export async function getFinancialClosings(year: number): Promise<FinancialClosing[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_financial_closings')
+      .select('*')
+      .eq('year', year)
+    if (error) throw error
+    return (data ?? []) as FinancialClosing[]
+  })
+}
+
+export async function upsertFinancialClosing(
+  clientId: string, year: number, periodKind: PeriodKind, periodNo: number,
+  patch: { income?: number; expense?: number; note?: string | null }, createdBy?: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('crm_financial_closings')
+    .upsert(
+      {
+        client_id: clientId, year, period_kind: periodKind, period_no: periodNo,
+        ...patch, created_by: createdBy ?? null, updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'client_id,year,period_kind,period_no' },
+    )
+  if (error) throw error
+}
+
+export async function getFinancialSettings(): Promise<FinancialSettings[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase.from('crm_financial_settings').select('*')
+    if (error) throw error
+    return (data ?? []) as FinancialSettings[]
+  })
+}
+
+export async function setFinancialPeriodKind(clientId: string, periodKind: PeriodKind): Promise<void> {
+  const { error } = await supabase
+    .from('crm_financial_settings')
+    .upsert(
+      { client_id: clientId, period_kind: periodKind, updated_at: new Date().toISOString() },
+      { onConflict: 'client_id' },
+    )
   if (error) throw error
 }
 

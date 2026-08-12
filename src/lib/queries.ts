@@ -8,6 +8,7 @@ import {
   getAbsences, getVacationQuotas, getForm76Overrides, getEvents, getNews,
   getBankAccess, getTasks, getMonthReviewers,
   getClientMessages, getMessageTemplates,
+  getFinancialClosings, getFinancialSettings,
 } from './storage'
 import { timed } from './perf'
 
@@ -158,6 +159,16 @@ export function useClientMessages() {
 export function useMessageTemplates() {
   return useQuery({ queryKey: ['messageTemplates'] as const, queryFn: getMessageTemplates })
 }
+export function useFinancialClosings(year: number) {
+  return useQuery({
+    queryKey: ['financialClosings', year] as const,
+    queryFn: () => getFinancialClosings(year),
+    enabled: year > 0,
+  })
+}
+export function useFinancialSettings() {
+  return useQuery({ queryKey: ['financialSettings'] as const, queryFn: getFinancialSettings })
+}
 export function useCashLoanEntries(year: number, months: number[]) {
   return useQuery({
     queryKey: ['cashLoanEntries', year, months.join(',')] as const,
@@ -218,6 +229,10 @@ export function useInvalidateCrm() {
     // и целогодишният от „Каси и заеми" ползват различни ключове).
     invalidateCashLoan: () =>
       qc.invalidateQueries({ queryKey: ['cashLoanEntries'] }),
+    invalidateFinancialClosings: () =>
+      qc.invalidateQueries({ queryKey: ['financialClosings'] }),
+    invalidateFinancialSettings: () =>
+      qc.invalidateQueries({ queryKey: ['financialSettings'] }),
     invalidateClientMessages: () =>
       qc.invalidateQueries({ queryKey: ['clientMessages'] }),
     invalidateMessageTemplates: () =>

@@ -231,6 +231,28 @@ export interface MessageTemplate {
   updated_at: string
 }
 
+// Финансови приключвания — за фирми с „Мониторинг" = ДА. Периодът е по
+// фирма (месечно/тримесечно). Резултат = Приходи − Разходи (смята се в UI).
+export type PeriodKind = 'month' | 'quarter'
+export interface FinancialSettings {
+  client_id: string
+  period_kind: PeriodKind
+  updated_at: string
+}
+export interface FinancialClosing {
+  id: string
+  client_id: string
+  year: number
+  period_kind: PeriodKind
+  period_no: number
+  income: number
+  expense: number
+  note: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 // Каси и заеми — месечни записи за деклариране. Сумата е ДВИЖЕНИЕ за
 // месеца; акумулираното се смята в UI (сбор от началото на годината).
 export type CashLoanKind = 'cash' | 'loan'
