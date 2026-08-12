@@ -91,7 +91,11 @@ is_hidden · 030 плащания · 031 absences+quota · 032 approval workflow
 036 events · 037 news (5-дневен auto-expire на непиннати) · 038 bank_access ·
 039 app_code · 040 tasks · 041 kind+inspection_type · 042 month_reviewers ·
 043 inspection details (инспектор/телефон/линк; НОВИТЕ колони искат и добавяне
-в изричния select на getTasks!) · 044 inspector_email
+в изричния select на getTasks!) · 044 inspector_email · 045 каси и заеми
+(crm_cash_loan_entries; сумата е ДВИЖЕНИЕ за месеца, акумулираното се смята в
+UI) · 046 съобщения (crm_client_messages дневник + crm_message_templates;
+Mobica Viber+SMS през edge mobica-send, secrets MOBICA_USER/MOBICA_PASS,
+канал sms/viber избираем) · 047 profiles RLS (беше ИЗКЛЮЧЕН — критичен fix)
 
 ## Известни проблеми / Backlog (по приоритет)
 
@@ -117,3 +121,9 @@ is_hidden · 030 плащания · 031 absences+quota · 032 approval workflow
 - Оптимистичен update БЕЗ setQueryData + само pending → клетката „мига“ (регресия #172)
 - След ALTER TABLE Supabase понякога не вижда колоната → `NOTIFY pgrst, 'reload schema';`
 - GitHub MCP token изтича периодично → казвай на потребителя да reconnect-не
+- НОВА таблица = ВИНАГИ `enable row level security` + политики. Само политики
+  без enable RLS = таблицата е публично отворена (Supabase алармира
+  rls_disabled_in_public). profiles беше точно така от migration-006 до 047.
+- Страница със собствен load() (не RQ hook) трябва да инвалидира споделения
+  RQ кеш след запис — иначе други страници виждат стари данни (Контакти →
+  телефоните в Съобщения; fix #249)
