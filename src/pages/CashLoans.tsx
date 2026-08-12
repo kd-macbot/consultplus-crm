@@ -12,6 +12,7 @@ import { MONTH_NAMES } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
 import { usePersistentState } from '../lib/usePersistentState'
 import { CashLoanModal } from '../components/CashLoanModal'
+import { ClosingsSection } from './FinancialClosings'
 
 const ALL_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
@@ -20,17 +21,79 @@ function fmt(v: number): string {
   return new Intl.NumberFormat('bg-BG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 }
 
+type Section = 'cash' | 'loan' | 'closing'
+
 // ============================================================
-// Каси и заеми — годишно обобщение на месечните записи от Работния
-// лист. Стойността в клетка е ДВИЖЕНИЕТО за месеца; в режим
-// „С натрупване" — сборът от началото на годината до месеца вкл.
-// Клик на клетка отваря същия модал като в Работния лист.
+// Финансов мониторинг — три свързани изгледа:
+//   Каса / Заеми  → годишно обобщение на месечните записи (движения)
+//   Приключвания  → Приходи/Разходи → Резултат за кредитни фирми
+// Обвивката държи година + търсене + табовете; тялото се сменя.
 // ============================================================
 export function CashLoansPage() {
-  const { user } = useAuth()
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
+  const [section, setSection] = usePersistentState<Section>('fm-tab', 'cash')
+  const [search, setSearch] = usePersistentState('fm-search', '')
 
+  return (
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
+      {/* Title bar */}
+      <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-base md:text-lg font-semibold text-foreground">💰 Финансов мониторинг</h1>
+          <div className="flex items-center gap-1 ml-2">
+            <Button variant="outline" size="sm" onClick={() => setYear(y => y - 1)}>
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <span className="px-3 py-1 text-sm font-semibold text-foreground min-w-[64px] text-center">{year}</span>
+            <Button variant="outline" size="sm" onClick={() => setYear(y => y + 1)}>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Табове Каса / Заеми / Приключвания — горе вдясно до търсенето. */}
+          <div className="flex items-center rounded-lg border border-border overflow-hidden">
+            {([['cash', 'Каса'], ['loan', 'Заеми'], ['closing', 'Приключвания']] as const).map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setSection(k)}
+                className={`px-3 py-1 text-sm font-semibold transition ${
+                  section === k
+                    ? 'bg-navy text-white dark:bg-primary dark:text-primary-foreground'
+                    : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Търси фирма..."
+              className="h-8 pl-8 w-44 text-sm"
+            />
+          </div>
+        </div>
+      </div>
+
+      {section === 'closing'
+        ? <ClosingsSection year={year} search={search} />
+        : <CashLoanSection kind={section} year={year} search={search} />}
+    </div>
+  )
+}
+
+// ============================================================
+// Каса / Заеми — годишно обобщение на месечните записи от Работния лист.
+// Стойността е ДВИЖЕНИЕ за месеца; „С натрупване" = сбор от началото на
+// годината. Клик на клетка отваря същия модал като в Работния лист.
+// ============================================================
+function CashLoanSection({ kind, year, search }: { kind: CashLoanKind; year: number; search: string }) {
+  const { user } = useAuth()
   const clientsQ = useClients()
   const columnsQ = useColumns()
   const cellsQ = useCellValues()
@@ -46,10 +109,6 @@ export function CashLoansPage() {
     onChange: () => invalidateCashLoan(),
   })
 
-  const [search, setSearch] = usePersistentState('cl-search', '')
-  // Каса и Заеми са ОТДЕЛНИ табове (нямат връзка помежду си) — няма
-  // комбиниран изглед.
-  const [kind, setKind] = usePersistentState<CashLoanKind>('cl-tab', 'cash')
   const [cumulative, setCumulative] = usePersistentState('cl-cumulative', false)
   const [modalFor, setModalFor] = useState<{ clientId: string; name: string; month: number } | null>(null)
 
@@ -59,7 +118,6 @@ export function CashLoansPage() {
   const cellIdx = useMemo(() => buildCellIndex(cellsQ.data ?? []), [cellsQ.data])
   const columns = useMemo(() => columnsQ.data ?? [], [columnsQ.data])
 
-  // client_id → month → записи (всички видове; филтърът се прилага при сумиране)
   const byClient = useMemo(() => {
     const m = new Map<string, Map<number, CashLoanEntry[]>>()
     ;(entriesQ.data ?? []).forEach(e => {
@@ -72,7 +130,6 @@ export function CashLoansPage() {
     return m
   }, [entriesQ.data])
 
-  // Сума за клетка (клиент × месец) за активния таб.
   function monthSum(months: Map<number, CashLoanEntry[]> | undefined, month: number): number {
     if (!months) return 0
     return (months.get(month) ?? []).reduce((s, e) => s + (e.kind === kind ? e.amount : 0), 0)
@@ -84,7 +141,6 @@ export function CashLoansPage() {
     byClient.forEach((months, clientId) => {
       const monthly = ALL_MONTHS.map(m => monthSum(months, m))
       const total = monthly.reduce((s, v) => s + v, 0)
-      // Клиент без нито един запис от вида на активния таб не се показва.
       let hasAny = false
       months.forEach(arr => { if (arr.some(e => e.kind === kind)) hasAny = true })
       if (!hasAny) return
@@ -100,7 +156,6 @@ export function CashLoansPage() {
     return tableRows.filter(r => r.name.toLowerCase().includes(s))
   }, [tableRows, search])
 
-  // Стойност за показване: месечна или с натрупване от началото на годината.
   function displayValue(row: Row, monthIdx: number): number {
     if (!cumulative) return row.monthly[monthIdx]
     return row.monthly.slice(0, monthIdx + 1).reduce((s, v) => s + v, 0)
@@ -138,55 +193,7 @@ export function CashLoansPage() {
     : []
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
-      {/* Title bar */}
-      <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-base md:text-lg font-semibold text-foreground">💰 Каси и заеми</h1>
-          <div className="flex items-center gap-1 ml-2">
-            <Button variant="outline" size="sm" onClick={() => setYear(y => y - 1)}>
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            <span className="px-3 py-1 text-sm font-semibold text-foreground min-w-[64px] text-center">{year}</span>
-            <Button variant="outline" size="sm" onClick={() => setYear(y => y + 1)}>
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Табове Каса / Заеми — отделни изгледи, нямат връзка помежду си.
-              Горе вдясно до търсенето (консистентно с другите страници). */}
-          <div className="flex items-center rounded-lg border border-border overflow-hidden">
-            {(['cash', 'loan'] as const).map(k => (
-              <button
-                key={k}
-                onClick={() => setKind(k)}
-                className={`px-3 py-1 text-sm font-semibold transition ${
-                  kind === k
-                    ? 'bg-navy text-white dark:bg-primary dark:text-primary-foreground'
-                    : 'bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                }`}
-              >
-                {k === 'cash' ? 'Каса' : 'Заеми'}
-              </button>
-            ))}
-          </div>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Търси фирма..."
-              className="h-8 pl-8 w-44 text-sm"
-            />
-          </div>
-          <Button variant="outline" size="sm" onClick={() => void exportSheet()} title="Excel експорт на видимите редове (с приложените филтри)">
-            <Download className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Експорт</span>
-          </Button>
-        </div>
-      </div>
-
+    <>
       {/* Filter strip */}
       <div className="px-3 md:px-5 py-2 border-b border-border bg-card flex flex-wrap items-center gap-3 text-xs">
         <div className="flex items-center gap-1.5">
@@ -211,6 +218,10 @@ export function CashLoansPage() {
           <span>Общо за годината: <strong className={`tabular-nums ${
             footerTotals.grand > 0 ? 'text-emerald-700 dark:text-emerald-400' : footerTotals.grand < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'
           }`}>{fmt(footerTotals.grand) || '0,00'} €</strong></span>
+          <Button variant="outline" size="sm" onClick={() => void exportSheet()} title="Excel експорт на видимите редове">
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Експорт</span>
+          </Button>
         </div>
       </div>
 
@@ -251,7 +262,6 @@ export function CashLoansPage() {
                     </td>
                     {ALL_MONTHS.map((m, mi) => {
                       const v = displayValue(row, mi)
-                      // Цветовете следват Годишния изглед: + зелено, − червено.
                       const cls = v === 0
                         ? 'text-muted-foreground/50'
                         : v > 0 ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-rose-600 dark:text-rose-400 font-semibold'
@@ -309,6 +319,6 @@ export function CashLoansPage() {
           createdBy={user?.id}
         />
       )}
-    </div>
+    </>
   )
 }

@@ -95,7 +95,10 @@ is_hidden · 030 плащания · 031 absences+quota · 032 approval workflow
 (crm_cash_loan_entries; сумата е ДВИЖЕНИЕ за месеца, акумулираното се смята в
 UI) · 046 съобщения (crm_client_messages дневник + crm_message_templates;
 Mobica Viber+SMS през edge mobica-send, secrets MOBICA_USER/MOBICA_PASS,
-канал sms/viber избираем) · 047 profiles RLS (беше ИЗКЛЮЧЕН — критичен fix)
+канал sms/viber избираем) · 047 profiles RLS (беше ИЗКЛЮЧЕН — критичен fix) ·
+048 финансови приключвания (crm_financial_closings + crm_financial_settings;
+Приходи/Разходи→Резултат за фирми с master колона „Мониторинг"=ДА; период по
+фирма месечно/тримесечно)
 
 ## Известни проблеми / Backlog (по приоритет)
 
