@@ -51,6 +51,7 @@ import {
   saveView, deleteView, setDefaultView, syncViewsFromDb, type View,
 } from '../../lib/views'
 import { usePersistentState } from '../../lib/usePersistentState'
+import { statusBadgeClass } from '../../lib/statusBadge'
 
 interface ClientRow {
   clientId: string
@@ -449,6 +450,18 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   // O(1) индекси — изграждат се веднъж при промяна на данните.
   const cellIdx = useMemo(() => buildCellIndex(allCells), [allCells])
   const dropdownIdx = useMemo(() => buildDropdownIndex(allDropdowns), [allDropdowns])
+  // Колони от тип „избор", които имат отрицателна опция (НЕ / НЕ Активна…) —
+  // третираме ги като „да/не"-стил: положителните опции → зелено, отрицателните
+  // → червено. Така Авансови (НЕ/Месечни/Тримесечни) и ТРЗ Статус се оцветяват,
+  // а категорийни колони без НЕ опция остават неоцветени.
+  const colorOptionCols = useMemo(() => {
+    const s = new Set<string>()
+    for (const o of allDropdowns) {
+      const v = (o.value ?? '').trim().toUpperCase()
+      if (v === 'НЕ' || v.startsWith('НЕ ') || v === 'ДА') s.add(o.column_id)
+    }
+    return s
+  }, [allDropdowns])
   const tagsByClient = useMemo(() => {
     const m = new Map<string, string[]>()
     for (const ct of allClientTags) {
@@ -581,16 +594,35 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           }
 
           const val = info.getValue() as string
+          // Цветове за бърз scan: „Статус" → баджовете от Работния лист.
+          // Отрицателните (НЕ / НЕ Активна…) → червено; положителните (ДА,
+          // Активна, Месечни, Тримесечни и др. опции в „да/не"-колони) → зелено.
+          const valUpper = val.trim().toUpperCase()
+          const isNegation = valUpper === 'НЕ' || valUpper.startsWith('НЕ ')
+          const isPositive = !isNegation && (colorOptionCols.has(col.id) || valUpper === 'ДА' || valUpper === 'АКТИВНА')
           return (
             <div
-              className={`truncate ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
+              className={`truncate ${col.id === nameColId ? 'font-semibold text-foreground text-[15px]' : ''} ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
               onClick={() => canEdit && setEditCell({ clientId, columnId: col.id })}
               title={val}
             >
-              {val
-                ? <Highlight text={val} query={globalFilter} />
-                : <span className="text-dark/20">—</span>
-              }
+              {!val ? (
+                <span className="text-dark/20">—</span>
+              ) : col.name === 'Статус' ? (
+                <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusBadgeClass(val)}`}>
+                  <Highlight text={val} query={globalFilter} />
+                </span>
+              ) : isNegation ? (
+                <span className="inline-block text-[11px] px-2 py-0.5 rounded-full font-semibold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
+                  <Highlight text={val} query={globalFilter} />
+                </span>
+              ) : isPositive ? (
+                <span className="inline-block text-[11px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  <Highlight text={val} query={globalFilter} />
+                </span>
+              ) : (
+                <Highlight text={val} query={globalFilter} />
+              )}
             </div>
           )
         },
@@ -802,7 +834,7 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
 
     return cols
-  }, [visibleColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user, selected, globalFilter, contactsByClientId, editingEikFor, eikDraft, editingVatFor, vatDraft, nameColId])
+  }, [visibleColumns, editCell, canEdit, canDelete, allCells, allDropdowns, allTags, allClientTags, onRefresh, user, selected, globalFilter, contactsByClientId, editingEikFor, eikDraft, editingVatFor, vatDraft, nameColId, colorOptionCols])
 
   const fullColumnOrder = useMemo(
     () => [
