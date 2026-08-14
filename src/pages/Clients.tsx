@@ -26,7 +26,9 @@ export function ClientsPage() {
             <span className="hidden sm:inline">Импорт</span>
           </Button>
           <Button variant="outline" size="sm" onClick={async () => {
-            try { await exportToExcel() } catch (err) { console.error('Export failed:', err) }
+            // „Хонорар" е само за admin — не влиза в експорта за останалите.
+            const excludeColumns = user?.role === 'admin' ? [] : ['Хонорар']
+            try { await exportToExcel({ excludeColumns }) } catch (err) { console.error('Export failed:', err) }
           }}>
             <Download className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Експорт</span>
