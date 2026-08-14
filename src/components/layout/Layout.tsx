@@ -7,7 +7,7 @@ import { previousMonth } from '../../lib/utils'
 import { useMyStaff } from '../../lib/useMyStaff'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
-  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark, KanbanSquare, Coins, MessageSquare,
+  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark, KanbanSquare, Coins, MessageSquare, Calculator,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
 
 type BadgeKey = 'paymentsUnpaid' | 'absentToday' | 'absenceRequests' | 'recentNews' | 'myOpenTasks'
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKeys?: BadgeKey[]; showOnlyForTrzOrAdmin?: boolean; showOnlyForBankDepts?: boolean }
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKeys?: BadgeKey[]; showOnlyForTrzOrAdmin?: boolean; showOnlyForBankDepts?: boolean; showOnlyForAccounting?: boolean }
 
 // Цвят + tooltip per бадж — един item може да носи няколко баджа
 // (напр. Календар: отсъстващи днес + нови новини).
@@ -45,6 +45,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/worksheet', label: 'Работен лист', icon: ClipboardCheck, roles: ['admin', 'manager', 'employee'] },
       { to: '/yearly', label: 'Годишен изглед', icon: CalendarRange, roles: ['admin', 'manager', 'employee'] },
       { to: '/trz', label: 'ТРЗ Работен лист', icon: Receipt, roles: ['admin', 'manager', 'employee'] },
+      { to: '/cash-registers', label: 'Касови апарати', icon: Calculator, roles: ['admin', 'manager', 'employee'], showOnlyForAccounting: true },
       { to: '/checklist', label: 'Личен чек лист', icon: ListChecks, roles: ['admin', 'manager', 'employee'], hideForTrz: true },
       { to: '/cash-loans', label: 'Финансов мониторинг', icon: Coins, roles: ['admin', 'manager', 'employee'], hideForTrz: true },
       { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
@@ -91,6 +92,8 @@ export function Layout() {
   const isTrz = inDept('ТРЗ')
   // Банков достъп се вижда от Тийм Лийд / Управление (+ admin).
   const canSeeBankAccess = user?.role === 'admin' || inDept('Тийм Лийд') || inDept('Управление')
+  // Касови апарати (СПО): admin + мениджъри + Счетоводство.
+  const canSeeSpo = user?.role === 'admin' || user?.role === 'manager' || inDept('Счетоводство')
 
   // ============================================================
   // Бадж за „Плащания" — брой неплатени за РАБОТНИЯ месец (предходния).
@@ -229,6 +232,7 @@ export function Layout() {
                 && !(item.hideForTrz && isTrz)
                 && !(item.showOnlyForTrzOrAdmin && user.role !== 'admin' && !isTrz)
                 && !(item.showOnlyForBankDepts && !canSeeBankAccess)
+                && !(item.showOnlyForAccounting && !canSeeSpo)
             )
             if (visibleItems.length === 0) return null
             return (

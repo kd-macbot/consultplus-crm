@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -2278,6 +2278,74 @@ export async function updateMessageTemplate(id: string, patch: { name?: string; 
 
 export async function deleteMessageTemplate(id: string): Promise<void> {
   const { error } = await supabase.from('crm_message_templates').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ==================== КАСОВИ АПАРАТИ / СПО ====================
+
+export async function getCashRegisters(): Promise<CashRegister[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase.from('crm_cash_registers').select('*').order('position')
+    if (error) throw error
+    return (data ?? []) as CashRegister[]
+  })
+}
+
+export async function addCashRegister(row: {
+  client_id: string; object_name?: string | null; memory_number?: string | null; createdBy?: string
+}): Promise<CashRegister> {
+  const { data: existing } = await supabase
+    .from('crm_cash_registers').select('position')
+    .eq('client_id', row.client_id).order('position', { ascending: false }).limit(1)
+  const pos = (existing?.[0]?.position ?? -1) + 1
+  const { data, error } = await supabase.from('crm_cash_registers')
+    .insert([{ client_id: row.client_id, object_name: row.object_name ?? null, memory_number: row.memory_number ?? null, position: pos, created_by: row.createdBy ?? null }])
+    .select().single()
+  if (error) throw error
+  return data as CashRegister
+}
+
+export async function updateCashRegister(id: string, patch: { object_name?: string | null; memory_number?: string | null }): Promise<void> {
+  const { error } = await supabase.from('crm_cash_registers').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteCashRegister(id: string): Promise<void> {
+  const { error } = await supabase.from('crm_cash_registers').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getCashTurnover(year: number): Promise<CashRegisterTurnover[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase.from('crm_cash_register_turnover').select('*').eq('year', year)
+    if (error) throw error
+    return (data ?? []) as CashRegisterTurnover[]
+  })
+}
+
+export async function upsertCashTurnover(
+  registerId: string, year: number, month: number,
+  patch: Partial<Pick<CashRegisterTurnover, 'turnover_20' | 'storno_20' | 'turnover_9' | 'storno_9'>>,
+): Promise<void> {
+  const { error } = await supabase.from('crm_cash_register_turnover')
+    .upsert({ register_id: registerId, year, month, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'register_id,year,month' })
+  if (error) throw error
+}
+
+export async function getCashFirmMonthly(year: number): Promise<CashFirmMonthly[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase.from('crm_cash_firm_monthly').select('*').eq('year', year)
+    if (error) throw error
+    return (data ?? []) as CashFirmMonthly[]
+  })
+}
+
+export async function upsertCashFirmMonthly(
+  clientId: string, year: number, month: number,
+  patch: Partial<Pick<CashFirmMonthly, 'invoices_cash_20' | 'invoices_cash_9' | 'rzok'>>,
+): Promise<void> {
+  const { error } = await supabase.from('crm_cash_firm_monthly')
+    .upsert({ client_id: clientId, year, month, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'client_id,year,month' })
   if (error) throw error
 }
 
