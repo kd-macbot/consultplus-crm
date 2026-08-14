@@ -435,9 +435,15 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     [columnOrder, columns]
   )
 
+  // Колони, видими само за admin (чувствителни — напр. хонорара на клиента).
+  const isAdmin = user?.role === 'admin'
+  const ADMIN_ONLY_COLUMNS = ['Хонорар']
   const visibleColumns = useMemo(
-    () => orderedColumns.filter(c => !hiddenCols.has(c.id)),
-    [orderedColumns, hiddenCols]
+    () => orderedColumns.filter(c =>
+      !hiddenCols.has(c.id) && (isAdmin || !ADMIN_ONLY_COLUMNS.includes(c.name))
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [orderedColumns, hiddenCols, isAdmin]
   )
 
   // Синтетичните колони (ЕИК, ДДС, Тагове) могат да се скриват чрез същия механизъм
@@ -941,7 +947,9 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider px-2 pb-1 font-semibold">
                 Видими колони
               </p>
-              {orderedColumns.map(col => (
+              {orderedColumns
+                .filter(col => isAdmin || !ADMIN_ONLY_COLUMNS.includes(col.name))
+                .map(col => (
                 <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer text-sm text-foreground">
                   <input
                     type="checkbox"
