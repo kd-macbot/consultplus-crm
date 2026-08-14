@@ -448,9 +448,13 @@ function SummaryView({ firms, search, setSearch, year, compute }: {
   firms: { id: string; name: string }[]; search: string; setSearch: (v: string) => void; year: number
   compute: (clientId: string, month: number) => ReturnType<any>
 }) {
+  // Коя СПО стойност да показва матрицата: общо / само 20% / само 9%.
+  const [metric, setMetric] = usePersistentState<'total' | 's20' | 's9'>('spo-sum-metric', 'total')
+  const pick = (c: ReturnType<any>): number => metric === 's20' ? c.spo20 : metric === 's9' ? c.spo9 : c.spoTotal
+  const metricLabel = metric === 's20' ? 'СПО 20%' : metric === 's9' ? 'СПО 9%' : 'СПО общо'
   const rows = firms.map(f => ({
     ...f,
-    monthly: MONTHS.map(m => compute(f.id, m).spoTotal as number),
+    monthly: MONTHS.map(m => pick(compute(f.id, m))),
   }))
   const perMonth = MONTHS.map((_, i) => rows.reduce((s, r) => s + r.monthly[i], 0))
   const grand = rows.reduce((s, r) => s + r.monthly.reduce((x, v) => x + v, 0), 0)
@@ -461,7 +465,16 @@ function SummaryView({ firms, search, setSearch, year, compute }: {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Търси фирма..." className="h-8 pl-8 w-44 text-sm" />
         </div>
-        <span className="ml-auto">СПО общо {year}: <strong className="text-emerald-700 dark:text-emerald-400 tabular-nums">{fmt(grand) || '0,00'}</strong></span>
+        {/* Превключвател коя СПО стойност да се показва. */}
+        <div className="flex items-center rounded-md border border-border overflow-hidden">
+          {([['total', 'Общо'], ['s20', '20%'], ['s9', '9%']] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setMetric(k)}
+              className={`px-2 py-0.5 text-xs font-semibold transition ${metric === k ? 'bg-navy text-white dark:bg-primary dark:text-primary-foreground' : 'bg-card text-muted-foreground hover:bg-muted/50'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="ml-auto">{metricLabel} {year}: <strong className="text-emerald-700 dark:text-emerald-400 tabular-nums">{fmt(grand) || '0,00'}</strong></span>
       </div>
       <div className="flex-1 overflow-auto">
         <table className="w-full border-collapse min-w-[1100px]">
