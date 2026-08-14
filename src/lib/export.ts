@@ -1,14 +1,19 @@
 import { getColumns, getClients, getCellValues, getDropdownOptions } from './storage'
 import { buildCellIndex, buildDropdownIndex, cellKey } from './tableIndices'
 
-export async function exportToExcel() {
+export async function exportToExcel(opts?: { excludeColumns?: string[] }) {
   // Динамичен import — xlsx (~400 KB) се сваля чак при реален експорт,
   // а не при всяко отваряне на Клиенти.
   const XLSX = await import('xlsx')
 
-  const [columns, clients, cells, dropdowns] = await Promise.all([
+  const [allColumns, clients, cells, dropdowns] = await Promise.all([
     getColumns(), getClients(), getCellValues(), getDropdownOptions()
   ])
+
+  // Изключваме чувствителни колони (напр. „Хонорар" за не-admin) — иначе
+  // експортът заобикаля скриването им в таблицата.
+  const exclude = new Set(opts?.excludeColumns ?? [])
+  const columns = allColumns.filter(c => !exclude.has(c.name))
 
   const cellIdx = buildCellIndex(cells)
   const dropdownIdx = buildDropdownIndex(dropdowns)
