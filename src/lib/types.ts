@@ -231,6 +231,41 @@ export interface MessageTemplate {
   updated_at: string
 }
 
+// Касови апарати / СПО — за фирми с „Касов апарат" = ДА.
+export interface CashRegister {
+  id: string
+  client_id: string
+  object_name: string | null
+  memory_number: string | null
+  position: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+export interface CashRegisterTurnover {
+  id: string
+  register_id: string
+  year: number
+  month: number
+  turnover_20: number
+  storno_20: number
+  turnover_9: number
+  storno_9: number
+  updated_at: string
+}
+export interface CashFirmMonthly {
+  id: string
+  client_id: string
+  year: number
+  month: number
+  invoices_cash_20: number
+  invoices_cash_9: number
+  credit_note_20: number
+  credit_note_9: number
+  rzok: number
+  updated_at: string
+}
+
 // Финансови приключвания — за фирми с „Мониторинг" = ДА. Периодът е по
 // фирма (месечно/тримесечно). Резултат = Приходи − Разходи (смята се в UI).
 export type PeriodKind = 'month' | 'quarter'

@@ -9,6 +9,7 @@ import {
   getBankAccess, getTasks, getMonthReviewers,
   getClientMessages, getMessageTemplates,
   getFinancialClosings, getFinancialSettings,
+  getCashRegisters, getCashTurnover, getCashFirmMonthly,
 } from './storage'
 import { timed } from './perf'
 
@@ -159,6 +160,15 @@ export function useClientMessages() {
 export function useMessageTemplates() {
   return useQuery({ queryKey: ['messageTemplates'] as const, queryFn: getMessageTemplates })
 }
+export function useCashRegisters() {
+  return useQuery({ queryKey: ['cashRegisters'] as const, queryFn: getCashRegisters })
+}
+export function useCashTurnover(year: number) {
+  return useQuery({ queryKey: ['cashTurnover', year] as const, queryFn: () => getCashTurnover(year), enabled: year > 0 })
+}
+export function useCashFirmMonthly(year: number) {
+  return useQuery({ queryKey: ['cashFirmMonthly', year] as const, queryFn: () => getCashFirmMonthly(year), enabled: year > 0 })
+}
 export function useFinancialClosings(year: number) {
   return useQuery({
     queryKey: ['financialClosings', year] as const,
@@ -229,6 +239,12 @@ export function useInvalidateCrm() {
     // и целогодишният от „Каси и заеми" ползват различни ключове).
     invalidateCashLoan: () =>
       qc.invalidateQueries({ queryKey: ['cashLoanEntries'] }),
+    invalidateCashRegisters: () =>
+      qc.invalidateQueries({ queryKey: ['cashRegisters'] }),
+    invalidateCashTurnover: () =>
+      qc.invalidateQueries({ queryKey: ['cashTurnover'] }),
+    invalidateCashFirmMonthly: () =>
+      qc.invalidateQueries({ queryKey: ['cashFirmMonthly'] }),
     invalidateFinancialClosings: () =>
       qc.invalidateQueries({ queryKey: ['financialClosings'] }),
     invalidateFinancialSettings: () =>

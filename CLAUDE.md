@@ -98,7 +98,10 @@ Mobica Viber+SMS през edge mobica-send, secrets MOBICA_USER/MOBICA_PASS,
 канал sms/viber избираем) · 047 profiles RLS (беше ИЗКЛЮЧЕН — критичен fix) ·
 048 финансови приключвания (crm_financial_closings + crm_financial_settings;
 Приходи/Разходи→Резултат за фирми с master колона „Мониторинг"=ДА; период по
-фирма месечно/тримесечно)
+фирма месечно/тримесечно) · 051 касови апарати/СПО (crm_cash_registers +
+crm_cash_register_turnover + crm_cash_firm_monthly; фирми с master колона
+„Касов апарат"=ДА; апарати × месеци оборот/сторно 20/9 + фактури в брой + РЗОК;
+СПО се смята в UI; достъп admin/мениджъри/Счетоводство — гейт в менюто)
 
 ## Известни проблеми / Backlog (по приоритет)
 
