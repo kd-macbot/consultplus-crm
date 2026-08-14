@@ -260,6 +260,8 @@ export interface CashFirmMonthly {
   month: number
   invoices_cash_20: number
   invoices_cash_9: number
+  credit_note_20: number
+  credit_note_9: number
   rzok: number
   updated_at: string
 }
