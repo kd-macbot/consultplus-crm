@@ -255,11 +255,16 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
     }
   }, [columns, columnOrder.length])
 
-  // Синхронизираме изгледите от акаунта (DB) при вход — така изгледите,
-  // създадени на друго устройство, се появяват и тук. localStorage остава
-  // мигновен кеш; това само го опреснява, ако DB има по-нови данни.
+  // Синхронизираме изгледите от акаунта (DB) ВЕДНЪЖ НА СЕСИЯ — така изгледите
+  // от друго устройство се появяват при вход, но при всяко следващо влизане в
+  // Клиенти localStorage (с твоите запазвания) НЕ се презаписва от базата.
+  // Преди: sync-ът течеше на всеки mount и можеше да презапише току-що
+  // запазен изглед със стар от базата (ако push-ът още не е стигнал) → „губи се".
   useEffect(() => {
     if (!user?.id) return
+    const syncKey = `views-synced-${user.id}`
+    if (sessionStorage.getItem(syncKey)) return
+    try { sessionStorage.setItem(syncKey, '1') } catch { /* ignore */ }
     let cancelled = false
     void syncViewsFromDb(user.id).then(changed => {
       if (changed && !cancelled) {

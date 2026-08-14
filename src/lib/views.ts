@@ -129,6 +129,14 @@ export async function syncViewsFromDb(userId: string): Promise<boolean> {
 /** Чисти локалния кеш на изгледите (викай при изход). */
 export function clearViewsCache(): void {
   try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+  // Чистим и per-session флаговете за DB sync (DataTable), за да се
+  // пресинхронизира при следващ вход в същия таб.
+  try {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i)
+      if (k && k.startsWith('views-synced-')) sessionStorage.removeItem(k)
+    }
+  } catch { /* ignore */ }
 }
 
 export function getViews(): View[] {
