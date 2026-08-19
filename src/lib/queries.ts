@@ -10,6 +10,7 @@ import {
   getClientMessages, getMessageTemplates,
   getFinancialClosings, getFinancialSettings,
   getCashRegisters, getCashTurnover, getCashFirmMonthly,
+  getContracts, getContractTemplates,
 } from './storage'
 import { timed } from './perf'
 
@@ -28,6 +29,8 @@ export const qk = {
   allContacts: ['allContacts'] as const,
   clientProfiles: ['clientProfiles'] as const,
   paymentConfigs: ['paymentConfigs'] as const,
+  contracts: ['contracts'] as const,
+  contractTemplates: ['contractTemplates'] as const,
 }
 
 export function useClients() {
@@ -160,6 +163,12 @@ export function useClientMessages() {
 export function useMessageTemplates() {
   return useQuery({ queryKey: ['messageTemplates'] as const, queryFn: getMessageTemplates })
 }
+export function useContracts() {
+  return useQuery({ queryKey: qk.contracts, queryFn: getContracts })
+}
+export function useContractTemplates() {
+  return useQuery({ queryKey: qk.contractTemplates, queryFn: getContractTemplates })
+}
 export function useCashRegisters() {
   return useQuery({ queryKey: ['cashRegisters'] as const, queryFn: getCashRegisters })
 }
@@ -214,6 +223,8 @@ export function useInvalidateCrm() {
     invalidateAllContacts: () => qc.invalidateQueries({ queryKey: qk.allContacts }),
     invalidateClientProfiles: () => qc.invalidateQueries({ queryKey: qk.clientProfiles }),
     invalidatePaymentConfigs: () => qc.invalidateQueries({ queryKey: qk.paymentConfigs }),
+    invalidateContracts: () => qc.invalidateQueries({ queryKey: qk.contracts }),
+    invalidateContractTemplates: () => qc.invalidateQueries({ queryKey: qk.contractTemplates }),
     invalidatePaymentStatuses: (year: number) =>
       qc.invalidateQueries({ queryKey: ['paymentStatuses', year] }),
     invalidateAbsences: (year: number) =>
