@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth'
 import { getExpenses, getMonthlyWork, getTrzWork, withRetry } from '../lib/storage'
 import { useClients, useColumns, useCellValues, useDropdownOptions } from '../lib/queries'
 import { supabase } from '../lib/supabase'
-import type { Column, Expense } from '../lib/types'
+import type { Client, Column, Expense } from '../lib/types'
 import { buildCellIndex, buildDropdownIndex, cellKey, resolveDropdownText } from '../lib/tableIndices'
 import { isHiddenStatus } from '../lib/statusBadge'
 import { Users, Euro, CheckCircle2, TrendingUp, TrendingDown, Wallet, BookUser, ChevronLeft, ChevronRight, ClipboardCheck, AlertTriangle, Receipt } from 'lucide-react'
@@ -92,8 +92,41 @@ export function Dashboard() {
       : clients
     const active = visible.filter(c => !isHiddenStatus(resolveDropdownText(c.id, statusCol, cellIdx, dropdownIdx)))
 
-    let submitted = 0, notified = 0, vat = 0, amort = 0, bank = 0, salaries = 0, npa = 0, resultSum = 0
+    // Част от показателите важат само за фирмите, които ги имат — „Заплати"
+    // само при „ТРЗ Статус"=Активна, а АКЦИЗ/Статистика/Интрастат/СИДДО само
+    // при съответната master колона = ДА (същото условие като в Работния лист).
+    // Затова всеки от тях носи собствен знаменател: „12/12" е готово, докато
+    // „12/157" изглежда като тежко изоставане.
+    const trzStatusCol = columns.find((c: Column) => c.name === 'ТРЗ Статус')
+    const akcizCol = columns.find((c: Column) => c.name === 'АКЦИЗ')
+    const statistikaCol = columns.find((c: Column) => c.name === 'СТАТИСТИКА')
+    const intrastatCol = columns.find((c: Column) => c.name === 'Интрастат')
+    const siddoCol = columns.find((c: Column) => c.name === 'СИДДО')
+    const isYes = (c: Client, col: Column | undefined) =>
+      resolveDropdownText(c.id, col, cellIdx, dropdownIdx).trim().toUpperCase() === 'ДА'
+
+    let submitted = 0, notified = 0, vat = 0, amort = 0, bank = 0, npa = 0, resultSum = 0
+    let salaries = 0, salariesTotal = 0
+    let akciz = 0, akcizTotal = 0
+    let statistika = 0, statistikaTotal = 0
+    let intrastat = 0, intrastatTotal = 0
+    let siddo = 0, siddoTotal = 0
+
     for (const c of active) {
+      // Знаменателите се броят по master колоните — независимо дали за месеца
+      // вече има запис в crm_monthly_work.
+      const trzOn = resolveDropdownText(c.id, trzStatusCol, cellIdx, dropdownIdx)
+        .trim().toUpperCase() === TRZ_ACTIVE.toUpperCase()
+      const akcizOn = isYes(c, akcizCol)
+      const statistikaOn = isYes(c, statistikaCol)
+      const intrastatOn = isYes(c, intrastatCol)
+      const siddoOn = isYes(c, siddoCol)
+      if (trzOn) salariesTotal++
+      if (akcizOn) akcizTotal++
+      if (statistikaOn) statistikaTotal++
+      if (intrastatOn) intrastatTotal++
+      if (siddoOn) siddoTotal++
+
       const w = workByClient.get(c.id)
       if (!w) continue
       if (w.submitted_at) submitted++
@@ -101,11 +134,22 @@ export function Dashboard() {
       if (w.vat_accounted) vat++
       if (w.amortization_done) amort++
       if (w.bank_done) bank++
-      if (w.salaries_done) salaries++
+      if (trzOn && w.salaries_done) salaries++
+      // Отметката се брои само ако показателят важи за фирмата — иначе стар
+      // запис от преди смяната на master колоната би дал „5/3".
+      if (akcizOn && w.akciz_done) akciz++
+      if (statistikaOn && w.statistika_done) statistika++
+      if (intrastatOn && w.intrastat_done) intrastat++
+      if (siddoOn && w.siddo_done) siddo++
       if (w.npa_inconsistencies && w.npa_inconsistencies.trim()) npa++
       if (typeof w.result_amount === 'number') resultSum += w.result_amount
     }
-    return { total: active.length, submitted, notified, vat, amort, bank, salaries, npa, resultSum }
+    return {
+      total: active.length, submitted, notified, vat, amort, bank, npa, resultSum,
+      salaries, salariesTotal,
+      akciz, akcizTotal, statistika, statistikaTotal,
+      intrastat, intrastatTotal, siddo, siddoTotal,
+    }
   }, [clientsQ.data, columnsQ.data, cellsQ.data, dropdownsQ.data, monthlyWorkQ.data, user])
 
   // ТРЗ месечен напредък — „общо" = фирмите с ТРЗ Статус = „Активна".
@@ -256,7 +300,13 @@ export function Dashboard() {
                 <WsProgress label="Проверено" done={wsStats.vat} total={wsStats.total} />
                 <WsProgress label="Амортизации" done={wsStats.amort} total={wsStats.total} />
                 <WsProgress label="Банка" done={wsStats.bank} total={wsStats.total} />
-                <WsProgress label="Заплати" done={wsStats.salaries} total={wsStats.total} />
+                {/* Показателите по-долу важат само за част от фирмите — бар с
+                    нулев знаменател само би заблудил, затова се крие. */}
+                <WsProgress label="Заплати" done={wsStats.salaries} total={wsStats.salariesTotal} />
+                <WsProgress label="Статистика" done={wsStats.statistika} total={wsStats.statistikaTotal} />
+                <WsProgress label="АКЦИЗ" done={wsStats.akciz} total={wsStats.akcizTotal} />
+                <WsProgress label="Интрастат" done={wsStats.intrastat} total={wsStats.intrastatTotal} />
+                <WsProgress label="СИДДО" done={wsStats.siddo} total={wsStats.siddoTotal} />
               </div>
 
               <div className="text-sm text-muted-foreground">
@@ -567,7 +617,9 @@ export function Dashboard() {
 }
 
 function WsProgress({ label, done, total }: { label: string; done: number; total: number }) {
-  const pct = total > 0 ? (done / total) * 100 : 0
+  // Показател, който не важи за нито една фирма, няма какво да каже.
+  if (total === 0) return null
+  const pct = (done / total) * 100
   return (
     <div className="flex items-center gap-3">
       <div className="w-36 text-sm text-muted-foreground truncate">{label}</div>
