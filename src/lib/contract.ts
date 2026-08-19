@@ -2,7 +2,7 @@
  * Изготвяне на договор от шаблон.
  *
  * Шаблонът е текст с маркери {фирма}, {еик}, … и лек маркъп за оформлението
- * (# ## ### -). Стойностите се сглобяват от данните за клиента, показват се
+ * (# ## ### - и **удебелен**). Стойностите се сглобяват от данните за клиента, показват се
  * на потребителя за проверка/редакция и чак тогава се вливат в текста.
  *
  * Нищо тук не пипа базата — само чисти функции, за да са тестваеми.
@@ -190,10 +190,21 @@ export function missingFields(body: string, values: Partial<ContractValues>): Co
   return CONTRACT_FIELDS.filter(f => f.required && used.has(f.key) && !(values[f.key] ?? '').trim())
 }
 
-export function fillTemplate(body: string, values: Partial<ContractValues>): string {
+/**
+ * Попълва маркерите със стойностите.
+ *
+ * С `bold` попълненото се обгръща в `**…**` — така в готовия документ личи
+ * кое е конкретно за този клиент и кое е типовият текст на договора. Празна
+ * стойност не се обгръща, за да не остане празен удебелен интервал.
+ */
+export function fillTemplate(
+  body: string, values: Partial<ContractValues>, opts: { bold?: boolean } = {},
+): string {
   let out = body
   for (const f of CONTRACT_FIELDS) {
-    out = out.split(`{${f.key}}`).join(values[f.key] ?? '')
+    const raw = values[f.key] ?? ''
+    const v = opts.bold && raw.trim() ? `**${raw}**` : raw
+    out = out.split(`{${f.key}}`).join(v)
   }
   return out
 }
@@ -202,6 +213,14 @@ export function fillTemplate(body: string, values: Partial<ContractValues>): str
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
+}
+
+/** Регулярният израз за удебеления текст — един източник за HTML и за preview-то. */
+export const BOLD_RE = /\*\*([^*]+)\*\*/g
+
+/** Екранира текста и превръща `**…**` в <strong>. */
+function inline(s: string): string {
+  return escapeHtml(s).replace(BOLD_RE, '<strong>$1</strong>')
 }
 
 /**
@@ -259,14 +278,14 @@ function renderBlock(text: string): string {
     if (!line) { closeList(); continue }
     if (line.startsWith('- ')) {
       if (!inList) { out.push('<ul>'); inList = true }
-      out.push(`<li>${escapeHtml(line.slice(2))}</li>`)
+      out.push(`<li>${inline(line.slice(2))}</li>`)
       continue
     }
     closeList()
-    if (line.startsWith('### ')) out.push(`<h3>${escapeHtml(line.slice(4))}</h3>`)
-    else if (line.startsWith('## ')) out.push(`<h2>${escapeHtml(line.slice(3))}</h2>`)
-    else if (line.startsWith('# ')) out.push(`<h1>${escapeHtml(line.slice(2))}</h1>`)
-    else out.push(`<p>${escapeHtml(line)}</p>`)
+    if (line.startsWith('### ')) out.push(`<h3>${inline(line.slice(4))}</h3>`)
+    else if (line.startsWith('## ')) out.push(`<h2>${inline(line.slice(3))}</h2>`)
+    else if (line.startsWith('# ')) out.push(`<h1>${inline(line.slice(2))}</h1>`)
+    else out.push(`<p>${inline(line)}</p>`)
   }
   closeList()
   return out.join('\n')
