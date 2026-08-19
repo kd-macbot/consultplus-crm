@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   splitLegalForm, transliterate, buildContractValues, fillTemplate,
   missingFields, usedFields, renderContractHtml, formatFee, nextMonthStart,
+  isBilingualBody, parseBilingualRows,
 } from './contract'
 
 describe('splitLegalForm', () => {
@@ -181,5 +182,58 @@ describe('renderContractHtml', () => {
     // едното не бива да може да инжектира маркъп в готовия документ.
     expect(renderContractHtml('<script>alert(1)</script>'))
       .toBe('<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>')
+  })
+})
+
+describe('двуезичен маркъп', () => {
+  const bi = [
+    '# ДОГОВОР',
+    '@@',
+    '# CONTRACT',
+    '',
+    'Днес, 19.08.2026 г.',
+    '@@',
+    'Today, 19.08.2026',
+  ].join('\n')
+
+  it('разпознава двуезичен шаблон по разделителя', () => {
+    expect(isBilingualBody(bi)).toBe(true)
+    expect(isBilingualBody('# ДОГОВОР\nобикновен текст')).toBe(false)
+    // „@@" насред ред не е разделител — само на самостоятелен ред.
+    expect(isBilingualBody('текст @@ друг текст')).toBe(false)
+  })
+
+  it('разделя на редове и колони', () => {
+    expect(parseBilingualRows(bi)).toEqual([
+      ['# ДОГОВОР', '# CONTRACT'],
+      ['Днес, 19.08.2026 г.', 'Today, 19.08.2026'],
+    ])
+  })
+
+  it('пази многоредовите клетки цели', () => {
+    const rows = parseBilingualRows('ред1\nред2\n@@\nline1\nline2')
+    expect(rows).toEqual([['ред1\nред2', 'line1\nline2']])
+  })
+
+  it('рендира таблица с две колони', () => {
+    const html = renderContractHtml(bi)
+    expect(html).toContain('<table class="bi">')
+    expect(html).toContain('<td><h1>ДОГОВОР</h1></td><td><h1>CONTRACT</h1></td>')
+    expect(html).toContain('<td><p>Днес, 19.08.2026 г.</p></td><td><p>Today, 19.08.2026</p></td>')
+  })
+
+  it('ред без разделител заема цялата ширина', () => {
+    const html = renderContractHtml('# ДОГОВОР\n@@\n# CONTRACT\n\nобщ ред за двете колони')
+    expect(html).toContain('<td colspan="2"><p>общ ред за двете колони</p></td>')
+  })
+
+  it('едноезичният шаблон си остава без таблица', () => {
+    expect(renderContractHtml('# ДОГОВОР\nтекст')).toBe('<h1>ДОГОВОР</h1>\n<p>текст</p>')
+  })
+
+  it('групира булети вътре в колоната', () => {
+    const html = renderContractHtml('- едно\n- две\n@@\n- one\n- two')
+    expect(html).toContain('<td><ul>\n<li>едно</li>\n<li>две</li>\n</ul></td>')
+    expect(html).toContain('<td><ul>\n<li>one</li>\n<li>two</li>\n</ul></td>')
   })
 })

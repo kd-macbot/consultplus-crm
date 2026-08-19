@@ -34,6 +34,18 @@ const PRINT_CSS = `
   p:last-child, p:nth-last-child(2), p:nth-last-child(3), p:nth-last-child(4) {
     page-break-inside: avoid; break-inside: avoid;
   }
+
+  /* ---- Двуезичен договор: две равни колони BG | EN, както в Word-а ---- */
+  table.bi { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.bi td {
+    width: 50%; vertical-align: top; padding: 0 6pt 7pt 0;
+  }
+  table.bi td:last-child { padding-right: 0; padding-left: 6pt; }
+  /* Заглавният ред (I. Раздел…) да не увисва сам в дъното на страницата. */
+  table.bi tr:has(h3) { page-break-inside: avoid; break-inside: avoid; }
+  table.bi h3 { margin-top: 10pt; }
+  /* Първият ред е самото заглавие на договора — центрирано в двете колони. */
+  table.bi tr:first-child h1 { margin-top: 0; }
 `
 
 export function printContract(opts: { title: string; body: string }): boolean {

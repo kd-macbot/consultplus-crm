@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   Search, FileText, Printer, Save, Pencil, Trash2, RefreshCw,
-  AlertTriangle, Plus, X, Loader2,
+  AlertTriangle, Plus, X, Loader2, RotateCcw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,7 @@ import { useAuth } from '../lib/auth'
 import {
   addContract, deleteContract, seedContractTemplates,
   addContractTemplate, saveContractTemplate, deleteContractTemplate,
+  restoreDefaultContractTemplates,
 } from '../lib/storage'
 import {
   useClients, useColumns, useCellValues, useAllContacts,
@@ -22,6 +23,7 @@ import { formatDate, formatDateTime } from '../lib/utils'
 import { usePersistentState } from '../lib/usePersistentState'
 import {
   CONTRACT_FIELDS, buildContractValues, fillTemplate, missingFields, usedFields,
+  isBilingualBody, parseBilingualRows,
   type ContractFieldKey, type ContractValues,
 } from '../lib/contract'
 import { printContract } from '../lib/contractPrint'
@@ -364,31 +366,30 @@ export function ContractsPage() {
 
 // ==================== ПРЕГЛЕД ====================
 
-/**
- * Рендира маркъпа на договора като React елементи. Умишлено НЕ през
- * dangerouslySetInnerHTML — текстът идва от базата и от редактируем от admin
- * шаблон, а прегледът живее вътре в приложението.
- */
-function ContractPreview({ body }: { body: string }) {
-  const blocks = useMemo(() => {
-    const acc: ({ kind: 'h1' | 'h2' | 'h3' | 'p'; text: string } | { kind: 'ul'; items: string[] })[] = []
-    for (const raw of body.split('\n')) {
-      const line = raw.trim()
-      if (!line) continue
-      if (line.startsWith('- ')) {
-        const last = acc[acc.length - 1]
-        if (last && last.kind === 'ul') last.items.push(line.slice(2))
-        else acc.push({ kind: 'ul', items: [line.slice(2)] })
-      } else if (line.startsWith('### ')) acc.push({ kind: 'h3', text: line.slice(4) })
-      else if (line.startsWith('## ')) acc.push({ kind: 'h2', text: line.slice(3) })
-      else if (line.startsWith('# ')) acc.push({ kind: 'h1', text: line.slice(2) })
-      else acc.push({ kind: 'p', text: line })
-    }
-    return acc
-  }, [body])
+type Block =
+  | { kind: 'h1' | 'h2' | 'h3' | 'p'; text: string }
+  | { kind: 'ul'; items: string[] }
 
+function parseBlocks(text: string): Block[] {
+  const acc: Block[] = []
+  for (const raw of text.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    if (line.startsWith('- ')) {
+      const last = acc[acc.length - 1]
+      if (last && last.kind === 'ul') last.items.push(line.slice(2))
+      else acc.push({ kind: 'ul', items: [line.slice(2)] })
+    } else if (line.startsWith('### ')) acc.push({ kind: 'h3', text: line.slice(4) })
+    else if (line.startsWith('## ')) acc.push({ kind: 'h2', text: line.slice(3) })
+    else if (line.startsWith('# ')) acc.push({ kind: 'h1', text: line.slice(2) })
+    else acc.push({ kind: 'p', text: line })
+  }
+  return acc
+}
+
+function Blocks({ blocks }: { blocks: Block[] }) {
   return (
-    <div className="text-[13px] leading-relaxed text-neutral-900 dark:text-neutral-100">
+    <>
       {blocks.map((b, i) => {
         if (b.kind === 'ul') {
           return (
@@ -402,7 +403,51 @@ function ContractPreview({ body }: { body: string }) {
         if (b.kind === 'h3') return <h3 key={i} className="text-sm font-semibold mt-5 mb-1.5 pb-1 border-b border-border">{b.text}</h3>
         return <p key={i} className="mb-1.5 text-justify">{b.text}</p>
       })}
-    </div>
+    </>
+  )
+}
+
+/**
+ * Рендира маркъпа на договора като React елементи. Умишлено НЕ през
+ * dangerouslySetInnerHTML — текстът идва от базата и от редактируем от admin
+ * шаблон, а прегледът живее вътре в приложението.
+ *
+ * Двуезичните шаблони излизат в две равни колони (BG | EN) — както в печата
+ * и както е в оригиналния Word документ.
+ */
+function ContractPreview({ body }: { body: string }) {
+  const bilingual = useMemo(() => isBilingualBody(body), [body])
+  const rows = useMemo(
+    () => (bilingual ? parseBilingualRows(body).map(parts => parts.map(parseBlocks)) : []),
+    [bilingual, body],
+  )
+  const blocks = useMemo(() => (bilingual ? [] : parseBlocks(body)), [bilingual, body])
+
+  const cls = 'text-[13px] leading-relaxed text-neutral-900 dark:text-neutral-100'
+
+  if (!bilingual) {
+    return <div className={cls}><Blocks blocks={blocks} /></div>
+  }
+
+  return (
+    <table className={`${cls} w-full table-fixed border-collapse`}>
+      <tbody>
+        {rows.map((parts, i) => (
+          <tr key={i}>
+            {parts.length < 2 ? (
+              <td colSpan={2} className="align-top pb-3">
+                <Blocks blocks={parts[0] ?? []} />
+              </td>
+            ) : (
+              <>
+                <td className="w-1/2 align-top pr-3 pb-3"><Blocks blocks={parts[0]} /></td>
+                <td className="w-1/2 align-top pl-3 pb-3"><Blocks blocks={parts[1]} /></td>
+              </>
+            )}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
@@ -537,6 +582,23 @@ function TemplatesTab({ templates, onChanged }: {
   const [body, setBody] = useState('')
   const [saving, setSaving] = useState(false)
   const [toDelete, setToDelete] = useState<ContractTemplate | null>(null)
+  const [restoring, setRestoring] = useState(false)
+  const [confirmRestore, setConfirmRestore] = useState(false)
+
+  async function restoreDefaults() {
+    setRestoring(true)
+    try {
+      const n = await restoreDefaultContractTemplates()
+      onChanged()
+      setEditing(null)
+      toast.success(`Стартовите шаблони са възстановени (${n})`)
+    } catch (e) {
+      toast.error(`Възстановяването не мина: ${(e as Error).message}`)
+    } finally {
+      setRestoring(false)
+      setConfirmRestore(false)
+    }
+  }
 
   function startEdit(t: ContractTemplate) {
     setEditing(t); setName(t.name); setBody(t.body)
@@ -588,6 +650,12 @@ function TemplatesTab({ templates, onChanged }: {
         <div className="p-2 border-b border-border">
           <Button size="sm" onClick={startNew} className="w-full h-8 text-xs gap-1.5">
             <Plus className="h-3.5 w-3.5" /> Нов шаблон
+          </Button>
+          <Button size="sm" variant="ghost" disabled={restoring}
+            onClick={() => setConfirmRestore(true)}
+            className="w-full h-7 mt-1 text-[11px] gap-1.5 text-muted-foreground">
+            {restoring ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+            Възстанови стартовите
           </Button>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -659,6 +727,15 @@ function TemplatesTab({ templates, onChanged }: {
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmRestore}
+        title="Възстановяване на стартовите шаблони"
+        description={'Двата стартови шаблона („BG" и „BG/EN") ще бъдат презаписани с текста от приложението. Ваши собствени шаблони с други имена не се пипат. Вече изготвените договори също — те пазят своя текст.'}
+        confirmLabel="Възстанови"
+        onConfirm={restoreDefaults}
+        onCancel={() => setConfirmRestore(false)}
+      />
 
       <ConfirmDialog
         open={!!toDelete}
