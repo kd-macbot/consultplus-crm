@@ -9,17 +9,34 @@ import logoNavy from '../assets/brand/logo-navy.png'
  * и sidebar-а, а оформлението излиза еднакво независимо откъде е пуснат.
  *
  * Оттам колегата прави „Запази като PDF" от диалога за печат.
+ *
+ * ПОЛЕТАТА: @page margin е НУЛА нарочно. Браузърът рисува своя header/footer
+ * (URL „about:blank", дата, номер на страница) вътре в margin-а на @page —
+ * няма CSS начин да се изключат, но при нулев margin просто няма къде да се
+ * появят. Затова полетата идват отдругаде:
+ *   – ляво/дясно: padding на body (важи за всички страници);
+ *   – горе/долу: <thead>/<tfoot> на обгръщащата таблица, които браузърът
+ *     повтаря на всяка страница.
+ * Бонус: логото стои в thead-а, тоест на всяка страница — точно както е в
+ * header-а на оригиналния Word документ.
  */
 
 const PRINT_CSS = `
-  @page { size: A4; margin: 20mm 18mm; }
+  @page { size: A4; margin: 0; }
   * { box-sizing: border-box; }
   body {
     font-family: Calibri, Carlito, "Segoe UI", system-ui, sans-serif;
-    font-size: 10pt; line-height: 1.45; color: #111; margin: 0;
+    font-size: 10pt; line-height: 1.45; color: #111;
+    margin: 0; padding: 0 18mm;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
-  .logo { display: block; height: 34px; width: auto; margin: 0 0 14pt; }
+  /* Обгръщащата таблица носи повтарящите се горно и долно поле. */
+  table.sheet { width: 100%; border-collapse: collapse; }
+  table.sheet > thead > tr > td { padding: 0; }
+  table.sheet > tfoot > tr > td { padding: 0; }
+  .run-head { padding: 14mm 0 6mm; }
+  .run-foot { height: 16mm; }
+  .logo { display: block; height: 30px; width: auto; }
   h1 { font-size: 16pt; text-align: center; margin: 0 0 2pt; letter-spacing: .5pt; }
   h2 { font-size: 11pt; font-weight: 600; text-align: center; margin: 0 0 14pt; color: #333; }
   h1 + h2 { margin-bottom: 4pt; }
@@ -64,8 +81,13 @@ export function printContract(opts: { title: string; body: string }): boolean {
 <title>${esc(opts.title)}</title>
 <style>${PRINT_CSS}</style>
 </head><body>
-<img class="logo" src="${esc(logoUrl)}" alt="Консулт Плюс">
+<table class="sheet">
+<thead><tr><td><div class="run-head"><img class="logo" src="${esc(logoUrl)}" alt="Консулт Плюс"></div></td></tr></thead>
+<tfoot><tr><td><div class="run-foot"></div></td></tr></tfoot>
+<tbody><tr><td>
 ${renderContractHtml(opts.body)}
+</td></tr></tbody>
+</table>
 </body></html>`)
   win.document.close()
 

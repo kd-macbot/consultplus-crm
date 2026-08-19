@@ -491,7 +491,7 @@ Art. 45. Any matters not settled herein are governed by the Accountancy Act, the
 
 ### Контакти и банкова сметка на ИЗПЪЛНИТЕЛЯ
 @@
-CONTRACTOR’s contacts and bank account
+### CONTRACTOR’s contacts and bank account
 
 КОНСУЛТ ПЛЮС ЕООД
 ул. „Златю Бояджиев“ №1, ет. 3, 4003 Пловдив, България
