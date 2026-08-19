@@ -65,7 +65,14 @@ const PRINT_CSS = `
   table.bi tr:has(h3) { page-break-inside: avoid; break-inside: avoid; }
   table.bi h3 { margin-top: 8pt; }
   /* Първият ред е самото заглавие на договора — центрирано в двете колони. */
-  table.bi tr:first-child h1 { margin-top: 0; }
+  table.bi tbody:first-child tr:first-child h1 { margin-top: 0; }
+
+  /* ---- Неделими секции (маркер „===" в шаблона) ---------------------- */
+  /* Контактите с банковата сметка и подписите не бива да се разкъсват през
+     страници — ако не се събират, слизат цели на следващата. */
+  table.bi > tbody.keep, .keep { page-break-inside: avoid; break-inside: avoid; }
+  table.bi > tbody.keep > tr:first-child > td { padding-top: 6mm; }
+  .keep { margin-top: 6mm; }
 `
 
 export function printContract(opts: { title: string; body: string }): boolean {

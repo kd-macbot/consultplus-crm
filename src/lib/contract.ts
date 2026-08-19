@@ -210,6 +210,18 @@ function escapeHtml(s: string): string {
  */
 export const LANG_SEPARATOR = '@@'
 
+/**
+ * Маркер за неделима секция: „===" на самостоятелен ред. Всичко след него до
+ * следващия маркер се държи като едно цяло при печат — не се цепи между
+ * страници, а ако не се събира, слиза цяло на следващата. Ползва се за
+ * контактите с банковата сметка и за подписите, които не бива да се разкъсват.
+ */
+export const KEEP_SEPARATOR = '==='
+
+export function splitKeepSections(text: string): string[] {
+  return text.split(/\n\s*={3,}\s*\n/)
+}
+
 /** Шаблонът двуезичен ли е — по съдържание, не по флага в базата (admin го редактира). */
 export function isBilingualBody(text: string): boolean {
   return text.split('\n').some(l => l.trim() === LANG_SEPARATOR)
@@ -269,12 +281,21 @@ function renderBlock(text: string): string {
  * ред, а колоните с „@@" на самостоятелен ред.
  */
 export function renderContractHtml(text: string): string {
-  if (!isBilingualBody(text)) return renderBlock(text)
+  const sections = splitKeepSections(text)
 
-  const rows = parseBilingualRows(text).map(parts => {
-    // Ред без разделител (или с празна втора страна) заема цялата ширина.
-    if (parts.length < 2) return `<tr><td colspan="2">${renderBlock(parts[0] ?? '')}</td></tr>`
-    return `<tr><td>${renderBlock(parts[0])}</td><td>${renderBlock(parts[1])}</td></tr>`
+  if (!isBilingualBody(text)) {
+    return sections
+      .map((sec, i) => (i === 0 ? renderBlock(sec) : `<div class="keep">\n${renderBlock(sec)}\n</div>`))
+      .join('\n')
+  }
+
+  const bodies = sections.map((sec, i) => {
+    const rows = parseBilingualRows(sec).map(parts => {
+      // Ред без разделител (или с празна втора страна) заема цялата ширина.
+      if (parts.length < 2) return `<tr><td colspan="2">${renderBlock(parts[0] ?? '')}</td></tr>`
+      return `<tr><td>${renderBlock(parts[0])}</td><td>${renderBlock(parts[1])}</td></tr>`
+    })
+    return `<tbody${i === 0 ? '' : ' class="keep"'}>\n${rows.join('\n')}\n</tbody>`
   })
-  return `<table class="bi">\n${rows.join('\n')}\n</table>`
+  return `<table class="bi">\n${bodies.join('\n')}\n</table>`
 }
