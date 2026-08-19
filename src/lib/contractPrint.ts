@@ -24,29 +24,32 @@ import logoNavy from '../assets/brand/logo-navy.png'
 const PRINT_CSS = `
   @page { size: A4; margin: 0; }
   * { box-sizing: border-box; }
+  /* Мерките идват от самия Word документ: Calibri 10pt, междуредие w:line=222
+     (0.925 от единичното) и по 30 twips (1.5pt) преди и след абзац. Затова
+     готовият PDF излиза със същия брой страници като оригинала, а не двойно. */
   body {
     font-family: Calibri, Carlito, "Segoe UI", system-ui, sans-serif;
-    font-size: 10pt; line-height: 1.45; color: #111;
-    margin: 0; padding: 0 18mm;
+    font-size: 10pt; line-height: 1.12; color: #111;
+    margin: 0; padding: 0 17mm;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   /* Обгръщащата таблица носи повтарящите се горно и долно поле. */
   table.sheet { width: 100%; border-collapse: collapse; }
   table.sheet > thead > tr > td { padding: 0; }
   table.sheet > tfoot > tr > td { padding: 0; }
-  .run-head { padding: 14mm 0 6mm; }
-  .run-foot { height: 16mm; }
-  .logo { display: block; height: 30px; width: auto; }
-  h1 { font-size: 16pt; text-align: center; margin: 0 0 2pt; letter-spacing: .5pt; }
-  h2 { font-size: 11pt; font-weight: 600; text-align: center; margin: 0 0 14pt; color: #333; }
-  h1 + h2 { margin-bottom: 4pt; }
+  .run-head { padding: 11mm 0 4mm; }
+  .run-foot { height: 9mm; }
+  .logo { display: block; height: 26px; width: auto; }
+  h1 { font-size: 15pt; text-align: center; margin: 0 0 2pt; letter-spacing: .5pt; }
+  h2 { font-size: 10.5pt; font-weight: 600; text-align: center; margin: 0 0 8pt; color: #333; }
+  h1 + h2 { margin-bottom: 3pt; }
   h3 {
-    font-size: 10.5pt; margin: 14pt 0 5pt; padding-bottom: 2pt;
+    font-size: 10pt; margin: 10pt 0 3pt; padding-bottom: 2pt;
     border-bottom: .75pt solid #d4d4d4; page-break-after: avoid; break-after: avoid;
   }
-  p { margin: 0 0 5pt; text-align: justify; orphans: 3; widows: 3; }
-  ul { margin: 0 0 5pt; padding-left: 16pt; }
-  li { margin-bottom: 2.5pt; text-align: justify; }
+  p { margin: 0 0 3pt; text-align: justify; orphans: 2; widows: 2; }
+  ul { margin: 0 0 3pt; padding-left: 14pt; }
+  li { margin-bottom: 1.5pt; text-align: justify; }
   /* Подписите не бива да се откъсват на самостоятелна страница. */
   p:last-child, p:nth-last-child(2), p:nth-last-child(3), p:nth-last-child(4) {
     page-break-inside: avoid; break-inside: avoid;
@@ -55,12 +58,12 @@ const PRINT_CSS = `
   /* ---- Двуезичен договор: две равни колони BG | EN, както в Word-а ---- */
   table.bi { width: 100%; border-collapse: collapse; table-layout: fixed; }
   table.bi td {
-    width: 50%; vertical-align: top; padding: 0 6pt 7pt 0;
+    width: 50%; vertical-align: top; padding: 0 6pt 4pt 0;
   }
   table.bi td:last-child { padding-right: 0; padding-left: 6pt; }
   /* Заглавният ред (I. Раздел…) да не увисва сам в дъното на страницата. */
   table.bi tr:has(h3) { page-break-inside: avoid; break-inside: avoid; }
-  table.bi h3 { margin-top: 10pt; }
+  table.bi h3 { margin-top: 8pt; }
   /* Първият ред е самото заглавие на договора — центрирано в двете колони. */
   table.bi tr:first-child h1 { margin-top: 0; }
 `
