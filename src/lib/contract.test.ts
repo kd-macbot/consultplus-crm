@@ -3,6 +3,7 @@ import {
   splitLegalForm, transliterate, buildContractValues, fillTemplate,
   missingFields, usedFields, renderContractHtml, formatFee, nextMonthStart,
   isBilingualBody, parseBilingualRows, splitKeepSections,
+  maskSensitive, hasSensitiveFields, MASK,
 } from './contract'
 
 describe('splitLegalForm', () => {
@@ -302,5 +303,48 @@ describe('удебеляване на попълненото', () => {
 
   it('самотна двойка звездички не се пипа', () => {
     expect(renderContractHtml('текст ** край')).toBe('<p>текст ** край</p>')
+  })
+})
+
+describe('лични данни в пълномощното', () => {
+  const v = { управител: 'Иван Петров', егн: '8001011234', лк_номер: '123456789', лк_дата: '01.01.2020', лк_мвр: 'Пловдив', адрес_лице: 'гр. Пловдив, ул. Тест 1' }
+
+  it('маскира ЕГН и данните от личната карта', () => {
+    const m = maskSensitive(v)
+    expect(m.егн).toBe(MASK)
+    expect(m.лк_номер).toBe(MASK)
+    expect(m.лк_дата).toBe(MASK)
+    expect(m.лк_мвр).toBe(MASK)
+  })
+
+  it('не пипа останалите полета', () => {
+    const m = maskSensitive(v)
+    expect(m.управител).toBe('Иван Петров')
+    expect(m.адрес_лице).toBe('гр. Пловдив, ул. Тест 1')
+  })
+
+  it('празно поле си остава празно — не става точки', () => {
+    expect(maskSensitive({ егн: '' }).егн).toBe('')
+    expect(maskSensitive({ егн: '  ' }).егн).toBe('  ')
+  })
+
+  it('не променя подадения обект', () => {
+    const orig = { егн: '8001011234' }
+    maskSensitive(orig)
+    expect(orig.егн).toBe('8001011234')
+  })
+
+  it('разпознава шаблон с лични данни', () => {
+    expect(hasSensitiveFields('ЕГН {егн}')).toBe(true)
+    expect(hasSensitiveFields('лична карта {лк_номер}')).toBe(true)
+    expect(hasSensitiveFields('фирма {фирма} с ЕИК {еик}')).toBe(false)
+  })
+
+  it('маскираното наистина липсва в записания текст', () => {
+    const body = 'Долуподписаният {управител}, ЕГН {егн}, ЛК № {лк_номер}'
+    const saved = fillTemplate(body, maskSensitive(v), { bold: true })
+    expect(saved).not.toContain('8001011234')
+    expect(saved).not.toContain('123456789')
+    expect(saved).toContain('Иван Петров')
   })
 })
