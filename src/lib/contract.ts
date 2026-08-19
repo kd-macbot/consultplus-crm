@@ -1,0 +1,234 @@
+/**
+ * Изготвяне на договор от шаблон.
+ *
+ * Шаблонът е текст с маркери {фирма}, {еик}, … и лек маркъп за оформлението
+ * (# ## ### -). Стойностите се сглобяват от данните за клиента, показват се
+ * на потребителя за проверка/редакция и чак тогава се вливат в текста.
+ *
+ * Нищо тук не пипа базата — само чисти функции, за да са тестваеми.
+ */
+
+// ==================== ПРАВНА ФОРМА ====================
+
+/**
+ * Имената на фирмите в CRM-а включват правната форма („АВОМИС ЕООД").
+ * Договорът обаче я иска отделно: „[НАИМЕНОВАНИЕ]“ [ЕООД/ООД] — иначе излиза
+ * „АВОМИС ЕООД“ ЕООД.
+ *
+ * Подредбата е от най-дългата към най-късата, за да не отхапе „ООД" от „ЕООД".
+ */
+const LEGAL_FORMS = ['АДСИЦ', 'ДЗЗД', 'ЕООД', 'ЕАД', 'ООД', 'АД', 'ЕТ', 'СД', 'КД'] as const
+
+export function splitLegalForm(fullName: string): { name: string; form: string } {
+  const trimmed = (fullName ?? '').trim()
+  for (const form of LEGAL_FORMS) {
+    // Само в КРАЯ на името и като отделна дума — „АСИ 75 ЕООД" да, „ЕТАЖ" не.
+    const re = new RegExp(`(^|\\s)${form}\\.?$`)
+    const m = trimmed.match(re)
+    if (m) return { name: trimmed.slice(0, m.index).trim(), form }
+  }
+  // Физически лица, ЗП, адвокатски съдружия — формата се попълва ръчно.
+  return { name: trimmed, form: '' }
+}
+
+// ==================== ТРАНСЛИТЕРАЦИЯ ====================
+
+const TRANSLIT: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ж: 'zh', з: 'z', и: 'i',
+  й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's',
+  т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sht',
+  ъ: 'a', ь: 'y', ю: 'yu', я: 'ya',
+}
+
+/**
+ * Транслитерация по Закона за транслитерацията. Запазва регистъра: дума с
+ * главни букви остава с главни (АВОМИС → AVOMIS), иначе само първата.
+ *
+ * Изключението по чл. 4, ал. 2 — окончанието „-ия" в края на думата се предава
+ * с „-ia" (София → Sofia, а не Sofiya).
+ */
+export function transliterate(text: string): string {
+  if (!text) return ''
+  return text.replace(/[\wА-Яа-яЁёЍѝ]+|./gu, chunk => {
+    if (!/[А-Яа-я]/.test(chunk)) return chunk
+    const isUpper = chunk === chunk.toUpperCase() && chunk.length > 1
+    const base = chunk.replace(/ия$/u, 'ia@')  // @ маркира вече готово окончание
+    let out = ''
+    for (const ch of base) {
+      if (ch === '@') continue
+      const lower = ch.toLowerCase()
+      const mapped = TRANSLIT[lower]
+      if (mapped === undefined) { out += ch; continue }
+      out += ch === lower ? mapped : mapped.charAt(0).toUpperCase() + mapped.slice(1)
+    }
+    return isUpper ? out.toUpperCase() : out
+  })
+}
+
+// ==================== ПОЛЕТА НА ДОГОВОРА ====================
+
+export type ContractFieldKey =
+  | 'фирма' | 'правна_форма' | 'еик' | 'адрес' | 'управител' | 'имейл'
+  | 'лице_за_контакт' | 'хонорар' | 'дата' | 'в_сила_от'
+  | 'фирма_en' | 'правна_форма_en' | 'адрес_en' | 'управител_en' | 'лице_за_контакт_en'
+
+export type ContractFieldDef = {
+  key: ContractFieldKey
+  label: string
+  hint: string
+  /** Празно поле спира генерирането — договор с дупка на това място не върши работа. */
+  required: boolean
+  /** Само за двуезичния шаблон. */
+  bilingualOnly?: boolean
+  multiline?: boolean
+}
+
+export const CONTRACT_FIELDS: ContractFieldDef[] = [
+  { key: 'фирма', label: 'Наименование на фирмата', hint: 'от Клиенти, без правната форма', required: true },
+  { key: 'правна_форма', label: 'Правна форма', hint: 'ЕООД / ООД / АД…', required: true },
+  { key: 'еик', label: 'ЕИК', hint: 'от Контакти', required: true },
+  { key: 'адрес', label: 'Седалище и адрес на управление', hint: 'от Контакти', required: true, multiline: true },
+  { key: 'управител', label: 'Представляващ (трите имена)', hint: 'от Контакти → собственик', required: true },
+  { key: 'имейл', label: 'Имейл за кореспонденция', hint: 'от Контакти', required: true },
+  { key: 'лице_за_контакт', label: 'Лице за контакт (име, телефон)', hint: 'от Контакти', required: true },
+  { key: 'хонорар', label: 'Месечно възнаграждение (EUR, без ДДС)', hint: 'от колона „Хонорар"', required: true },
+  { key: 'дата', label: 'Дата на сключване', hint: 'днес', required: true },
+  { key: 'в_сила_от', label: 'Влиза в сила от (чл. 36)', hint: '1-во число на следващия месец', required: true },
+  { key: 'фирма_en', label: 'Наименование на латиница', hint: 'авто транслитерация — сверете с официалното име', required: true, bilingualOnly: true },
+  { key: 'правна_форма_en', label: 'Правна форма (EN)', hint: 'LTD / JSC…', required: true, bilingualOnly: true },
+  { key: 'адрес_en', label: 'Адрес на латиница', hint: 'авто транслитерация', required: true, bilingualOnly: true, multiline: true },
+  { key: 'управител_en', label: 'Представляващ на латиница', hint: 'авто транслитерация', required: true, bilingualOnly: true },
+  { key: 'лице_за_контакт_en', label: 'Лице за контакт (EN)', hint: 'авто транслитерация', required: true, bilingualOnly: true },
+]
+
+export type ContractValues = Record<ContractFieldKey, string>
+
+/** Правната форма на латиница — както се изписва в англоезични договори. */
+const LEGAL_FORM_EN: Record<string, string> = {
+  ЕООД: 'LTD', ООД: 'LTD', ЕАД: 'JSC', АД: 'JSC',
+  ЕТ: 'Sole Trader', СД: 'General Partnership', КД: 'Limited Partnership',
+  ДЗЗД: 'Civil Partnership', АДСИЦ: 'REIT',
+}
+
+export function formatFee(fee: number | null | undefined): string {
+  if (fee == null || !Number.isFinite(fee)) return ''
+  // Кръгли суми без стотинки — „250", не „250.00"; иначе с две знака.
+  return Number.isInteger(fee) ? String(fee) : fee.toFixed(2)
+}
+
+/** ДД.ММ.ГГГГ — както е навсякъде в системата (виж formatDate в utils). */
+function dmy(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`
+}
+
+/** Абонаментните договори тръгват от началото на следващия месец (чл. 16). */
+export function nextMonthStart(from: Date): Date {
+  return new Date(from.getFullYear(), from.getMonth() + 1, 1)
+}
+
+export type ContractSource = {
+  clientName: string
+  eik?: string | null
+  address?: string | null
+  ownerName?: string | null
+  ownerPhone?: string | null
+  companyEmail?: string | null
+  ownerEmail?: string | null
+  managerName?: string | null
+  fee?: number | null
+  today?: Date
+}
+
+/** Сглобява предложените стойности. Всяка от тях е редактируема в UI преди печат. */
+export function buildContractValues(src: ContractSource): ContractValues {
+  const today = src.today ?? new Date()
+  const { name, form } = splitLegalForm(src.clientName)
+
+  const contactName = (src.managerName || src.ownerName || '').trim()
+  const phone = (src.ownerPhone || '').trim()
+  const contact = [contactName, phone].filter(Boolean).join(', ')
+
+  const address = (src.address || '').trim()
+  const manager = (src.ownerName || '').trim()
+
+  return {
+    фирма: name,
+    правна_форма: form,
+    еик: (src.eik || '').trim(),
+    адрес: address,
+    управител: manager,
+    // Договорът иска адрес за кореспонденция — фирменият имейл, а ако липсва,
+    // личният на собственика.
+    имейл: (src.companyEmail || src.ownerEmail || '').trim(),
+    лице_за_контакт: contact,
+    хонорар: formatFee(src.fee),
+    дата: dmy(today),
+    в_сила_от: dmy(nextMonthStart(today)),
+    фирма_en: transliterate(name),
+    правна_форма_en: LEGAL_FORM_EN[form] ?? '',
+    адрес_en: transliterate(address),
+    управител_en: transliterate(manager),
+    лице_за_контакт_en: contact ? transliterate(contactName) + (phone ? `, ${phone}` : '') : '',
+  }
+}
+
+// ==================== ПОПЪЛВАНЕ ====================
+
+/** Кои маркери реално се срещат в даден шаблон. */
+export function usedFields(body: string): Set<string> {
+  return new Set((body.match(/\{[a-zа-я_]+\}/gu) ?? []).map(m => m.slice(1, -1)))
+}
+
+/**
+ * Полетата, които този шаблон изисква и които са празни. Договор с празно
+ * място не се генерира — по-добре ясно съобщение „липсва ЕИК", отколкото
+ * документ с дупка, който някой ще подпише.
+ */
+export function missingFields(body: string, values: Partial<ContractValues>): ContractFieldDef[] {
+  const used = usedFields(body)
+  return CONTRACT_FIELDS.filter(f => f.required && used.has(f.key) && !(values[f.key] ?? '').trim())
+}
+
+export function fillTemplate(body: string, values: Partial<ContractValues>): string {
+  let out = body
+  for (const f of CONTRACT_FIELDS) {
+    out = out.split(`{${f.key}}`).join(values[f.key] ?? '')
+  }
+  return out
+}
+
+// ==================== РЕНДИРАНЕ ====================
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
+}
+
+/**
+ * Маркъп → HTML за преглед и печат.
+ *   # заглавие · ## подзаглавие · ### раздел · - булет · останалото = абзац
+ * Последователните булети се групират в един <ul>.
+ */
+export function renderContractHtml(text: string): string {
+  const lines = text.split('\n')
+  const out: string[] = []
+  let inList = false
+  const closeList = () => { if (inList) { out.push('</ul>'); inList = false } }
+
+  for (const raw of lines) {
+    const line = raw.trim()
+    if (!line) { closeList(); continue }
+    if (line.startsWith('- ')) {
+      if (!inList) { out.push('<ul>'); inList = true }
+      out.push(`<li>${escapeHtml(line.slice(2))}</li>`)
+      continue
+    }
+    closeList()
+    if (line.startsWith('### ')) out.push(`<h3>${escapeHtml(line.slice(4))}</h3>`)
+    else if (line.startsWith('## ')) out.push(`<h2>${escapeHtml(line.slice(3))}</h2>`)
+    else if (line.startsWith('# ')) out.push(`<h1>${escapeHtml(line.slice(2))}</h1>`)
+    else out.push(`<p>${escapeHtml(line)}</p>`)
+  }
+  closeList()
+  return out.join('\n')
+}

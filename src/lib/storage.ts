@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -2471,5 +2471,104 @@ export async function upsertArt55QuarterStatus(
       { client_id: clientId, year, quarter, ...patch, updated_at: new Date().toISOString() },
       { onConflict: 'client_id,year,quarter' },
     )
+  if (error) throw error
+}
+
+// ==================== ДОГОВОРИ ====================
+
+export async function getContractTemplates(): Promise<ContractTemplate[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_contract_templates').select('*').order('position')
+    if (error) throw error
+    return (data ?? []) as ContractTemplate[]
+  })
+}
+
+/**
+ * Вкарва стартовите шаблони, ако таблицата е празна. Текстът им (~57KB) се
+ * зарежда с dynamic import — нужен е точно веднъж в живота на системата.
+ * Връща true, ако е добавил нещо.
+ */
+export async function seedContractTemplates(): Promise<boolean> {
+  const { count, error: countErr } = await supabase
+    .from('crm_contract_templates').select('id', { count: 'exact', head: true })
+  if (countErr) throw countErr
+  if ((count ?? 0) > 0) return false
+
+  const { DEFAULT_CONTRACT_TEMPLATES } = await import('./contractTemplates')
+  const rows = DEFAULT_CONTRACT_TEMPLATES.map((t, i) => ({
+    name: t.name, body: t.body, is_bilingual: t.isBilingual, position: i,
+  }))
+  // Ако друг колега е изпреварил със seed-а, не дублираме.
+  const { error } = await supabase
+    .from('crm_contract_templates').upsert(rows, { onConflict: 'name', ignoreDuplicates: true })
+  if (error) throw error
+  return true
+}
+
+export async function saveContractTemplate(
+  id: string, patch: { name?: string; body?: string; is_bilingual?: boolean },
+): Promise<void> {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_contract_templates')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function addContractTemplate(
+  name: string, body: string, isBilingual: boolean,
+): Promise<void> {
+  const { data: last } = await supabase
+    .from('crm_contract_templates')
+    .select('position').order('position', { ascending: false }).limit(1)
+  const position = (last?.[0]?.position ?? -1) + 1
+  const { error } = await supabase
+    .from('crm_contract_templates')
+    .insert([{ name, body, is_bilingual: isBilingual, position }])
+  if (error) throw error
+}
+
+export async function deleteContractTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from('crm_contract_templates').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getContracts(): Promise<Contract[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_contracts').select('*').order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []) as Contract[]
+  })
+}
+
+export async function addContract(c: {
+  client_id: string | null
+  client_name: string
+  template_id: string | null
+  template_name: string
+  contract_date: string
+  effective_date: string | null
+  monthly_fee: number | null
+  body_snapshot: string
+  fields: Record<string, string>
+}): Promise<Contract> {
+  return await trackSave((async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data, error } = await supabase
+      .from('crm_contracts')
+      .insert([{ ...c, created_by: user?.id ?? null }])
+      .select().single()
+    if (error) throw error
+    return data as Contract
+  })())
+}
+
+export async function deleteContract(id: string): Promise<void> {
+  const { error } = await supabase.from('crm_contracts').delete().eq('id', id)
   if (error) throw error
 }
