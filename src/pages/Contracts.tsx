@@ -23,7 +23,7 @@ import { formatDate, formatDateTime } from '../lib/utils'
 import { usePersistentState } from '../lib/usePersistentState'
 import {
   CONTRACT_FIELDS, buildContractValues, fillTemplate, missingFields, usedFields,
-  isBilingualBody, parseBilingualRows,
+  isBilingualBody, parseBilingualRows, splitKeepSections,
   type ContractFieldKey, type ContractValues,
 } from '../lib/contract'
 import { printContract } from '../lib/contractPrint'
@@ -417,36 +417,47 @@ function Blocks({ blocks }: { blocks: Block[] }) {
  */
 function ContractPreview({ body }: { body: string }) {
   const bilingual = useMemo(() => isBilingualBody(body), [body])
-  const rows = useMemo(
-    () => (bilingual ? parseBilingualRows(body).map(parts => parts.map(parseBlocks)) : []),
-    [bilingual, body],
-  )
-  const blocks = useMemo(() => (bilingual ? [] : parseBlocks(body)), [bilingual, body])
-
+  // Секциите след маркера „===" се държат като едно цяло при печат; тук ги
+  // разделяме само за да покажем същия отстъп, който излиза на хартия.
+  const sections = useMemo(() => splitKeepSections(body), [body])
   const cls = 'text-[13px] leading-relaxed text-neutral-900 dark:text-neutral-100'
 
   if (!bilingual) {
-    return <div className={cls}><Blocks blocks={blocks} /></div>
+    return (
+      <div className={cls}>
+        {sections.map((sec, i) => (
+          <div key={i} className={i > 0 ? 'mt-6' : ''}>
+            <Blocks blocks={parseBlocks(sec)} />
+          </div>
+        ))}
+      </div>
+    )
   }
 
   return (
     <table className={`${cls} w-full table-fixed border-collapse`}>
-      <tbody>
-        {rows.map((parts, i) => (
-          <tr key={i}>
-            {parts.length < 2 ? (
-              <td colSpan={2} className="align-top pb-3">
-                <Blocks blocks={parts[0] ?? []} />
-              </td>
-            ) : (
-              <>
-                <td className="w-1/2 align-top pr-3 pb-3"><Blocks blocks={parts[0]} /></td>
-                <td className="w-1/2 align-top pl-3 pb-3"><Blocks blocks={parts[1]} /></td>
-              </>
-            )}
-          </tr>
-        ))}
-      </tbody>
+      {sections.map((sec, si) => (
+        <tbody key={si}>
+          {parseBilingualRows(sec).map(parts => parts.map(parseBlocks)).map((parts, i) => (
+            <tr key={i}>
+              {parts.length < 2 ? (
+                <td colSpan={2} className={`align-top pb-3 ${si > 0 && i === 0 ? 'pt-6' : ''}`}>
+                  <Blocks blocks={parts[0] ?? []} />
+                </td>
+              ) : (
+                <>
+                  <td className={`w-1/2 align-top pr-3 pb-3 ${si > 0 && i === 0 ? 'pt-6' : ''}`}>
+                    <Blocks blocks={parts[0]} />
+                  </td>
+                  <td className={`w-1/2 align-top pl-3 pb-3 ${si > 0 && i === 0 ? 'pt-6' : ''}`}>
+                    <Blocks blocks={parts[1]} />
+                  </td>
+                </>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      ))}
     </table>
   )
 }

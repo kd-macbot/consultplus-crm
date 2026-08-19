@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   splitLegalForm, transliterate, buildContractValues, fillTemplate,
   missingFields, usedFields, renderContractHtml, formatFee, nextMonthStart,
-  isBilingualBody, parseBilingualRows,
+  isBilingualBody, parseBilingualRows, splitKeepSections,
 } from './contract'
 
 describe('splitLegalForm', () => {
@@ -235,5 +235,37 @@ describe('двуезичен маркъп', () => {
     const html = renderContractHtml('- едно\n- две\n@@\n- one\n- two')
     expect(html).toContain('<td><ul>\n<li>едно</li>\n<li>две</li>\n</ul></td>')
     expect(html).toContain('<td><ul>\n<li>one</li>\n<li>two</li>\n</ul></td>')
+  })
+})
+
+describe('неделими секции', () => {
+  it('разделя по маркера „===" на самостоятелен ред', () => {
+    expect(splitKeepSections('едно\n===\nдве')).toEqual(['едно', 'две'])
+    expect(splitKeepSections('едно\nдве')).toEqual(['едно\nдве'])
+  })
+
+  it('приема и по-дълга черта, с интервали около нея', () => {
+    expect(splitKeepSections('едно\n =====  \nдве')).toEqual(['едно', 'две'])
+  })
+
+  it('не се подвежда от „===" насред ред', () => {
+    expect(splitKeepSections('а === б')).toEqual(['а === б'])
+  })
+
+  it('в едноезичен договор секцията излиза в собствен блок', () => {
+    const html = renderContractHtml('текст\n===\nподписи')
+    expect(html).toBe('<p>текст</p>\n<div class="keep">\n<p>подписи</p>\n</div>')
+  })
+
+  it('в двуезичен договор секцията е отделно tbody', () => {
+    const html = renderContractHtml('текст\n@@\ntext\n\n===\nподписи\n@@\nsignatures')
+    expect(html).toContain('<tbody>\n<tr><td><p>текст</p></td><td><p>text</p></td></tr>\n</tbody>')
+    expect(html).toContain('<tbody class="keep">\n<tr><td><p>подписи</p></td><td><p>signatures</p></td></tr>\n</tbody>')
+  })
+
+  it('без маркер си остава едно tbody', () => {
+    const html = renderContractHtml('а\n@@\nb')
+    expect(html).toContain('<tbody>')
+    expect(html).not.toContain('class="keep"')
   })
 })
