@@ -815,3 +815,33 @@ export interface Expense {
 }
 
 
+
+// Договори — шаблон + дневник на изготвените (migration 053).
+export interface ContractTemplate {
+  id: string
+  name: string
+  body: string
+  is_bilingual: boolean
+  position: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Contract {
+  id: string
+  client_id: string | null
+  /** Snapshot — историята оцелява преименуване/триене на клиента. */
+  client_name: string
+  template_id: string | null
+  template_name: string
+  contract_date: string
+  effective_date: string | null
+  monthly_fee: number | null
+  /** Пълният текст такъв, какъвто е изготвен — шаблонът може да се промени после. */
+  body_snapshot: string
+  fields: Record<string, string>
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
