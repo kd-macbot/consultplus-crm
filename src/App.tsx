@@ -101,8 +101,10 @@ export default function App() {
                 <Route path="/audit" element={
                   <ProtectedRoute allowedRoles={['admin']}><AuditLogPage /></ProtectedRoute>
                 } />
+                {/* Отделът („Управление") живее в crm_staff, не в profile —
+                    ролята се проверява тук, отделът вътре в страницата. */}
                 <Route path="/contracts" element={
-                  <ProtectedRoute allowedRoles={['admin']}><ContractsPage /></ProtectedRoute>
+                  <ProtectedRoute allowedRoles={['admin', 'manager']}><ContractsPage /></ProtectedRoute>
                 } />
                 <Route path="/expenses" element={
                   <ProtectedRoute allowedRoles={['admin']}><ExpensesPage /></ProtectedRoute>
