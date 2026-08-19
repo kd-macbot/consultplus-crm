@@ -25,6 +25,7 @@ import { usePersistentState } from '../lib/usePersistentState'
 import {
   CONTRACT_FIELDS, buildContractValues, fillTemplate, missingFields, usedFields,
   isBilingualBody, parseBilingualRows, splitKeepSections, BOLD_RE,
+  maskSensitive, hasSensitiveFields,
   type ContractFieldKey, type ContractValues,
 } from '../lib/contract'
 import { printContract } from '../lib/contractPrint'
@@ -182,6 +183,9 @@ export function ContractsPage() {
     if (!filled || !client || !template || !values) return
     setSaving(true)
     try {
+      // В историята влизат маскирани лични данни — разпечатката ги съдържа,
+      // базата не. Затова текстът се сглобява втори път с маскираните стойности.
+      const safe = maskSensitive(values)
       await addContract({
         client_id: client.id,
         client_name: client.name,
@@ -190,8 +194,8 @@ export function ContractsPage() {
         contract_date: dmyToIso(values.дата) ?? new Date().toISOString().slice(0, 10),
         effective_date: dmyToIso(values.в_сила_от),
         monthly_fee: values.хонорар ? Number(values.хонорар) : null,
-        body_snapshot: filled,
-        fields: values,
+        body_snapshot: fillTemplate(template.body, safe, { bold: true }),
+        fields: safe,
       })
       invalidateContracts()
       toast.success(`Документът за ${client.name} е записан в историята`)
@@ -299,6 +303,14 @@ export function ContractsPage() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {template && hasSensitiveFields(template.body) && (
+                    <div className="rounded-md border border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/40 p-3 text-xs text-sky-900 dark:text-sky-200">
+                      <strong>Този документ съдържа лични данни.</strong> ЕГН и данните от
+                      личната карта влизат в разпечатката, но в историята се записват
+                      маскирани — в базата не остават.
+                    </div>
+                  )}
+
                   {missing.length > 0 && (
                     <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-3">
                       <div className="flex items-start gap-2">

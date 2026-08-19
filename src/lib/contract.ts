@@ -71,6 +71,7 @@ export type ContractFieldKey =
   | 'фирма' | 'правна_форма' | 'еик' | 'адрес' | 'управител' | 'имейл'
   | 'лице_за_контакт' | 'хонорар' | 'дата' | 'в_сила_от'
   | 'фирма_en' | 'правна_форма_en' | 'адрес_en' | 'управител_en' | 'лице_за_контакт_en'
+  | 'егн' | 'адрес_лице' | 'лк_номер' | 'лк_дата' | 'лк_мвр'
 
 export type ContractFieldDef = {
   key: ContractFieldKey
@@ -81,6 +82,11 @@ export type ContractFieldDef = {
   /** Само за двуезичния шаблон. */
   bilingualOnly?: boolean
   multiline?: boolean
+  /**
+   * Лични данни, които не се пазят в историята (ЕГН, лична карта). Влизат в
+   * разпечатката, но в базата отиват маскирани — виж maskSensitive.
+   */
+  sensitive?: boolean
 }
 
 export const CONTRACT_FIELDS: ContractFieldDef[] = [
@@ -99,7 +105,34 @@ export const CONTRACT_FIELDS: ContractFieldDef[] = [
   { key: 'адрес_en', label: 'Адрес на латиница', hint: 'авто транслитерация', required: true, bilingualOnly: true, multiline: true },
   { key: 'управител_en', label: 'Представляващ на латиница', hint: 'авто транслитерация', required: true, bilingualOnly: true },
   { key: 'лице_за_контакт_en', label: 'Лице за контакт (EN)', hint: 'авто транслитерация', required: true, bilingualOnly: true },
+  // Пълномощно — тези ги няма в CRM-а и се попълват на ръка при всяко изготвяне.
+  { key: 'егн', label: 'ЕГН на упълномощителя', hint: 'не се пази в историята', required: true, sensitive: true },
+  { key: 'адрес_лице', label: 'Постоянен адрес (на физическото лице)', hint: 'област, община, град, улица, №, ет.', required: true, multiline: true },
+  { key: 'лк_номер', label: 'Лична карта №', hint: 'не се пази в историята', required: true, sensitive: true },
+  { key: 'лк_дата', label: 'ЛК издадена на', hint: 'ДД.ММ.ГГГГ — не се пази в историята', required: true, sensitive: true },
+  { key: 'лк_мвр', label: 'ЛК издадена от МВР — гр.', hint: 'не се пази в историята', required: true, sensitive: true },
 ]
+
+/**
+ * Стойностите за записване в историята: личните данни се заменят с точки.
+ * Разпечатката ги съдържа, базата — не. Така в историята се вижда кога и за
+ * кого е издаден документът, без ЕГН и лична карта да лежат в crm_contracts.
+ */
+export const MASK = '••••••'
+
+export function maskSensitive(values: Partial<ContractValues>): Partial<ContractValues> {
+  const out = { ...values }
+  for (const f of CONTRACT_FIELDS) {
+    if (f.sensitive && (out[f.key] ?? '').trim()) out[f.key] = MASK
+  }
+  return out
+}
+
+/** Има ли шаблонът поле с лични данни — за предупреждението в UI. */
+export function hasSensitiveFields(body: string): boolean {
+  const used = usedFields(body)
+  return CONTRACT_FIELDS.some(f => f.sensitive && used.has(f.key))
+}
 
 export type ContractValues = Record<ContractFieldKey, string>
 
@@ -170,6 +203,8 @@ export function buildContractValues(src: ContractSource): ContractValues {
     адрес_en: transliterate(address),
     управител_en: transliterate(manager),
     лице_за_контакт_en: contact ? transliterate(contactName) + (phone ? `, ${phone}` : '') : '',
+    // Няма ги в CRM-а — попълват се на ръка при изготвяне на пълномощно.
+    егн: '', адрес_лице: '', лк_номер: '', лк_дата: '', лк_мвр: '',
   }
 }
 
