@@ -269,3 +269,38 @@ describe('неделими секции', () => {
     expect(html).not.toContain('class="keep"')
   })
 })
+
+describe('удебеляване на попълненото', () => {
+  it('обгръща стойностите в ** при bold', () => {
+    const out = fillTemplate('фирма {фирма} с ЕИК {еик}', { фирма: 'АВОМИС', еик: '123' }, { bold: true })
+    expect(out).toBe('фирма **АВОМИС** с ЕИК **123**')
+  })
+
+  it('без опцията текстът си остава чист', () => {
+    expect(fillTemplate('{фирма}', { фирма: 'АВОМИС' })).toBe('АВОМИС')
+  })
+
+  it('не обгръща празна стойност — иначе остава празен получер интервал', () => {
+    expect(fillTemplate('{фирма}', { фирма: '' }, { bold: true })).toBe('')
+    expect(fillTemplate('{фирма}', { фирма: '  ' }, { bold: true })).toBe('  ')
+  })
+
+  it('рендира ** като <strong>', () => {
+    expect(renderContractHtml('текст **АВОМИС** край'))
+      .toBe('<p>текст <strong>АВОМИС</strong> край</p>')
+  })
+
+  it('удебелява и в заглавия и в булети', () => {
+    expect(renderContractHtml('### Раздел **X**')).toBe('<h3>Раздел <strong>X</strong></h3>')
+    expect(renderContractHtml('- едно **две**')).toBe('<ul>\n<li>едно <strong>две</strong></li>\n</ul>')
+  })
+
+  it('екранирането остава — удебеленото не е дупка за маркъп', () => {
+    expect(renderContractHtml('**<script>**'))
+      .toBe('<p><strong>&lt;script&gt;</strong></p>')
+  })
+
+  it('самотна двойка звездички не се пипа', () => {
+    expect(renderContractHtml('текст ** край')).toBe('<p>текст ** край</p>')
+  })
+})

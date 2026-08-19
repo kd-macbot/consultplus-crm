@@ -23,7 +23,7 @@ import { formatDate, formatDateTime } from '../lib/utils'
 import { usePersistentState } from '../lib/usePersistentState'
 import {
   CONTRACT_FIELDS, buildContractValues, fillTemplate, missingFields, usedFields,
-  isBilingualBody, parseBilingualRows, splitKeepSections,
+  isBilingualBody, parseBilingualRows, splitKeepSections, BOLD_RE,
   type ContractFieldKey, type ContractValues,
 } from '../lib/contract'
 import { printContract } from '../lib/contractPrint'
@@ -150,7 +150,9 @@ export function ContractsPage() {
   )
 
   const filled = useMemo(
-    () => (template && values && missing.length === 0 ? fillTemplate(template.body, values) : ''),
+    () => (template && values && missing.length === 0
+      ? fillTemplate(template.body, values, { bold: true })
+      : ''),
     [template, values, missing.length],
   )
 
@@ -387,6 +389,23 @@ function parseBlocks(text: string): Block[] {
   return acc
 }
 
+/** Текст с `**удебелени**` части — попълнените от нас данни личат и в преглед. */
+function Rich({ text }: { text: string }) {
+  const parts = useMemo(() => {
+    const out: { text: string; bold: boolean }[] = []
+    let last = 0
+    for (const m of text.matchAll(new RegExp(BOLD_RE.source, 'g'))) {
+      if (m.index > last) out.push({ text: text.slice(last, m.index), bold: false })
+      out.push({ text: m[1], bold: true })
+      last = m.index + m[0].length
+    }
+    if (last < text.length) out.push({ text: text.slice(last), bold: false })
+    return out
+  }, [text])
+
+  return <>{parts.map((p, i) => (p.bold ? <strong key={i}>{p.text}</strong> : <span key={i}>{p.text}</span>))}</>
+}
+
 function Blocks({ blocks }: { blocks: Block[] }) {
   return (
     <>
@@ -394,14 +413,14 @@ function Blocks({ blocks }: { blocks: Block[] }) {
         if (b.kind === 'ul') {
           return (
             <ul key={i} className="list-disc pl-5 mb-2 space-y-1">
-              {b.items.map((it, j) => <li key={j} className="text-justify">{it}</li>)}
+              {b.items.map((it, j) => <li key={j} className="text-justify"><Rich text={it} /></li>)}
             </ul>
           )
         }
-        if (b.kind === 'h1') return <h1 key={i} className="text-lg font-bold text-center mb-0.5 tracking-wide">{b.text}</h1>
-        if (b.kind === 'h2') return <h2 key={i} className="text-sm font-semibold text-center mb-4 text-muted-foreground">{b.text}</h2>
-        if (b.kind === 'h3') return <h3 key={i} className="text-sm font-semibold mt-5 mb-1.5 pb-1 border-b border-border">{b.text}</h3>
-        return <p key={i} className="mb-1.5 text-justify">{b.text}</p>
+        if (b.kind === 'h1') return <h1 key={i} className="text-lg font-bold text-center mb-0.5 tracking-wide"><Rich text={b.text} /></h1>
+        if (b.kind === 'h2') return <h2 key={i} className="text-sm font-semibold text-center mb-4 text-muted-foreground"><Rich text={b.text} /></h2>
+        if (b.kind === 'h3') return <h3 key={i} className="text-sm font-semibold mt-5 mb-1.5 pb-1 border-b border-border"><Rich text={b.text} /></h3>
+        return <p key={i} className="mb-1.5 text-justify"><Rich text={b.text} /></p>
       })}
     </>
   )
@@ -725,7 +744,9 @@ function TemplatesTab({ templates, onChanged }: {
                 <span className="font-mono"># заглавие</span> ·{' '}
                 <span className="font-mono">## подзаглавие</span> ·{' '}
                 <span className="font-mono">### раздел</span> ·{' '}
-                <span className="font-mono">- булет</span> · останалото е обикновен абзац
+                <span className="font-mono">- булет</span> ·{' '}
+                <span className="font-mono">**удебелен**</span> ·{' '}
+                <span className="font-mono">===</span> неделима секция · останалото е обикновен абзац
               </div>
             </div>
             <textarea
