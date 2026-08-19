@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ConfirmDialog } from '@/components/ui/alert-dialog'
 import { useAuth } from '../lib/auth'
+import { useMyStaff } from '../lib/useMyStaff'
 import {
   addContract, deleteContract, seedContractTemplates,
   addContractTemplate, saveContractTemplate, deleteContractTemplate,
@@ -29,10 +30,13 @@ import {
 import { printContract } from '../lib/contractPrint'
 
 // ============================================================
-// Договори — изготвяне от шаблон с данните на клиента.
+// Шаблони — изготвяне на документ (договор, пълномощно…) от шаблон с
+// данните на клиента.
 //
-// Само admin (route + RLS): договорът съдържа месечния хонорар, а „Хонорар"
-// е admin-only навсякъде другаде.
+// Достъп: admin + мениджърите от отдел „Управление" (route + гейт тук + RLS
+// is_current_user_management, миграция 054). Документът съдържа месечния
+// хонорар, а „Хонорар" е admin-only навсякъде другаде — затова не е отворено
+// за всички мениджъри.
 //
 // Данните идват от Контакти (ЕИК, адрес, управител, имейл, телефон) и от
 // master колоната „Хонорар". Предложените стойности се показват за проверка
@@ -57,7 +61,11 @@ function dmyToIso(dmy: string): string | null {
 
 export function ContractsPage() {
   const { user } = useAuth()
+  const { inDept } = useMyStaff()
   const isAdmin = user?.role === 'admin'
+  // Документите съдържат месечния хонорар → admin + мениджърите от Управление.
+  // Същото условие стои и в RLS (is_current_user_management, миграция 054).
+  const canEdit = isAdmin || (user?.role === 'manager' && inDept('Управление'))
 
   const [tab, setTab] = usePersistentState<Tab>('contracts-tab', 'new')
   const [search, setSearch] = usePersistentState('contracts-search', '')
@@ -107,13 +115,13 @@ export function ContractsPage() {
 
   // Празна таблица → вкарваме стартовите шаблони веднъж.
   useEffect(() => {
-    if (!isAdmin || templatesQ.isLoading || templates.length > 0 || seeding) return
+    if (!canEdit || templatesQ.isLoading || templates.length > 0 || seeding) return
     setSeeding(true)
     seedContractTemplates()
       .then(added => { if (added) invalidateContractTemplates() })
       .catch(e => toast.error(`Шаблоните не се заредиха: ${(e as Error).message}`))
       .finally(() => setSeeding(false))
-  }, [isAdmin, templatesQ.isLoading, templates.length, seeding, invalidateContractTemplates])
+  }, [canEdit, templatesQ.isLoading, templates.length, seeding, invalidateContractTemplates])
 
   const client = rows.find(r => r.id === clientId)
 
@@ -166,7 +174,7 @@ export function ContractsPage() {
 
   function handlePrint() {
     if (!filled || !client || !template) return
-    const ok = printContract({ title: `Договор — ${client.name}`, body: filled })
+    const ok = printContract({ title: `${template.name} — ${client.name}`, body: filled })
     if (!ok) toast.error('Браузърът блокира прозореца за печат. Разрешете popup-ите за сайта.')
   }
 
@@ -186,7 +194,7 @@ export function ContractsPage() {
         fields: values,
       })
       invalidateContracts()
-      toast.success(`Договорът за ${client.name} е записан в историята`)
+      toast.success(`Документът за ${client.name} е записан в историята`)
     } catch (e) {
       toast.error(`Записът не мина: ${(e as Error).message}`)
     } finally {
@@ -194,10 +202,10 @@ export function ContractsPage() {
     }
   }
 
-  if (!isAdmin) {
+  if (!canEdit) {
     return (
       <div className="p-6 text-sm text-muted-foreground">
-        Договорите са достъпни само за администратор.
+        Шаблоните са достъпни за администратор и за мениджърите от отдел „Управление".
       </div>
     )
   }
@@ -210,13 +218,13 @@ export function ContractsPage() {
       <div className="px-4 py-3 border-b border-border bg-card flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <FileText className="h-5 w-5 text-gold" />
-          <h1 className="text-lg font-semibold text-foreground">Договори</h1>
+          <h1 className="text-lg font-semibold text-foreground">Шаблони</h1>
         </div>
         <div className="flex gap-1 ml-auto">
           {([
-            ['new', 'Нов договор'],
+            ['new', 'Нов документ'],
             ['history', `История (${contractsQ.data?.length ?? 0})`],
-            ['templates', 'Шаблони'],
+            ['templates', 'Редакция на шаблони'],
           ] as const).map(([k, label]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
@@ -296,10 +304,10 @@ export function ContractsPage() {
                       <div className="flex items-start gap-2">
                         <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                         <div className="text-xs text-amber-900 dark:text-amber-200">
-                          <strong>Договорът не може да се изготви — липсват данни:</strong>{' '}
+                          <strong>Документът не може да се изготви — липсват данни:</strong>{' '}
                           {missing.map(f => f.label).join(', ')}.
                           <div className="mt-1 opacity-80">
-                            Попълнете ги в Контакти (или направо тук отдолу) — договор с празно
+                            Попълнете ги в Контакти (или направо тук отдолу) — документ с празно
                             място не се генерира.
                           </div>
                         </div>
@@ -337,7 +345,7 @@ export function ContractsPage() {
                   {filled && (
                     <div>
                       <div className="text-[11px] font-semibold text-muted-foreground mb-1.5">
-                        Преглед на готовия договор
+                        Преглед на готовия документ
                       </div>
                       <div className="rounded-md border border-border bg-white dark:bg-neutral-900 p-6 max-h-[45vh] overflow-y-auto">
                         <ContractPreview body={filled} />
@@ -496,7 +504,7 @@ function HistoryTab({ contracts, loading, onChanged }: {
     try {
       await deleteContract(toDelete.id)
       onChanged()
-      toast.success('Договорът е изтрит от историята')
+      toast.success('Документът е изтрит от историята')
     } catch (e) {
       toast.error(`Изтриването не мина: ${(e as Error).message}`)
     } finally {
@@ -513,7 +521,7 @@ function HistoryTab({ contracts, loading, onChanged }: {
   }
 
   if (contracts.length === 0) {
-    return <div className="p-6 text-sm text-muted-foreground">Още няма изготвени договори.</div>
+    return <div className="p-6 text-sm text-muted-foreground">Още няма изготвени документи.</div>
   }
 
   return (
@@ -561,7 +569,7 @@ function HistoryTab({ contracts, loading, onChanged }: {
       <div className="flex-1 flex flex-col min-h-0">
         {!preview ? (
           <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-            Изберете договор отляво.
+            Изберете документ отляво.
           </div>
         ) : (
           <>
@@ -573,7 +581,7 @@ function HistoryTab({ contracts, loading, onChanged }: {
               <Button size="sm" className="ml-auto h-8 text-xs gap-1.5"
                 onClick={() => {
                   const ok = printContract({
-                    title: `Договор — ${preview.client_name}`,
+                    title: `${preview.template_name} — ${preview.client_name}`,
                     body: preview.body_snapshot,
                   })
                   if (!ok) toast.error('Браузърът блокира прозореца за печат. Разрешете popup-ите.')
@@ -590,8 +598,8 @@ function HistoryTab({ contracts, loading, onChanged }: {
 
       <ConfirmDialog
         open={!!toDelete}
-        title="Изтриване на договор"
-        description={`Договорът за ${toDelete?.client_name ?? ''} ще изчезне от историята. Действието е необратимо.`}
+        title="Изтриване на документ"
+        description={`Документът за ${toDelete?.client_name ?? ''} ще изчезне от историята. Действието е необратимо.`}
         confirmLabel="Изтрий"
         destructive
         onConfirm={doDelete}
@@ -754,7 +762,7 @@ function TemplatesTab({ templates, onChanged }: {
               onChange={e => setBody(e.target.value)}
               spellCheck={false}
               className="flex-1 w-full resize-none bg-background p-4 font-mono text-xs leading-relaxed outline-none"
-              placeholder="Текст на договора…"
+              placeholder="Текст на документа…"
             />
           </>
         )}
@@ -763,7 +771,7 @@ function TemplatesTab({ templates, onChanged }: {
       <ConfirmDialog
         open={confirmRestore}
         title="Възстановяване на стартовите шаблони"
-        description={'Двата стартови шаблона („BG" и „BG/EN") ще бъдат презаписани с текста от приложението. Ваши собствени шаблони с други имена не се пипат. Вече изготвените договори също — те пазят своя текст.'}
+        description={'Двата стартови шаблона („BG" и „BG/EN") ще бъдат презаписани с текста от приложението. Ваши собствени шаблони с други имена не се пипат. Вече изготвените документи също — те пазят своя текст.'}
         confirmLabel="Възстанови"
         onConfirm={restoreDefaults}
         onCancel={() => setConfirmRestore(false)}
@@ -772,7 +780,7 @@ function TemplatesTab({ templates, onChanged }: {
       <ConfirmDialog
         open={!!toDelete}
         title="Изтриване на шаблон"
-        description={`Шаблонът „${toDelete?.name ?? ''}" ще бъде изтрит. Вече изготвените договори не се засягат — те пазят своя текст.`}
+        description={`Шаблонът „${toDelete?.name ?? ''}" ще бъде изтрит. Вече изготвените документи не се засягат — те пазят своя текст.`}
         confirmLabel="Изтрий"
         destructive
         onConfirm={doDelete}

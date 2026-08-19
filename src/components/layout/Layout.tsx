@@ -16,7 +16,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
 
 type BadgeKey = 'paymentsUnpaid' | 'absentToday' | 'absenceRequests' | 'recentNews' | 'myOpenTasks'
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKeys?: BadgeKey[]; showOnlyForTrzOrAdmin?: boolean; showOnlyForBankDepts?: boolean; showOnlyForAccounting?: boolean }
+type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKeys?: BadgeKey[]; showOnlyForTrzOrAdmin?: boolean; showOnlyForBankDepts?: boolean; showOnlyForAccounting?: boolean; showOnlyForManagement?: boolean }
 
 // Цвят + tooltip per бадж — един item може да носи няколко баджа
 // (напр. Календар: отсъстващи днес + нови новини).
@@ -57,7 +57,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Бизнес',
     items: [
-      { to: '/contracts', label: 'Договори', icon: FileSignature, roles: ['admin'] },
+      { to: '/contracts', label: 'Шаблони', icon: FileSignature, roles: ['admin', 'manager'], showOnlyForManagement: true },
       { to: '/opportunities', label: 'Възможности', icon: Target, roles: ['admin'] },
       { to: '/subscriptions', label: 'Абонаменти', icon: CreditCard, roles: ['admin'] },
       { to: '/expenses', label: 'Разходи', icon: Wallet, roles: ['admin'] },
@@ -95,6 +95,8 @@ export function Layout() {
   const canSeeBankAccess = user?.role === 'admin' || inDept('Тийм Лийд') || inDept('Управление')
   // Касови апарати (СПО): admin + мениджъри + Счетоводство.
   const canSeeSpo = user?.role === 'admin' || user?.role === 'manager' || inDept('Счетоводство')
+  // Шаблоните (договори, пълномощни) съдържат хонорара → admin + Управление.
+  const canSeeTemplates = user?.role === 'admin' || (user?.role === 'manager' && inDept('Управление'))
 
   // ============================================================
   // Бадж за „Плащания" — брой неплатени за РАБОТНИЯ месец (предходния).
@@ -234,6 +236,7 @@ export function Layout() {
                 && !(item.showOnlyForTrzOrAdmin && user.role !== 'admin' && !isTrz)
                 && !(item.showOnlyForBankDepts && !canSeeBankAccess)
                 && !(item.showOnlyForAccounting && !canSeeSpo)
+                && !(item.showOnlyForManagement && !canSeeTemplates)
             )
             if (visibleItems.length === 0) return null
             return (
