@@ -205,17 +205,44 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * Маркъп → HTML за преглед и печат.
- *   # заглавие · ## подзаглавие · ### раздел · - булет · останалото = абзац
- * Последователните булети се групират в един <ul>.
+ * Разделителят между двете езикови колони в двуезичен шаблон. Стои на
+ * самостоятелен ред; празен ред разделя редовете на таблицата.
  */
-export function renderContractHtml(text: string): string {
-  const lines = text.split('\n')
+export const LANG_SEPARATOR = '@@'
+
+/** Шаблонът двуезичен ли е — по съдържание, не по флага в базата (admin го редактира). */
+export function isBilingualBody(text: string): boolean {
+  return text.split('\n').some(l => l.trim() === LANG_SEPARATOR)
+}
+
+/**
+ * Двуезичният шаблон → редове на таблица [BG, EN].
+ * Ред без разделител заема цялата ширина (връща се само с една страна).
+ */
+export function parseBilingualRows(text: string): string[][] {
+  return text
+    .split(/\n\s*\n/)
+    .map(block => block.trim())
+    .filter(Boolean)
+    .map(block => {
+      const parts: string[] = []
+      let cur: string[] = []
+      for (const raw of block.split('\n')) {
+        if (raw.trim() === LANG_SEPARATOR) { parts.push(cur.join('\n')); cur = [] }
+        else cur.push(raw)
+      }
+      parts.push(cur.join('\n'))
+      return parts
+    })
+}
+
+/** Блоковете на един език → HTML (заглавия, абзаци, групирани булети). */
+function renderBlock(text: string): string {
   const out: string[] = []
   let inList = false
   const closeList = () => { if (inList) { out.push('</ul>'); inList = false } }
 
-  for (const raw of lines) {
+  for (const raw of text.split('\n')) {
     const line = raw.trim()
     if (!line) { closeList(); continue }
     if (line.startsWith('- ')) {
@@ -231,4 +258,23 @@ export function renderContractHtml(text: string): string {
   }
   closeList()
   return out.join('\n')
+}
+
+/**
+ * Маркъп → HTML за преглед и печат.
+ *   # заглавие · ## подзаглавие · ### раздел · - булет · останалото = абзац
+ *
+ * Двуезичните шаблони се рендират като таблица с две равни колони (BG | EN),
+ * точно както е в оригиналния Word документ — редовете се разделят с празен
+ * ред, а колоните с „@@" на самостоятелен ред.
+ */
+export function renderContractHtml(text: string): string {
+  if (!isBilingualBody(text)) return renderBlock(text)
+
+  const rows = parseBilingualRows(text).map(parts => {
+    // Ред без разделител (или с празна втора страна) заема цялата ширина.
+    if (parts.length < 2) return `<tr><td colspan="2">${renderBlock(parts[0] ?? '')}</td></tr>`
+    return `<tr><td>${renderBlock(parts[0])}</td><td>${renderBlock(parts[1])}</td></tr>`
+  })
+  return `<table class="bi">\n${rows.join('\n')}\n</table>`
 }

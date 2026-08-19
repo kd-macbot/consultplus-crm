@@ -2507,6 +2507,26 @@ export async function seedContractTemplates(): Promise<boolean> {
   return true
 }
 
+/**
+ * Презаписва стартовите шаблони от кода върху тези в базата (по име).
+ * Нужно е, когато шаблонът в кода се промени, а таблицата вече е seed-ната —
+ * seedContractTemplates мълчи при непразна таблица. Собствените шаблони на
+ * admin (с други имена) не се пипат. Връща броя презаписани.
+ */
+export async function restoreDefaultContractTemplates(): Promise<number> {
+  const { DEFAULT_CONTRACT_TEMPLATES } = await import('./contractTemplates')
+  const rows = DEFAULT_CONTRACT_TEMPLATES.map((t, i) => ({
+    name: t.name, body: t.body, is_bilingual: t.isBilingual, position: i,
+    updated_at: new Date().toISOString(),
+  }))
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_contract_templates').upsert(rows, { onConflict: 'name' })
+    if (error) throw error
+  })())
+  return rows.length
+}
+
 export async function saveContractTemplate(
   id: string, patch: { name?: string; body?: string; is_bilingual?: boolean },
 ): Promise<void> {
