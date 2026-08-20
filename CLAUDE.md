@@ -152,6 +152,24 @@ profiles↔crm_staff в базата, затова функцията повта
 lower+btrim+collapse spaces; брои и additional_departments) · 055 лого по шаблон
 (`show_logo` в crm_contract_templates, default true)
 
+## Бекъп
+
+Два слоя: Supabase Pro (автоматичен, вътре в проекта, 7 дни) + наш GitHub
+Action `.github/workflows/backup.yml` (ежедневно 02:30 UTC, криптиран AES256
+artifact, 90 дни). Вторият оцелява проблем със самия Supabase акаунт и хваща
+грешки, забелязани след 7-ия ден.
+
+Всяко пускане ПРОВЕРЯВА дъмпа (брой таблици, секции с данни, ключовите
+таблици) — зелено пускане с празен бекъп не може да мине незабелязано.
+
+Secrets: `SUPABASE_DB_URL`, `BACKUP_PASSPHRASE` (паролата се пази и извън
+GitHub — без нея бекъпите са безполезни).
+
+Дъмпът е само схема `public`. ИЗВЪН него остават: `auth.users`, edge
+функциите и техните secrets.
+
+Пълна инструкция за възстановяване: `supabase/BACKUP.md`.
+
 ## Известни проблеми / Backlog (по приоритет)
 
 1. RLS на оперативните таблици — `using(true)` за всички логнати (каси/заеми,

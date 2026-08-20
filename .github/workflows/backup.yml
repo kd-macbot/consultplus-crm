@@ -1,0 +1,138 @@
+name: Бекъп на базата
+
+# Независим бекъп ИЗВЪН Supabase.
+#
+# Supabase Pro прави свои ежедневни бекъпи, но те живеят в същия проект и се
+# пазят 7 дни. Този тук покрива трите дупки: оцелява проблем със самия
+# Supabase акаунт, пази се 90 дни, и се проверява автоматично при всяко пускане.
+#
+# Дъмпът съдържа ЛИЧНИ ДАННИ (имена, телефони, имейли, адреси, хонорари),
+# затова се качва САМО криптиран — GitHub artifact-ите са достъпни за всеки с
+# достъп до репото.
+#
+# Нужни secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_DB_URL   — connection string на PROD базата
+#                       (Supabase → Settings → Database → Connection string →
+#                        URI, режим „Session"; паролата се вписва вътре)
+#   BACKUP_PASSPHRASE — дълга парола за криптирането. ПАЗИ Я ОТДЕЛНО —
+#                       без нея бекъпът е безполезен.
+
+on:
+  schedule:
+    # 02:30 UTC = 04:30/05:30 българско време — извън работния ден.
+    - cron: '30 2 * * *'
+  workflow_dispatch:      # и ръчно пускане при нужда
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Проверка на secrets
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo "::error::Липсва secret SUPABASE_DB_URL"; exit 1
+          fi
+          if [ -z "$PASSPHRASE" ]; then
+            echo "::error::Липсва secret BACKUP_PASSPHRASE"; exit 1
+          fi
+
+      - name: Инсталиране на pg_dump 17
+        # Версията на клиента трябва да е >= тази на сървъра, иначе pg_dump
+        # отказва. Стандартният в runner-а изостава, затова взимаме от PGDG.
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc >/dev/null
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Дъмп
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          STAMP=$(date -u +%Y-%m-%d)
+          # Само схемата public — служебните на Supabase (auth, storage) се
+          # управляват от тях и не бива да се пипат при възстановяване.
+          pg_dump "$DB_URL" \
+            --schema=public \
+            --no-owner --no-privileges \
+            --format=plain \
+            --file="backup-${STAMP}.sql"
+          gzip -9 "backup-${STAMP}.sql"
+          ls -lh backup-*.sql.gz
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+
+      - name: Проверка, че дъмпът не е празен
+        # Бекъп без съдържание е по-лош от липсващ бекъп — създава фалшиво
+        # спокойствие. Затова: разархивира се, брои се какво съдържа.
+        run: |
+          set -euo pipefail
+          gunzip -c "backup-${STAMP}.sql.gz" > /tmp/check.sql
+          SIZE=$(stat -c%s /tmp/check.sql)
+          TABLES=$(grep -c '^CREATE TABLE' /tmp/check.sql || true)
+          COPIES=$(grep -c '^COPY ' /tmp/check.sql || true)
+          echo "размер: $SIZE байта | таблици: $TABLES | секции с данни: $COPIES"
+          if [ "$SIZE" -lt 10000 ]; then
+            echo "::error::Дъмпът е подозрително малък ($SIZE байта)"; exit 1
+          fi
+          if [ "$TABLES" -lt 20 ]; then
+            echo "::error::Само $TABLES таблици — очакваме поне 20"; exit 1
+          fi
+          if [ "$COPIES" -lt 5 ]; then
+            echo "::error::Само $COPIES секции с данни — дъмпът изглежда празен"; exit 1
+          fi
+          # Проверка, че ключовите таблици ги има
+          for t in crm_clients crm_cell_values crm_columns crm_contacts crm_staff; do
+            grep -q "CREATE TABLE public.$t" /tmp/check.sql \
+              || { echo "::error::Липсва таблица $t"; exit 1; }
+          done
+          echo "✓ дъмпът съдържа всички ключови таблици"
+          rm -f /tmp/check.sql
+
+      - name: Криптиране
+        env:
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          gpg --batch --yes --symmetric \
+            --cipher-algo AES256 \
+            --passphrase "$PASSPHRASE" \
+            --output "backup-${STAMP}.sql.gz.gpg" \
+            "backup-${STAMP}.sql.gz"
+          rm -f "backup-${STAMP}.sql.gz"   # некриптираното не напуска runner-а
+          ls -lh backup-*.gpg
+
+      - name: Качване
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ env.STAMP }}
+          path: backup-*.sql.gz.gpg
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Обобщение
+        run: |
+          {
+            echo "## Бекъп на базата — ${STAMP}"
+            echo ""
+            echo "Файл: \`backup-${STAMP}.sql.gz.gpg\` (AES256, пази се 90 дни)"
+            echo ""
+            echo "### Възстановяване"
+            echo '```'
+            echo "gpg --decrypt backup-${STAMP}.sql.gz.gpg | gunzip > backup.sql"
+            echo "psql \"<connection-string>\" -f backup.sql"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
