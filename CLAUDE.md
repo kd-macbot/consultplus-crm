@@ -152,6 +152,23 @@ profiles↔crm_staff в базата, затова функцията повта
 lower+btrim+collapse spaces; брои и additional_departments) · 055 лого по шаблон
 (`show_logo` в crm_contract_templates, default true)
 
+## Мониторинг на грешките
+
+Sentry, включва се само при наличен `VITE_SENTRY_DSN` (в CF Pages env vars).
+Без DSN SDK-то дори не влиза в bundle-а — Vite замества променливата с
+`undefined` и блокът отпада като мъртъв код.
+
+ЛИЧНИ ДАННИ: НЯМА Session Replay (записва екрана), НЯМА tracing, без IP и
+самоличност, без конзолни и DOM трохи. Всичко минава през `redact()`
+(`src/lib/monitoring.ts`) — маха ЕГН, IBAN, телефони, имейли; ЕИК остава
+(публичен е). Покрито с тестове.
+
+`sentryClient.ts` е ОТДЕЛЕН файл с поименни статични импорти НАРОЧНО: при
+`import('@sentry/react')` целият namespace влиза в bundle-а (Replay, Feedback,
+tracing) — 150 kB gzip вместо 26. Не го сливай с monitoring.ts.
+
+Пълна инструкция: `MONITORING.md`.
+
 ## Бекъп
 
 Два слоя: Supabase Pro (автоматичен, вътре в проекта, 7 дни) + наш GitHub
