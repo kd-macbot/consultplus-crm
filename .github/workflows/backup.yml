@@ -13,8 +13,11 @@ name: Бекъп на базата
 # Нужни secrets (Settings → Secrets and variables → Actions):
 #   SUPABASE_DB_URL   — connection string на PROD базата:
 #                       Supabase → Connect → Direct → Session pooler.
-#                       ВНИМАНИЕ: при pooler потребителят е „postgres.<ref>",
-#                       не само „postgres" — иначе автентикацията пада.
+#                       Потребителят при pooler е „postgres.<ref>", не само
+#                       „postgres". NB: при провал pooler-ът пише
+#                       „failed for user postgres" независимо от това — той
+#                       рутира по <ref>, а към базата влиза като postgres.
+#                       Тоест това съобщение значи ГРЕШНА ПАРОЛА.
 #   BACKUP_PASSPHRASE — дълга парола за криптирането. ПАЗИ Я ОТДЕЛНО —
 #                       без нея бекъпът е безполезен.
 
