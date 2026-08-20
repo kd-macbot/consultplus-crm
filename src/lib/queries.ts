@@ -6,11 +6,11 @@ import {
   getMonthlyWork, getTrzWork, getArt55EntriesForPeriod, getCashLoanEntriesForPeriod, getChecklist,
   getClientProfiles, getPaymentConfigs, getPaymentStatuses,
   getAbsences, getVacationQuotas, getForm76Overrides, getEvents, getNews,
-  getBankAccess, getTasks, getMonthReviewers,
+  getBankAccess, getTasks, getMyOpenTaskCount, getMonthReviewers,
   getClientMessages, getMessageTemplates,
   getFinancialClosings, getFinancialSettings,
   getCashRegisters, getCashTurnover, getCashFirmMonthly,
-  getContracts, getContractTemplates,
+  getContracts, getContractTemplates, getContractBody,
 } from './storage'
 import { timed } from './perf'
 
@@ -31,6 +31,7 @@ export const qk = {
   paymentConfigs: ['paymentConfigs'] as const,
   contracts: ['contracts'] as const,
   contractTemplates: ['contractTemplates'] as const,
+  contractBody: ['contractBody'] as const,
 }
 
 export function useClients() {
@@ -125,6 +126,17 @@ export function useTasks() {
     queryFn: getTasks,
   })
 }
+/**
+ * Броят мои отворени задачи за баджа. Ключът започва с 'tasks', затова
+ * invalidateTasks() (префиксен match) освежава и него.
+ */
+export function useMyOpenTaskCount(staffId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['tasks', 'openCount', staffId ?? null] as const,
+    queryFn: () => getMyOpenTaskCount(staffId as string),
+    enabled: !!staffId,
+  })
+}
 export function useMonthReviewers(year: number, month: number) {
   return useQuery({
     queryKey: ['monthReviewers', year, month] as const,
@@ -165,6 +177,19 @@ export function useMessageTemplates() {
 }
 export function useContracts() {
   return useQuery({ queryKey: qk.contracts, queryFn: getContracts })
+}
+/**
+ * Текстът на един договор. Тегли се чак при отваряне за преглед и остава в
+ * кеша — повторното кликване по същия ред не праща нова заявка.
+ * Snapshot е (не се променя след записа), затова не остарява.
+ */
+export function useContractBody(id: string | null) {
+  return useQuery({
+    queryKey: [...qk.contractBody, id],
+    queryFn: () => getContractBody(id as string),
+    enabled: !!id,
+    staleTime: Infinity,
+  })
 }
 export function useContractTemplates() {
   return useQuery({ queryKey: qk.contractTemplates, queryFn: getContractTemplates })
