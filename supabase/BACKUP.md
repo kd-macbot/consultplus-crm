@@ -18,12 +18,21 @@
 
 | Secret | Откъде |
 |---|---|
-| `SUPABASE_DB_URL` | Supabase → Settings → Database → Connection string → **URI**, режим „Session". Паролата се вписва вътре в низа. |
+| `SUPABASE_DB_URL` | Supabase → бутон **Connect** (горе, до името на проекта) → таб **Direct** → секция **Session pooler**. Паролата се вписва на мястото на `[YOUR-PASSWORD]`. |
 | `BACKUP_PASSPHRASE` | Дълга парола, която **измисляш ти**. |
 
 ⚠️ **`BACKUP_PASSPHRASE` се пази и извън GitHub** — в мениджъра за пароли например.
 Ако я загубиш, бекъпите стават безполезни: криптирани са симетрично и няма
 как да се отворят без нея. GitHub не я показва обратно след записване.
+
+### Двата капана при връзката
+
+1. **Потребителят при pooler-а е `postgres.<project-ref>`**, не просто `postgres`.
+   Ако копираш низа от друг таб и смениш само хоста, автентикацията пада с
+   „password authentication failed". Workflow-ът вече го проверява и казва точно
+   това.
+2. **Direct connection е по IPv6**, а GitHub Actions работи по IPv4 — затова
+   трябва Session pooler, а не Direct.
 
 ## Възстановяване
 
