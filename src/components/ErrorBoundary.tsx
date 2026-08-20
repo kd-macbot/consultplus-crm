@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react'
+import { captureError } from '../lib/monitoring'
 
 interface Props {
   children: ReactNode
@@ -18,6 +19,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary]', error, info)
+    // Уловената грешка не стига до window.onerror — React я е спрял тук.
+    // Без това изрично докладване екранът „Възникна грешка" би останал
+    // единствената следа, при това само в конзолата на колегата.
+    captureError(error, { componentStack: info.componentStack })
   }
 
   reset = () => this.setState({ error: null })
