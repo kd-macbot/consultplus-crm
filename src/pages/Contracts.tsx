@@ -16,9 +16,9 @@ import {
 } from '../lib/storage'
 import {
   useClients, useColumns, useCellValues, useAllContacts,
-  useContracts, useContractTemplates, useInvalidateCrm,
+  useContracts, useContractBody, useContractTemplates, useInvalidateCrm,
 } from '../lib/queries'
-import type { Contact, Contract, ContractTemplate } from '../lib/types'
+import type { Contact, ContractListItem, ContractTemplate } from '../lib/types'
 import { buildCellIndex, clientDisplayName, resolveNumber } from '../lib/tableIndices'
 import { formatDate, formatDateTime } from '../lib/utils'
 import { usePersistentState } from '../lib/usePersistentState'
@@ -526,12 +526,15 @@ function ContractPreview({ body }: { body: string }) {
 // ==================== ИСТОРИЯ ====================
 
 function HistoryTab({ contracts, loading, onChanged }: {
-  contracts: Contract[]
+  contracts: ContractListItem[]
   loading: boolean
   onChanged: () => void
 }) {
-  const [preview, setPreview] = useState<Contract | null>(null)
-  const [toDelete, setToDelete] = useState<Contract | null>(null)
+  const [preview, setPreview] = useState<ContractListItem | null>(null)
+  const [toDelete, setToDelete] = useState<ContractListItem | null>(null)
+  // Текстът не идва със списъка — дърпа се за избрания ред и остава в кеша.
+  const bodyQ = useContractBody(preview?.id ?? null)
+  const body = bodyQ.data ?? ''
 
   async function doDelete() {
     if (!toDelete) return
@@ -614,17 +617,19 @@ function HistoryTab({ contracts, loading, onChanged }: {
               </span>
               <div className="ml-auto flex gap-2">
                 <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5"
+                  disabled={!body}
                   onClick={() => downloadAsWord({
                     fileName: `${preview.template_name} — ${preview.client_name}`.replace(/[\\/:*?"<>|]/g, '-'),
-                    body: preview.body_snapshot,
+                    body,
                   })}>
                   <FileDown className="h-3.5 w-3.5" /> Word
                 </Button>
                 <Button size="sm" className="h-8 text-xs gap-1.5"
+                  disabled={!body}
                   onClick={() => {
                     const ok = printContract({
                       title: `${preview.template_name} — ${preview.client_name}`,
-                      body: preview.body_snapshot,
+                      body,
                     })
                     if (!ok) toast.error('Браузърът блокира прозореца за печат. Разрешете popup-ите.')
                   }}>
@@ -633,7 +638,17 @@ function HistoryTab({ contracts, loading, onChanged }: {
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-neutral-900">
-              <ContractPreview body={preview.body_snapshot} />
+              {bodyQ.isPending ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Зареждане на текста…
+                </div>
+              ) : bodyQ.isError ? (
+                <div className="text-xs text-rose-600">
+                  Текстът не се зареди: {(bodyQ.error as Error).message}
+                </div>
+              ) : (
+                <ContractPreview body={body} />
+              )}
             </div>
           </>
         )}

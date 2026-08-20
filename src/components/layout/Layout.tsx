@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import logoWhite from '../../assets/brand/logo-white.png'
 import { useAuth } from '../../lib/auth'
-import { usePaymentConfigs, usePaymentStatuses, useAbsences, useNews, useTasks } from '../../lib/queries'
+import { usePaymentConfigs, usePaymentStatuses, useAbsences, useNews, useMyOpenTaskCount } from '../../lib/queries'
 import { previousMonth } from '../../lib/utils'
 import { useMyStaff } from '../../lib/useMyStaff'
 import {
@@ -163,11 +163,9 @@ export function Layout() {
   }, [newsQ.data])
 
   // Мои отворени задачи (всичко освен Готово) — бадж на Задачи.
-  const tasksQ = useTasks()
-  const myOpenTasks = useMemo(() => {
-    if (!myStaff) return 0
-    return (tasksQ.data ?? []).filter(t => t.assignee_staff_id === myStaff.id && t.status !== 'done').length
-  }, [tasksQ.data, myStaff])
+  // Само число от сървъра — Layout е на всяка страница, а таблицата със
+  // задачи расте безкрайно; няма смисъл да се тегли цялата заради един бадж.
+  const myOpenTasks = useMyOpenTaskCount(myStaff?.id).data ?? 0
 
   const badges: Record<BadgeKey, number> = { paymentsUnpaid, absentToday, absenceRequests, recentNews, myOpenTasks }
 
