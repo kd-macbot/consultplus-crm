@@ -242,6 +242,16 @@ GitHub — без нея бекъпите са безполезни).
   (sessionStorage флаг „views-synced-<uid>", чисти се при logout).
 - Squash-merge → клонът излиза „немерджнат" по SHA (git branch --no-merged),
   но съдържанието е в main. Не се доверявай само на ancestry за „мерджнат ли е".
+- `n_live_tup` в pg_stat_user_tables НЕ е брой редове, а ОЦЕНКА от
+  autovacuum/ANALYZE. След нулиране на статистиката пада и се оправя чак при
+  следващия autovacuum: crm_staff с 16 записа показваше 3, crm_columns с 21 —
+  12. За реален брой се брои с `count(*)` (в diagnostics.sql — през
+  query_to_xml). Размерите (`pg_total_relation_size`) са точни, само броевете
+  не са.
+- „Индекси" НЕ е `общо − данни` — тази разлика включва и TOAST (отделното
+  място за дългите текстове). Индексите са `pg_indexes_size()`. Иначе
+  crm_contract_templates с 3 реда изглежда с 208 kB индекси, а това са
+  текстовете на договорите (176 kB) плюс 32 kB реални индекси.
 - `supabase.from(...).update()` се **resolve-ва с `{ error }`, не reject-ва** →
   `await Promise.all(rows.map(r => supabase...update(...)))` преглъща провала
   мълчаливо. ВИНАГИ проверявай `results.find(r => r.error)`. Същото важи и за
