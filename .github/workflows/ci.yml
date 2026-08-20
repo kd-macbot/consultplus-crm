@@ -1,9 +1,20 @@
 name: CI
 
+# Пуска се и на dev, не само на main.
+#
+# Досега CI пазеше само последната крачка към live — а тестването става на dev.
+# Тоест PR към dev минаваше без нито една проверка и грешка се хващаше чак
+# когато вече е тествана на живо от колегите.
 on:
   pull_request:
     branches:
       - main
+      - dev
+  # И при директен push (мерджове минават като push, не като PR).
+  push:
+    branches:
+      - main
+      - dev
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
