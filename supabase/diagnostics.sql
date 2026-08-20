@@ -7,14 +7,29 @@
 -- ============================================================
 
 -- ---- 1. Кои таблици колко тежат ---------------------------------------
--- Показва къде реално са данните. Ако нещо неочаквано е най-голямо, там е и
--- първата работа по оптимизация.
+-- Показва къде реално са данните.
+--
+-- ВНИМАНИЕ: НЕ ползвай pg_stat_user_tables.n_live_tup за „брой редове" — това
+-- е ОЦЕНКА, която се поддържа от autovacuum/ANALYZE. След нулиране на
+-- статистиката (или restore) тя пада до 0 и се оправя чак при следващия
+-- autovacuum. Реален случай: crm_staff с 16 записа показваше 3.
+-- Затова тук се брои наистина, през query_to_xml — базата е малка и това е
+-- евтино, а числото е вярно.
+--
+-- „индекси" идва от pg_indexes_size(). Разликата общо − данни НЕ е това: тя
+-- включва и TOAST — отделното място за дългите текстове (body на шаблоните,
+-- metadata на audit log-а). Слети в една колона, таблица с 3 реда изглежда
+-- все едно има 200 kB индекси.
 select
   relname as таблица,
-  n_live_tup as редове,
+  (xpath(
+    '/row/c/text()',
+    query_to_xml(format('select count(*) as c from %I.%I', schemaname, relname), false, true, '')
+  ))[1]::text::bigint as редове,
   pg_size_pretty(pg_total_relation_size(relid)) as общо,
   pg_size_pretty(pg_relation_size(relid)) as данни,
-  pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) as индекси
+  pg_size_pretty(pg_indexes_size(relid)) as индекси,
+  pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid) - pg_indexes_size(relid)) as дълги_текстове
 from pg_stat_user_tables
 where schemaname = 'public'
 order by pg_total_relation_size(relid) desc
@@ -67,13 +82,19 @@ order by 1, 2;
 
 -- ---- 5. Секвенциални четения на цели таблици --------------------------
 -- Голямо seq_scan при голяма таблица = заявка без индекс.
+-- Прагът е по РЕАЛЕН брой редове, не по n_live_tup (виж бележката в секция 1
+-- защо оценката не става за филтър — таблица можеше да изпадне от списъка
+-- само защото статистиката ѝ е стара).
 select
   relname as таблица,
   seq_scan as четения_на_цялата,
   idx_scan as четения_по_индекс,
-  n_live_tup as редове
+  (xpath(
+    '/row/c/text()',
+    query_to_xml(format('select count(*) as c from %I.%I', schemaname, relname), false, true, '')
+  ))[1]::text::bigint as редове
 from pg_stat_user_tables
-where schemaname = 'public' and n_live_tup > 500
+where schemaname = 'public'
 order by seq_scan desc
 limit 15;
 
