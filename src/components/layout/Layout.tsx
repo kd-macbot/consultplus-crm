@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/auth'
 import { usePaymentConfigs, usePaymentStatuses, useAbsences, useNews, useMyOpenTaskCount } from '../../lib/queries'
 import { previousMonth } from '../../lib/utils'
 import { useMyStaff } from '../../lib/useMyStaff'
+import { useCrmMasterRealtime } from '../../lib/useCrmMasterRealtime'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
   ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark, KanbanSquare, Coins, MessageSquare, Calculator, FileSignature,
@@ -161,6 +162,11 @@ export function Layout() {
     const cutoff = Date.now() - 24 * 60 * 60_000
     return (newsQ.data ?? []).filter(n => new Date(n.created_at).getTime() >= cutoff).length
   }, [newsQ.data])
+
+  // Един споделен абонамент за мастър таблиците (клиенти + клетки). Стои тук,
+  // защото Layout е на всяка страница — така промяна от колега стига до
+  // всички екрани, а не само до петте, които си имаха собствен абонамент.
+  useCrmMasterRealtime()
 
   // Мои отворени задачи (всичко освен Готово) — бадж на Задачи.
   // Само число от сървъра — Layout е на всяка страница, а таблицата със
