@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -323,13 +323,31 @@ export async function setColumnStaffDepartment(columnId: string, department: str
       if (optsErr) throw optsErr
 
       const optMap = new Map((opts ?? []).map(o => [o.id, o.value]))
-      await Promise.all(cells.map(cell => {
+
+      // Групираме по РЕЗУЛТАТНИЯ текст: всички клетки с една и съща dropdown
+      // опция получават една и съща стойност, значи стават с една заявка
+      // (`in`), вместо по една на клетка. При 186 фирми и 8 счетоводителя
+      // това е 8 заявки вместо 186.
+      const byText = new Map<string | null, string[]>()
+      for (const cell of cells) {
         const text = cell.value_dropdown ? optMap.get(cell.value_dropdown) ?? null : null
-        return supabase
-          .from('crm_cell_values')
-          .update({ value_text: text, value_dropdown: null })
-          .eq('id', cell.id)
-      }))
+        const bucket = byText.get(text)
+        if (bucket) bucket.push(cell.id)
+        else byText.set(text, [cell.id])
+      }
+
+      const results = await Promise.all(
+        [...byText].map(([text, ids]) =>
+          supabase
+            .from('crm_cell_values')
+            .update({ value_text: text, value_dropdown: null })
+            .in('id', ids)
+        )
+      )
+      // Без тази проверка провалилата се миграция минаваше за успешна и
+      // стойностите изчезваха от екрана без съобщение.
+      const failedUpdate = results.find(r => r.error)
+      if (failedUpdate?.error) throw failedUpdate.error
     }
   }
   // Нулирането изисква DB null, а не undefined — пишем директно
@@ -340,12 +358,24 @@ export async function setColumnStaffDepartment(columnId: string, department: str
   if (error) throw error
 }
 
+/**
+ * Записва новия ред на колоните след drag & drop.
+ *
+ * Всеки ред получава различна позиция, тоест няма как да се слее в една
+ * заявка без upsert на цели редове — а upsert-ът би върнал преименуване,
+ * направено от друг колега между четенето и записа. Затова остават отделни
+ * update-и, НО с проверка: supabase update-ът се resolve-ва с `{ error }`
+ * вместо да reject-не, тоест дотук провалът минаваше мълчаливо и подредбата
+ * се връщаше при следващия refetch без нито едно съобщение.
+ */
 export async function updateColumnPositions(orderedIds: string[]): Promise<void> {
-  await Promise.all(
+  const results = await Promise.all(
     orderedIds.map((id, index) =>
       supabase.from('crm_columns').update({ position: index }).eq('id', id)
     )
   )
+  const failed = results.find(r => r.error)
+  if (failed?.error) throw failed.error
 }
 
 export async function deleteColumn(
@@ -516,6 +546,11 @@ export async function getCellValues(clientId?: string): Promise<CellValue[]> {
           .range(start, start + PAGE - 1)
       })
     )
+    // Провалила се страница НЕ бива да се преглъща: резултатът щеше да е
+    // непълен набор клетки, а Клиенти/Работен лист да покажат празни полета
+    // без нито едно съобщение. По-добре грешка → withRetry опитва отново.
+    const failed = rest.find(r => r.error)
+    if (failed?.error) throw failed.error
     console.info(`%c[perf]%c   cells.load тур: ${Math.round(performance.now() - t0)}ms (${total} реда, ${1 + extraPages} заявки)`, 'color:#b8860b;font-weight:bold', 'color:inherit')
     return [...first, ...rest.flatMap(r => (r.data ?? []) as CellValue[])]
   })
@@ -1395,6 +1430,28 @@ export async function getTasks(): Promise<Task[]> {
       .order('position')
     if (error) throw error
     return (data ?? []) as Task[]
+  })
+}
+
+/**
+ * Само БРОЯТ мои отворени задачи — за баджа в менюто.
+ *
+ * Layout се рендира на всяка страница и досега за това число теглеше цялата
+ * таблица със задачи (заедно с описанията), която расте безкрайно. Тук идва
+ * само едно число; пълният списък се тегли чак в самата страница Задачи.
+ *
+ * `status` е NOT NULL в базата (миграция 040), затова `neq` покрива точно
+ * същите редове като предишния филтър в JS.
+ */
+export async function getMyOpenTaskCount(staffId: string): Promise<number> {
+  return withRetry(async () => {
+    const { count, error } = await supabase
+      .from('crm_tasks')
+      .select('id', { count: 'exact', head: true })
+      .eq('assignee_staff_id', staffId)
+      .neq('status', 'done')
+    if (error) throw error
+    return count ?? 0
   })
 }
 
@@ -2559,12 +2616,41 @@ export async function deleteContractTemplate(id: string): Promise<void> {
   if (error) throw error
 }
 
-export async function getContracts(): Promise<Contract[]> {
+/**
+ * Историята на изготвените документи — БЕЗ body_snapshot и fields.
+ *
+ * Списъкът показва фирма, шаблон, дата и хонорар; пълният текст на договора е
+ * десетки KB на ред и расте с всеки нов документ. Затова се изброява само
+ * метаданните, а текстът идва от getContractBody() чак при отваряне.
+ *
+ * NB: изрично изброените колони искат добавяне тук при нова колона в
+ * crm_contracts (същият капан като getTasks след миграция 043).
+ */
+const CONTRACT_LIST_COLUMNS =
+  'id, client_id, client_name, template_id, template_name, contract_date, ' +
+  'effective_date, monthly_fee, created_by, created_at, updated_at'
+
+export async function getContracts(): Promise<ContractListItem[]> {
   return withRetry(async () => {
     const { data, error } = await supabase
-      .from('crm_contracts').select('*').order('created_at', { ascending: false })
+      .from('crm_contracts')
+      .select(CONTRACT_LIST_COLUMNS)
+      .order('created_at', { ascending: false })
     if (error) throw error
-    return (data ?? []) as Contract[]
+    return (data ?? []) as unknown as ContractListItem[]
+  })
+}
+
+/** Пълният текст на един договор — тегли се само когато се отвори за преглед. */
+export async function getContractBody(id: string): Promise<string> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_contracts')
+      .select('body_snapshot')
+      .eq('id', id)
+      .single()
+    if (error) throw error
+    return (data?.body_snapshot ?? '') as string
   })
 }
 

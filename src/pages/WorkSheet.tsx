@@ -25,6 +25,7 @@ import { findTrzColumns, TRZ_ACTIVE } from '../lib/trz'
 import { exportRowsToExcel } from '../lib/export'
 import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
+import { useRefreshGuard } from '../lib/useCrmMasterRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
 import { MonthReviewersWidget } from '../components/worksheet/MonthReviewers'
 import { usePersistentState } from '../lib/usePersistentState'
@@ -97,7 +98,6 @@ export function WorkSheetPage() {
   const columnsQ = useColumns()
   const cellsQ = useCellValues()
   const dropdownsQ = useDropdownOptions()
-  const { invalidateClients, invalidateCells, invalidateColumns, invalidateDropdowns } = useInvalidateCrm()
 
   // useMemo стабилизира референциите при undefined data → useMemo deps не churn-ват.
   const clients = useMemo(() => clientsQ.data ?? [], [clientsQ.data])
@@ -239,19 +239,10 @@ export function WorkSheetPage() {
       .catch(() => setOssPrior(new Map()))
   }, [year, month, masterReady])
 
-  // Realtime — промени от колеги се отразяват тихо. Всичко минава през
-  // React Query invalidation → всички страници виждат свежите данни.
-  useRealtime({
-    channel: 'worksheet-master',
-    tables: ['crm_cell_values', 'crm_clients'],
-    onChange: () => {
-      invalidateClients()
-      invalidateCells()
-      invalidateColumns()
-      invalidateDropdowns()
-    },
-    shouldDefer: deferEdits,
-  })
+  // Мастър таблиците (клиенти + клетки) се слушат от ЕДИН споделен абонамент
+  // в Layout — активен на всяка страница, не само на тази. Тук се регистрира
+  // само защитата: докато се редактира, споделеното презареждане изчаква.
+  useRefreshGuard(deferEdits)
   useRealtime({
     channel: 'worksheet-month',
     tables: ['crm_monthly_work', 'crm_art55_entries', 'crm_cash_loan_entries'],

@@ -18,6 +18,7 @@ import { isHiddenStatus } from '../lib/statusBadge'
 import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { useMyStaff } from '../lib/useMyStaff'
 import { useRealtime } from '../lib/useRealtime'
+import { useRefreshGuard } from '../lib/useCrmMasterRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
 import { usePersistentState } from '../lib/usePersistentState'
 
@@ -194,15 +195,10 @@ export function ChecklistPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month, masterReady, tableRows.length])
 
-  useRealtime({
-    channel: 'checklist-master',
-    tables: ['crm_cell_values', 'crm_clients'],
-    onChange: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients'] })
-      queryClient.invalidateQueries({ queryKey: ['cells'] })
-    },
-    shouldDefer: deferEdits,
-  })
+  // Мастър таблиците (клиенти + клетки) се слушат от ЕДИН споделен абонамент
+  // в Layout — активен на всяка страница, не само на тази. Тук се регистрира
+  // само защитата: докато се редактира, споделеното презареждане изчаква.
+  useRefreshGuard(deferEdits)
   useRealtime({
     channel: 'checklist-month',
     tables: ['crm_checklist'],

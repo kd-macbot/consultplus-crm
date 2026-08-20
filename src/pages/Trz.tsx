@@ -22,6 +22,7 @@ import { statusBadgeClass } from '../lib/statusBadge'
 import { MONTH_NAMES, previousMonth } from '../lib/utils'
 import { TRZ_ACTIVE, findTrzColumns } from '../lib/trz'
 import { useRealtime } from '../lib/useRealtime'
+import { useRefreshGuard } from '../lib/useCrmMasterRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
 import { usePersistentState } from '../lib/usePersistentState'
 
@@ -39,7 +40,7 @@ export function TrzPage() {
   const columnsQ = useColumns()
   const cellsQ = useCellValues()
   const dropdownsQ = useDropdownOptions()
-  const { invalidateClients, invalidateCells, invalidateColumns, invalidateDropdowns, invalidateTrzWork } = useInvalidateCrm()
+  const { invalidateTrzWork } = useInvalidateCrm()
 
   const allClients = useMemo(() => clientsQ.data ?? [], [clientsQ.data])
   const allColumns = useMemo(() => columnsQ.data ?? [], [columnsQ.data])
@@ -121,17 +122,10 @@ export function TrzPage() {
 
   const deferEdits = () => Date.now() - lastEditRef.current < 3000
 
-  useRealtime({
-    channel: 'trz-master',
-    tables: ['crm_cell_values', 'crm_clients'],
-    onChange: () => {
-      invalidateClients()
-      invalidateCells()
-      invalidateColumns()
-      invalidateDropdowns()
-    },
-    shouldDefer: deferEdits,
-  })
+  // Мастър таблиците (клиенти + клетки) се слушат от ЕДИН споделен абонамент
+  // в Layout — активен на всяка страница, не само на тази. Тук се регистрира
+  // само защитата: докато се редактира, споделеното презареждане изчаква.
+  useRefreshGuard(deferEdits)
   useRealtime({
     channel: 'trz-month',
     tables: ['crm_trz_work'],

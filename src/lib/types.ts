@@ -847,3 +847,10 @@ export interface Contract {
   created_at: string
   updated_at: string
 }
+/**
+ * Ред от историята БЕЗ тежките полета. `body_snapshot` е пълният текст на
+ * договора (десетки KB) — при 200 договора списъкът щеше да тегли мегабайти,
+ * за да покаже три колони. Текстът се дърпа поотделно чак при преглед.
+ */
+export type ContractListItem = Omit<Contract, 'body_snapshot' | 'fields'>
+

@@ -6,11 +6,11 @@ import {
   getMonthlyWork, getTrzWork, getArt55EntriesForPeriod, getCashLoanEntriesForPeriod, getChecklist,
   getClientProfiles, getPaymentConfigs, getPaymentStatuses,
   getAbsences, getVacationQuotas, getForm76Overrides, getEvents, getNews,
-  getBankAccess, getTasks, getMonthReviewers,
+  getBankAccess, getTasks, getMyOpenTaskCount, getMonthReviewers,
   getClientMessages, getMessageTemplates,
   getFinancialClosings, getFinancialSettings,
   getCashRegisters, getCashTurnover, getCashFirmMonthly,
-  getContracts, getContractTemplates,
+  getContracts, getContractTemplates, getContractBody,
 } from './storage'
 import { timed } from './perf'
 
@@ -31,19 +31,35 @@ export const qk = {
   paymentConfigs: ['paymentConfigs'] as const,
   contracts: ['contracts'] as const,
   contractTemplates: ['contractTemplates'] as const,
+  contractBody: ['contractBody'] as const,
 }
 
+/**
+ * Мастър данните (клиенти, колони, клетки, dropdown опции) се четат от почти
+ * всяка страница, а клетките са НАЙ-СКЪПАТА заявка в приложението (беше ~45%
+ * от времето му в базата).
+ *
+ * Затова staleTime им е 30 минути, а не общите 5: свежестта вече не зависи от
+ * изтичане на кеша, а от споделения realtime абонамент в Layout
+ * (useCrmMasterRealtime), който invalidate-ва при реална промяна. Периодът
+ * остава само като предпазна мрежа, ако realtime връзката падне тихо.
+ *
+ * НЕ вдигай това, без абонаментът да е активен — иначе промени от колеги ще
+ * се виждат чак след половин час.
+ */
+const MASTER_STALE = 30 * 60_000
+
 export function useClients() {
-  return useQuery({ queryKey: qk.clients, queryFn: () => timed('clients', getClients) })
+  return useQuery({ queryKey: qk.clients, queryFn: () => timed('clients', getClients), staleTime: MASTER_STALE })
 }
 export function useColumns() {
-  return useQuery({ queryKey: qk.columns, queryFn: () => timed('columns', getColumns) })
+  return useQuery({ queryKey: qk.columns, queryFn: () => timed('columns', getColumns), staleTime: MASTER_STALE })
 }
 export function useCellValues() {
-  return useQuery({ queryKey: qk.cells, queryFn: () => timed('cells (всички)', () => getCellValues()) })
+  return useQuery({ queryKey: qk.cells, queryFn: () => timed('cells (всички)', () => getCellValues()), staleTime: MASTER_STALE })
 }
 export function useDropdownOptions() {
-  return useQuery({ queryKey: qk.dropdowns, queryFn: () => timed('dropdowns', () => getDropdownOptions()) })
+  return useQuery({ queryKey: qk.dropdowns, queryFn: () => timed('dropdowns', () => getDropdownOptions()), staleTime: MASTER_STALE })
 }
 export function useContactsWithClients() {
   return useQuery({ queryKey: qk.contacts, queryFn: getContactsWithClients })
@@ -125,6 +141,17 @@ export function useTasks() {
     queryFn: getTasks,
   })
 }
+/**
+ * Броят мои отворени задачи за баджа. Ключът започва с 'tasks', затова
+ * invalidateTasks() (префиксен match) освежава и него.
+ */
+export function useMyOpenTaskCount(staffId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['tasks', 'openCount', staffId ?? null] as const,
+    queryFn: () => getMyOpenTaskCount(staffId as string),
+    enabled: !!staffId,
+  })
+}
 export function useMonthReviewers(year: number, month: number) {
   return useQuery({
     queryKey: ['monthReviewers', year, month] as const,
@@ -165,6 +192,19 @@ export function useMessageTemplates() {
 }
 export function useContracts() {
   return useQuery({ queryKey: qk.contracts, queryFn: getContracts })
+}
+/**
+ * Текстът на един договор. Тегли се чак при отваряне за преглед и остава в
+ * кеша — повторното кликване по същия ред не праща нова заявка.
+ * Snapshot е (не се променя след записа), затова не остарява.
+ */
+export function useContractBody(id: string | null) {
+  return useQuery({
+    queryKey: [...qk.contractBody, id],
+    queryFn: () => getContractBody(id as string),
+    enabled: !!id,
+    staleTime: Infinity,
+  })
 }
 export function useContractTemplates() {
   return useQuery({ queryKey: qk.contractTemplates, queryFn: getContractTemplates })
