@@ -45,6 +45,34 @@ jobs:
             echo "::error::Липсва secret BACKUP_PASSPHRASE"; exit 1
           fi
 
+          # Диагностика БЕЗ паролата: показва само потребител, хост и порт —
+          # точно това, което трябва да се сверява при „authentication failed".
+          # Паролата не се печата и GitHub така или иначе маскира secret-ите.
+          USER_PART=$(printf '%s' "$DB_URL" | sed -E 's#^[a-z]+://([^:]*):.*#\1#')
+          HOST_PART=$(printf '%s' "$DB_URL" | sed -E 's#.*@([^/?]*).*#\1#')
+          PASS_RAW=$(printf '%s' "$DB_URL" | sed -E 's#^[a-z]+://[^:]*:(.*)@[^@]*$#\1#')
+
+          echo "потребител: $USER_PART"
+          echo "хост:       $HOST_PART"
+          echo "парола:     ${#PASS_RAW} знака"
+
+          # Специалните символи в паролата трябва да са URL-encoded, иначе
+          # низът се парсва грешно и сървърът получава друг потребител/парола.
+          if printf '%s' "$PASS_RAW" | grep -qE '[@/?#\[\]]'; then
+            echo "::error::Паролата съдържа символ, който чупи URL-а (@ / ? # [ ]). Кодирай го: @ → %40, # → %23, / → %2F, ? → %3F. Или смени паролата на базата с такава само от букви и цифри."
+            exit 1
+          fi
+
+          case "$HOST_PART" in
+            *pooler.supabase.com*)
+              case "$USER_PART" in
+                postgres.*) : ;;
+                *) echo "::error::Хостът е pooler, но потребителят е '$USER_PART'. При Session pooler трябва да е 'postgres.<project-ref>'." ; exit 1 ;;
+              esac ;;
+            *db.*.supabase.co*)
+              echo "::warning::Това е Direct connection (IPv6). GitHub Actions работи по IPv4 — ако връзката падне, вземи Session pooler низа." ;;
+          esac
+
       - name: Инсталиране на pg_dump 17
         # Версията на клиента трябва да е >= тази на сървъра, иначе pg_dump
         # отказва. Стандартният в runner-а изостава, затова взимаме от PGDG.
@@ -67,14 +95,6 @@ jobs:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
-          # При Session pooler потребителят е „postgres.<project-ref>", не само
-          # „postgres" — най-честата причина за „password authentication failed".
-          if echo "$DB_URL" | grep -q 'pooler\.supabase\.com'; then
-            if echo "$DB_URL" | grep -qE '://postgres:'; then
-              echo "::error::Низът сочи pooler, но потребителят е само 'postgres'. При Session pooler трябва да е 'postgres.<project-ref>' — вземи низа наново от Supabase → Connect → Direct → Session pooler."
-              exit 1
-            fi
-          fi
           STAMP=$(date -u +%Y-%m-%d)
           # Само схемата public — служебните на Supabase (auth, storage) се
           # управляват от тях и не бива да се пипат при възстановяване.
