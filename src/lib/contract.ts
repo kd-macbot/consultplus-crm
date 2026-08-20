@@ -71,6 +71,22 @@ export type ContractFieldKey =
   | 'фирма' | 'правна_форма' | 'еик' | 'адрес' | 'управител' | 'имейл'
   | 'лице_за_контакт' | 'хонорар' | 'дата' | 'в_сила_от'
   | 'фирма_en' | 'правна_форма_en' | 'адрес_en' | 'управител_en' | 'лице_за_контакт_en'
+  | 'егн' | 'адрес_лице' | 'лк_номер' | 'лк_дата' | 'лк_мвр' | 'пол'
+
+export const GENDERS = ['мъж', 'жена'] as const
+
+/**
+ * Родът в българския текст: „Долуподписан{пол:ият|ата}" дава „Долуподписаният"
+ * при мъж и „Долуподписаната" при жена. Първият вариант е мъжки, вторият —
+ * женски. Маркерът е общ, за да може admin да го ползва навсякъде в шаблона,
+ * вместо да държим списък с конкретни думи в кода.
+ */
+export const GENDER_RE = /\{пол:([^|}]*)\|([^}]*)\}/g
+
+export function applyGender(text: string, gender: string | undefined): string {
+  const female = (gender ?? '').trim() === 'жена'
+  return text.replace(new RegExp(GENDER_RE.source, 'g'), (_, m, f) => (female ? f : m))
+}
 
 export type ContractFieldDef = {
   key: ContractFieldKey
@@ -81,6 +97,13 @@ export type ContractFieldDef = {
   /** Само за двуезичния шаблон. */
   bilingualOnly?: boolean
   multiline?: boolean
+  /**
+   * Лични данни, които не се пазят в историята (ЕГН, лична карта). Влизат в
+   * разпечатката, но в базата отиват маскирани — виж maskSensitive.
+   */
+  sensitive?: boolean
+  /** Стойностите за падащо меню; при липса полето е свободен текст. */
+  options?: readonly string[]
 }
 
 export const CONTRACT_FIELDS: ContractFieldDef[] = [
@@ -99,7 +122,35 @@ export const CONTRACT_FIELDS: ContractFieldDef[] = [
   { key: 'адрес_en', label: 'Адрес на латиница', hint: 'авто транслитерация', required: true, bilingualOnly: true, multiline: true },
   { key: 'управител_en', label: 'Представляващ на латиница', hint: 'авто транслитерация', required: true, bilingualOnly: true },
   { key: 'лице_за_контакт_en', label: 'Лице за контакт (EN)', hint: 'авто транслитерация', required: true, bilingualOnly: true },
+  // Пълномощно — тези ги няма в CRM-а и се попълват на ръка при всяко изготвяне.
+  { key: 'егн', label: 'ЕГН на упълномощителя', hint: 'не се пази в историята', required: true, sensitive: true },
+  { key: 'адрес_лице', label: 'Постоянен адрес (на физическото лице)', hint: 'област, община, град, улица, №, ет.', required: true, multiline: true },
+  { key: 'лк_номер', label: 'Лична карта №', hint: 'не се пази в историята', required: true, sensitive: true },
+  { key: 'лк_дата', label: 'ЛК издадена на', hint: 'ДД.ММ.ГГГГ — не се пази в историята', required: true, sensitive: true },
+  { key: 'лк_мвр', label: 'ЛК издадена от МВР — гр.', hint: 'не се пази в историята', required: true, sensitive: true },
+  { key: 'пол', label: 'Пол на упълномощителя', hint: 'мени окончанията в текста', required: true, options: GENDERS },
 ]
+
+/**
+ * Стойностите за записване в историята: личните данни се заменят с точки.
+ * Разпечатката ги съдържа, базата — не. Така в историята се вижда кога и за
+ * кого е издаден документът, без ЕГН и лична карта да лежат в crm_contracts.
+ */
+export const MASK = '••••••'
+
+export function maskSensitive(values: Partial<ContractValues>): Partial<ContractValues> {
+  const out = { ...values }
+  for (const f of CONTRACT_FIELDS) {
+    if (f.sensitive && (out[f.key] ?? '').trim()) out[f.key] = MASK
+  }
+  return out
+}
+
+/** Има ли шаблонът поле с лични данни — за предупреждението в UI. */
+export function hasSensitiveFields(body: string): boolean {
+  const used = usedFields(body)
+  return CONTRACT_FIELDS.some(f => f.sensitive && used.has(f.key))
+}
 
 export type ContractValues = Record<ContractFieldKey, string>
 
@@ -170,6 +221,9 @@ export function buildContractValues(src: ContractSource): ContractValues {
     адрес_en: transliterate(address),
     управител_en: transliterate(manager),
     лице_за_контакт_en: contact ? transliterate(contactName) + (phone ? `, ${phone}` : '') : '',
+    // Няма ги в CRM-а — попълват се на ръка при изготвяне на пълномощно.
+    егн: '', адрес_лице: '', лк_номер: '', лк_дата: '', лк_мвр: '',
+    пол: GENDERS[0],
   }
 }
 
@@ -177,7 +231,11 @@ export function buildContractValues(src: ContractSource): ContractValues {
 
 /** Кои маркери реално се срещат в даден шаблон. */
 export function usedFields(body: string): Set<string> {
-  return new Set((body.match(/\{[a-zа-я_]+\}/gu) ?? []).map(m => m.slice(1, -1)))
+  const out = new Set((body.match(/\{[a-zа-я_]+\}/gu) ?? []).map(m => m.slice(1, -1)))
+  // „{пол:ият|ата}" не е обикновен маркер, но означава, че шаблонът зависи от
+  // пола — иначе полето нямаше да се покаже за попълване.
+  if (new RegExp(GENDER_RE.source).test(body)) out.add('пол')
+  return out
 }
 
 /**
@@ -200,7 +258,9 @@ export function missingFields(body: string, values: Partial<ContractValues>): Co
 export function fillTemplate(
   body: string, values: Partial<ContractValues>, opts: { bold?: boolean } = {},
 ): string {
-  let out = body
+  // Родът се решава преди заместването — иначе окончанието би могло да попадне
+  // вътре в удебелена стойност.
+  let out = applyGender(body, values.пол)
   for (const f of CONTRACT_FIELDS) {
     const raw = values[f.key] ?? ''
     const v = opts.bold && raw.trim() ? `**${raw}**` : raw
@@ -228,6 +288,13 @@ function inline(s: string): string {
  * самостоятелен ред; празен ред разделя редовете на таблицата.
  */
 export const LANG_SEPARATOR = '@@'
+
+/**
+ * Празен ред в документа. Обикновеният празен ред в шаблона не става — в
+ * двуезичните той разделя редовете на таблицата, а в едноезичните затваря
+ * списък. Затова изрично: „~" на самостоятелен ред = един празен ред.
+ */
+export const SPACER = '~'
 
 /**
  * Маркер за неделима секция: „===" на самостоятелен ред. Всичко след него до
@@ -276,6 +343,7 @@ function renderBlock(text: string): string {
   for (const raw of text.split('\n')) {
     const line = raw.trim()
     if (!line) { closeList(); continue }
+    if (line === SPACER) { closeList(); out.push('<p class="spacer"></p>'); continue }
     if (line.startsWith('- ')) {
       if (!inList) { out.push('<ul>'); inList = true }
       out.push(`<li>${inline(line.slice(2))}</li>`)

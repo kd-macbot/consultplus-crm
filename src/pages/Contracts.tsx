@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   Search, FileText, Printer, Save, Pencil, Trash2, RefreshCw,
-  AlertTriangle, Plus, X, Loader2, RotateCcw,
+  AlertTriangle, Plus, X, Loader2, RotateCcw, FileDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,9 +25,11 @@ import { usePersistentState } from '../lib/usePersistentState'
 import {
   CONTRACT_FIELDS, buildContractValues, fillTemplate, missingFields, usedFields,
   isBilingualBody, parseBilingualRows, splitKeepSections, BOLD_RE,
+  maskSensitive, hasSensitiveFields,
   type ContractFieldKey, type ContractValues,
 } from '../lib/contract'
 import { printContract } from '../lib/contractPrint'
+import { downloadAsWord } from '../lib/contractWord'
 
 // ============================================================
 // Шаблони — изготвяне на документ (договор, пълномощно…) от шаблон с
@@ -174,7 +176,9 @@ export function ContractsPage() {
 
   function handlePrint() {
     if (!filled || !client || !template) return
-    const ok = printContract({ title: `${template.name} — ${client.name}`, body: filled })
+    const ok = printContract({
+      title: `${template.name} — ${client.name}`, body: filled, logo: template.show_logo,
+    })
     if (!ok) toast.error('Браузърът блокира прозореца за печат. Разрешете popup-ите за сайта.')
   }
 
@@ -182,6 +186,9 @@ export function ContractsPage() {
     if (!filled || !client || !template || !values) return
     setSaving(true)
     try {
+      // В историята влизат маскирани лични данни — разпечатката ги съдържа,
+      // базата не. Затова текстът се сглобява втори път с маскираните стойности.
+      const safe = maskSensitive(values)
       await addContract({
         client_id: client.id,
         client_name: client.name,
@@ -190,8 +197,8 @@ export function ContractsPage() {
         contract_date: dmyToIso(values.дата) ?? new Date().toISOString().slice(0, 10),
         effective_date: dmyToIso(values.в_сила_от),
         monthly_fee: values.хонорар ? Number(values.хонорар) : null,
-        body_snapshot: filled,
-        fields: values,
+        body_snapshot: fillTemplate(template.body, safe, { bold: true }),
+        fields: safe,
       })
       invalidateContracts()
       toast.success(`Документът за ${client.name} е записан в историята`)
@@ -292,6 +299,13 @@ export function ContractsPage() {
                       {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                       Запиши в историята
                     </Button>
+                    <Button size="sm" variant="outline" disabled={!filled} className="h-8 text-xs gap-1.5"
+                      onClick={() => downloadAsWord({
+                        fileName: `${template.name} — ${client.name}`.replace(/[\\/:*?"<>|]/g, '-'),
+                        body: filled,
+                      })}>
+                      <FileDown className="h-3.5 w-3.5" /> Word
+                    </Button>
                     <Button size="sm" onClick={handlePrint} disabled={!filled} className="h-8 text-xs gap-1.5">
                       <Printer className="h-3.5 w-3.5" /> Печат / PDF
                     </Button>
@@ -299,6 +313,14 @@ export function ContractsPage() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {template && hasSensitiveFields(template.body) && (
+                    <div className="rounded-md border border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/40 p-3 text-xs text-sky-900 dark:text-sky-200">
+                      <strong>Този документ съдържа лични данни.</strong> ЕГН и данните от
+                      личната карта влизат в разпечатката, но в историята се записват
+                      маскирани — в базата не остават.
+                    </div>
+                  )}
+
                   {missing.length > 0 && (
                     <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-3">
                       <div className="flex items-start gap-2">
@@ -330,11 +352,20 @@ export function ContractsPage() {
                               </span>
                             )}
                           </label>
-                          <Input
-                            value={values?.[f.key] ?? ''}
-                            onChange={e => setField(f.key, e.target.value)}
-                            className={`h-8 text-xs ${isMissing ? 'border-amber-400 focus-visible:ring-amber-400' : ''}`}
-                          />
+                          {f.options ? (
+                            <select
+                              value={values?.[f.key] ?? ''}
+                              onChange={e => setField(f.key, e.target.value)}
+                              className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs">
+                              {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          ) : (
+                            <Input
+                              value={values?.[f.key] ?? ''}
+                              onChange={e => setField(f.key, e.target.value)}
+                              className={`h-8 text-xs ${isMissing ? 'border-amber-400 focus-visible:ring-amber-400' : ''}`}
+                            />
+                          )}
                           <div className="text-[10px] text-muted-foreground mt-0.5">{f.hint}</div>
                         </div>
                       )
@@ -379,12 +410,14 @@ export function ContractsPage() {
 type Block =
   | { kind: 'h1' | 'h2' | 'h3' | 'p'; text: string }
   | { kind: 'ul'; items: string[] }
+  | { kind: 'spacer' }
 
 function parseBlocks(text: string): Block[] {
   const acc: Block[] = []
   for (const raw of text.split('\n')) {
     const line = raw.trim()
     if (!line) continue
+    if (line === '~') { acc.push({ kind: 'spacer' }); continue }
     if (line.startsWith('- ')) {
       const last = acc[acc.length - 1]
       if (last && last.kind === 'ul') last.items.push(line.slice(2))
@@ -418,6 +451,7 @@ function Blocks({ blocks }: { blocks: Block[] }) {
   return (
     <>
       {blocks.map((b, i) => {
+        if (b.kind === 'spacer') return <div key={i} className="h-3" />
         if (b.kind === 'ul') {
           return (
             <ul key={i} className="list-disc pl-5 mb-2 space-y-1">
@@ -578,16 +612,25 @@ function HistoryTab({ contracts, loading, onChanged }: {
                 Изготвен на {formatDateTime(preview.created_at)}
                 {preview.effective_date && ` • в сила от ${formatDate(preview.effective_date)}`}
               </span>
-              <Button size="sm" className="ml-auto h-8 text-xs gap-1.5"
-                onClick={() => {
-                  const ok = printContract({
-                    title: `${preview.template_name} — ${preview.client_name}`,
+              <div className="ml-auto flex gap-2">
+                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5"
+                  onClick={() => downloadAsWord({
+                    fileName: `${preview.template_name} — ${preview.client_name}`.replace(/[\\/:*?"<>|]/g, '-'),
                     body: preview.body_snapshot,
-                  })
-                  if (!ok) toast.error('Браузърът блокира прозореца за печат. Разрешете popup-ите.')
-                }}>
-                <Printer className="h-3.5 w-3.5" /> Печат / PDF
-              </Button>
+                  })}>
+                  <FileDown className="h-3.5 w-3.5" /> Word
+                </Button>
+                <Button size="sm" className="h-8 text-xs gap-1.5"
+                  onClick={() => {
+                    const ok = printContract({
+                      title: `${preview.template_name} — ${preview.client_name}`,
+                      body: preview.body_snapshot,
+                    })
+                    if (!ok) toast.error('Браузърът блокира прозореца за печат. Разрешете popup-ите.')
+                  }}>
+                  <Printer className="h-3.5 w-3.5" /> Печат / PDF
+                </Button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-neutral-900">
               <ContractPreview body={preview.body_snapshot} />
@@ -618,6 +661,7 @@ function TemplatesTab({ templates, onChanged }: {
   const [editing, setEditing] = useState<ContractTemplate | null>(null)
   const [name, setName] = useState('')
   const [body, setBody] = useState('')
+  const [showLogo, setShowLogo] = useState(true)
   const [saving, setSaving] = useState(false)
   const [toDelete, setToDelete] = useState<ContractTemplate | null>(null)
   const [restoring, setRestoring] = useState(false)
@@ -639,13 +683,13 @@ function TemplatesTab({ templates, onChanged }: {
   }
 
   function startEdit(t: ContractTemplate) {
-    setEditing(t); setName(t.name); setBody(t.body)
+    setEditing(t); setName(t.name); setBody(t.body); setShowLogo(t.show_logo)
   }
 
   function startNew() {
-    setEditing({ id: '', name: '', body: '', is_bilingual: false, position: 0,
-      created_by: null, created_at: '', updated_at: '' })
-    setName(''); setBody('')
+    setEditing({ id: '', name: '', body: '', is_bilingual: false, show_logo: true,
+      position: 0, created_by: null, created_at: '', updated_at: '' })
+    setName(''); setBody(''); setShowLogo(true)
   }
 
   async function save() {
@@ -655,8 +699,8 @@ function TemplatesTab({ templates, onChanged }: {
     }
     setSaving(true)
     try {
-      if (editing.id) await saveContractTemplate(editing.id, { name: name.trim(), body })
-      else await addContractTemplate(name.trim(), body, /^.*\(BG\/EN\).*$/.test(name))
+      if (editing.id) await saveContractTemplate(editing.id, { name: name.trim(), body, show_logo: showLogo })
+      else await addContractTemplate(name.trim(), body, /^.*\(BG\/EN\).*$/.test(name), showLogo)
       onChanged()
       setEditing(null)
       toast.success('Шаблонът е записан')
@@ -705,7 +749,8 @@ function TemplatesTab({ templates, onChanged }: {
               <button onClick={() => startEdit(t)} className="flex-1 text-left">
                 <div className="font-medium text-foreground">{t.name}</div>
                 <div className="text-[10px] text-muted-foreground">
-                  {t.is_bilingual ? 'двуезичен' : 'на български'} • {t.body.length.toLocaleString('bg-BG')} знака
+                  {t.is_bilingual ? 'двуезичен' : 'на български'}
+                  {!t.show_logo && ' • без лого'} • {t.body.length.toLocaleString('bg-BG')} знака
                 </div>
               </button>
               <button onClick={() => startEdit(t)}
@@ -732,6 +777,13 @@ function TemplatesTab({ templates, onChanged }: {
             <div className="px-4 py-2 border-b border-border bg-card flex items-center gap-2">
               <Input value={name} onChange={e => setName(e.target.value)}
                 placeholder="Име на шаблона" className="h-8 text-xs max-w-md" />
+              {/* Пълномощното е документ на клиента и се заверява нотариално —
+                  логото на фирмата няма работа там. */}
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                <input type="checkbox" checked={showLogo} onChange={e => setShowLogo(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-gold" />
+                Лого на фирмата
+              </label>
               <div className="ml-auto flex gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setEditing(null)} className="h-8 text-xs gap-1.5">
                   <X className="h-3.5 w-3.5" /> Отказ
@@ -754,7 +806,9 @@ function TemplatesTab({ templates, onChanged }: {
                 <span className="font-mono">### раздел</span> ·{' '}
                 <span className="font-mono">- булет</span> ·{' '}
                 <span className="font-mono">**удебелен**</span> ·{' '}
-                <span className="font-mono">===</span> неделима секция · останалото е обикновен абзац
+                <span className="font-mono">===</span> неделима секция ·{' '}
+                <span className="font-mono">{'{пол:ият|ата}'}</span> мъжки/женски род ·{' '}
+                <span className="font-mono">~</span> празен ред · останалото е обикновен абзац
               </div>
             </div>
             <textarea

@@ -3,6 +3,7 @@ import {
   splitLegalForm, transliterate, buildContractValues, fillTemplate,
   missingFields, usedFields, renderContractHtml, formatFee, nextMonthStart,
   isBilingualBody, parseBilingualRows, splitKeepSections,
+  maskSensitive, hasSensitiveFields, MASK, applyGender,
 } from './contract'
 
 describe('splitLegalForm', () => {
@@ -302,5 +303,112 @@ describe('удебеляване на попълненото', () => {
 
   it('самотна двойка звездички не се пипа', () => {
     expect(renderContractHtml('текст ** край')).toBe('<p>текст ** край</p>')
+  })
+})
+
+describe('лични данни в пълномощното', () => {
+  const v = { управител: 'Иван Петров', егн: '8001011234', лк_номер: '123456789', лк_дата: '01.01.2020', лк_мвр: 'Пловдив', адрес_лице: 'гр. Пловдив, ул. Тест 1' }
+
+  it('маскира ЕГН и данните от личната карта', () => {
+    const m = maskSensitive(v)
+    expect(m.егн).toBe(MASK)
+    expect(m.лк_номер).toBe(MASK)
+    expect(m.лк_дата).toBe(MASK)
+    expect(m.лк_мвр).toBe(MASK)
+  })
+
+  it('не пипа останалите полета', () => {
+    const m = maskSensitive(v)
+    expect(m.управител).toBe('Иван Петров')
+    expect(m.адрес_лице).toBe('гр. Пловдив, ул. Тест 1')
+  })
+
+  it('празно поле си остава празно — не става точки', () => {
+    expect(maskSensitive({ егн: '' }).егн).toBe('')
+    expect(maskSensitive({ егн: '  ' }).егн).toBe('  ')
+  })
+
+  it('не променя подадения обект', () => {
+    const orig = { егн: '8001011234' }
+    maskSensitive(orig)
+    expect(orig.егн).toBe('8001011234')
+  })
+
+  it('разпознава шаблон с лични данни', () => {
+    expect(hasSensitiveFields('ЕГН {егн}')).toBe(true)
+    expect(hasSensitiveFields('лична карта {лк_номер}')).toBe(true)
+    expect(hasSensitiveFields('фирма {фирма} с ЕИК {еик}')).toBe(false)
+  })
+
+  it('маскираното наистина липсва в записания текст', () => {
+    const body = 'Долуподписаният {управител}, ЕГН {егн}, ЛК № {лк_номер}'
+    const saved = fillTemplate(body, maskSensitive(v), { bold: true })
+    expect(saved).not.toContain('8001011234')
+    expect(saved).not.toContain('123456789')
+    expect(saved).toContain('Иван Петров')
+  })
+})
+
+describe('род по пол', () => {
+  const body = 'Долуподписан{пол:ият|ата} {управител}, граждан{пол:ин|ка}, притежаващ{пол:|а} ЛК'
+
+  it('мъжки род взима първия вариант', () => {
+    expect(applyGender(body, 'мъж'))
+      .toBe('Долуподписаният {управител}, гражданин, притежаващ ЛК')
+  })
+
+  it('женски род взима втория', () => {
+    expect(applyGender(body, 'жена'))
+      .toBe('Долуподписаната {управител}, гражданка, притежаваща ЛК')
+  })
+
+  it('без стойност пада към мъжки — както е в правния език', () => {
+    expect(applyGender(body, undefined)).toBe(applyGender(body, 'мъж'))
+    expect(applyGender(body, '')).toBe(applyGender(body, 'мъж'))
+  })
+
+  it('празен вариант е позволен (притежаващ / притежаваща)', () => {
+    expect(applyGender('работещ{пол:|а}', 'мъж')).toBe('работещ')
+    expect(applyGender('работещ{пол:|а}', 'жена')).toBe('работеща')
+  })
+
+  it('fillTemplate прилага рода заедно със стойностите', () => {
+    const out = fillTemplate('Долуподписан{пол:ият|ата} {управител}',
+      { управител: 'Мария Иванова', пол: 'жена' })
+    expect(out).toBe('Долуподписаната Мария Иванова')
+  })
+
+  it('шаблон с род иска полето „пол"', () => {
+    expect(usedFields('Долуподписан{пол:ият|ата}').has('пол')).toBe(true)
+    expect(usedFields('обикновен текст').has('пол')).toBe(false)
+  })
+
+  it('текст без маркер не се пипа', () => {
+    expect(applyGender('нищо за мен', 'жена')).toBe('нищо за мен')
+  })
+})
+
+describe('празен ред', () => {
+  it('маркерът „~" дава празен абзац', () => {
+    expect(renderContractHtml('едно\n~\nдве'))
+      .toBe('<p>едно</p>\n<p class="spacer"></p>\n<p>две</p>')
+  })
+
+  it('обикновеният празен ред не дава отстъп — той е разделител', () => {
+    expect(renderContractHtml('едно\n\nдве')).toBe('<p>едно</p>\n<p>две</p>')
+  })
+
+  it('затваря отворен списък преди себе си', () => {
+    expect(renderContractHtml('- едно\n~\nкрай'))
+      .toBe('<ul>\n<li>едно</li>\n</ul>\n<p class="spacer"></p>\n<p>край</p>')
+  })
+
+  it('„~" насред ред е обикновен текст', () => {
+    expect(renderContractHtml('текст ~ друг')).toBe('<p>текст ~ друг</p>')
+  })
+
+  it('работи и в двуезичен шаблон', () => {
+    expect(renderContractHtml('едно\n~\n@@\none\n~'))
+      .toContain('<p class="spacer"></p>')
   })
 })

@@ -2498,7 +2498,8 @@ export async function seedContractTemplates(): Promise<boolean> {
 
   const { DEFAULT_CONTRACT_TEMPLATES } = await import('./contractTemplates')
   const rows = DEFAULT_CONTRACT_TEMPLATES.map((t, i) => ({
-    name: t.name, body: t.body, is_bilingual: t.isBilingual, position: i,
+    name: t.name, body: t.body, is_bilingual: t.isBilingual,
+    show_logo: t.showLogo, position: i,
   }))
   // Ако друг колега е изпреварил със seed-а, не дублираме.
   const { error } = await supabase
@@ -2516,7 +2517,8 @@ export async function seedContractTemplates(): Promise<boolean> {
 export async function restoreDefaultContractTemplates(): Promise<number> {
   const { DEFAULT_CONTRACT_TEMPLATES } = await import('./contractTemplates')
   const rows = DEFAULT_CONTRACT_TEMPLATES.map((t, i) => ({
-    name: t.name, body: t.body, is_bilingual: t.isBilingual, position: i,
+    name: t.name, body: t.body, is_bilingual: t.isBilingual,
+    show_logo: t.showLogo, position: i,
     updated_at: new Date().toISOString(),
   }))
   await trackSave((async () => {
@@ -2528,7 +2530,7 @@ export async function restoreDefaultContractTemplates(): Promise<number> {
 }
 
 export async function saveContractTemplate(
-  id: string, patch: { name?: string; body?: string; is_bilingual?: boolean },
+  id: string, patch: { name?: string; body?: string; is_bilingual?: boolean; show_logo?: boolean },
 ): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase
@@ -2540,7 +2542,7 @@ export async function saveContractTemplate(
 }
 
 export async function addContractTemplate(
-  name: string, body: string, isBilingual: boolean,
+  name: string, body: string, isBilingual: boolean, showLogo = true,
 ): Promise<void> {
   const { data: last } = await supabase
     .from('crm_contract_templates')
@@ -2548,7 +2550,7 @@ export async function addContractTemplate(
   const position = (last?.[0]?.position ?? -1) + 1
   const { error } = await supabase
     .from('crm_contract_templates')
-    .insert([{ name, body, is_bilingual: isBilingual, position }])
+    .insert([{ name, body, is_bilingual: isBilingual, show_logo: showLogo, position }])
   if (error) throw error
 }
 
