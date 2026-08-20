@@ -71,7 +71,22 @@ export type ContractFieldKey =
   | 'фирма' | 'правна_форма' | 'еик' | 'адрес' | 'управител' | 'имейл'
   | 'лице_за_контакт' | 'хонорар' | 'дата' | 'в_сила_от'
   | 'фирма_en' | 'правна_форма_en' | 'адрес_en' | 'управител_en' | 'лице_за_контакт_en'
-  | 'егн' | 'адрес_лице' | 'лк_номер' | 'лк_дата' | 'лк_мвр'
+  | 'егн' | 'адрес_лице' | 'лк_номер' | 'лк_дата' | 'лк_мвр' | 'пол'
+
+export const GENDERS = ['мъж', 'жена'] as const
+
+/**
+ * Родът в българския текст: „Долуподписан{пол:ият|ата}" дава „Долуподписаният"
+ * при мъж и „Долуподписаната" при жена. Първият вариант е мъжки, вторият —
+ * женски. Маркерът е общ, за да може admin да го ползва навсякъде в шаблона,
+ * вместо да държим списък с конкретни думи в кода.
+ */
+export const GENDER_RE = /\{пол:([^|}]*)\|([^}]*)\}/g
+
+export function applyGender(text: string, gender: string | undefined): string {
+  const female = (gender ?? '').trim() === 'жена'
+  return text.replace(new RegExp(GENDER_RE.source, 'g'), (_, m, f) => (female ? f : m))
+}
 
 export type ContractFieldDef = {
   key: ContractFieldKey
@@ -87,6 +102,8 @@ export type ContractFieldDef = {
    * разпечатката, но в базата отиват маскирани — виж maskSensitive.
    */
   sensitive?: boolean
+  /** Стойностите за падащо меню; при липса полето е свободен текст. */
+  options?: readonly string[]
 }
 
 export const CONTRACT_FIELDS: ContractFieldDef[] = [
@@ -111,6 +128,7 @@ export const CONTRACT_FIELDS: ContractFieldDef[] = [
   { key: 'лк_номер', label: 'Лична карта №', hint: 'не се пази в историята', required: true, sensitive: true },
   { key: 'лк_дата', label: 'ЛК издадена на', hint: 'ДД.ММ.ГГГГ — не се пази в историята', required: true, sensitive: true },
   { key: 'лк_мвр', label: 'ЛК издадена от МВР — гр.', hint: 'не се пази в историята', required: true, sensitive: true },
+  { key: 'пол', label: 'Пол на упълномощителя', hint: 'мени окончанията в текста', required: true, options: GENDERS },
 ]
 
 /**
@@ -205,6 +223,7 @@ export function buildContractValues(src: ContractSource): ContractValues {
     лице_за_контакт_en: contact ? transliterate(contactName) + (phone ? `, ${phone}` : '') : '',
     // Няма ги в CRM-а — попълват се на ръка при изготвяне на пълномощно.
     егн: '', адрес_лице: '', лк_номер: '', лк_дата: '', лк_мвр: '',
+    пол: GENDERS[0],
   }
 }
 
@@ -212,7 +231,11 @@ export function buildContractValues(src: ContractSource): ContractValues {
 
 /** Кои маркери реално се срещат в даден шаблон. */
 export function usedFields(body: string): Set<string> {
-  return new Set((body.match(/\{[a-zа-я_]+\}/gu) ?? []).map(m => m.slice(1, -1)))
+  const out = new Set((body.match(/\{[a-zа-я_]+\}/gu) ?? []).map(m => m.slice(1, -1)))
+  // „{пол:ият|ата}" не е обикновен маркер, но означава, че шаблонът зависи от
+  // пола — иначе полето нямаше да се покаже за попълване.
+  if (new RegExp(GENDER_RE.source).test(body)) out.add('пол')
+  return out
 }
 
 /**
@@ -235,7 +258,9 @@ export function missingFields(body: string, values: Partial<ContractValues>): Co
 export function fillTemplate(
   body: string, values: Partial<ContractValues>, opts: { bold?: boolean } = {},
 ): string {
-  let out = body
+  // Родът се решава преди заместването — иначе окончанието би могло да попадне
+  // вътре в удебелена стойност.
+  let out = applyGender(body, values.пол)
   for (const f of CONTRACT_FIELDS) {
     const raw = values[f.key] ?? ''
     const v = opts.bold && raw.trim() ? `**${raw}**` : raw

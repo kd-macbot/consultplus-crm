@@ -3,7 +3,7 @@ import {
   splitLegalForm, transliterate, buildContractValues, fillTemplate,
   missingFields, usedFields, renderContractHtml, formatFee, nextMonthStart,
   isBilingualBody, parseBilingualRows, splitKeepSections,
-  maskSensitive, hasSensitiveFields, MASK,
+  maskSensitive, hasSensitiveFields, MASK, applyGender,
 } from './contract'
 
 describe('splitLegalForm', () => {
@@ -346,5 +346,44 @@ describe('лични данни в пълномощното', () => {
     expect(saved).not.toContain('8001011234')
     expect(saved).not.toContain('123456789')
     expect(saved).toContain('Иван Петров')
+  })
+})
+
+describe('род по пол', () => {
+  const body = 'Долуподписан{пол:ият|ата} {управител}, граждан{пол:ин|ка}, притежаващ{пол:|а} ЛК'
+
+  it('мъжки род взима първия вариант', () => {
+    expect(applyGender(body, 'мъж'))
+      .toBe('Долуподписаният {управител}, гражданин, притежаващ ЛК')
+  })
+
+  it('женски род взима втория', () => {
+    expect(applyGender(body, 'жена'))
+      .toBe('Долуподписаната {управител}, гражданка, притежаваща ЛК')
+  })
+
+  it('без стойност пада към мъжки — както е в правния език', () => {
+    expect(applyGender(body, undefined)).toBe(applyGender(body, 'мъж'))
+    expect(applyGender(body, '')).toBe(applyGender(body, 'мъж'))
+  })
+
+  it('празен вариант е позволен (притежаващ / притежаваща)', () => {
+    expect(applyGender('работещ{пол:|а}', 'мъж')).toBe('работещ')
+    expect(applyGender('работещ{пол:|а}', 'жена')).toBe('работеща')
+  })
+
+  it('fillTemplate прилага рода заедно със стойностите', () => {
+    const out = fillTemplate('Долуподписан{пол:ият|ата} {управител}',
+      { управител: 'Мария Иванова', пол: 'жена' })
+    expect(out).toBe('Долуподписаната Мария Иванова')
+  })
+
+  it('шаблон с род иска полето „пол"', () => {
+    expect(usedFields('Долуподписан{пол:ият|ата}').has('пол')).toBe(true)
+    expect(usedFields('обикновен текст').has('пол')).toBe(false)
+  })
+
+  it('текст без маркер не се пипа', () => {
+    expect(applyGender('нищо за мен', 'жена')).toBe('нищо за мен')
   })
 })
