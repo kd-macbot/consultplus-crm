@@ -8,13 +8,14 @@ import {
   getMonthlyWorkForYear, upsertMonthlyWorkByKey, ensureMonthlyRows,
   getArt55EntriesForPeriod, getArt55QuarterStatuses, upsertArt55QuarterStatus,
 } from '../lib/storage'
-import { useClients, useColumns, useCellValues, useDropdownOptions, useInvalidateCrm } from '../lib/queries'
+import { useClients, useColumns, useCellValues, useDropdownOptions } from '../lib/queries'
 import { NOTIFICATION_METHODS, ART55_INCOME_TYPES, type MonthlyWork, type Client, type Art55Entry, type Art55QuarterStatus } from '../lib/types'
 import {
   buildCellIndex, buildDropdownIndex,
   clientDisplayName, resolveDropdownText, resolveNumber,
 } from '../lib/tableIndices'
 import { useRealtime } from '../lib/useRealtime'
+import { useRefreshGuard } from '../lib/useCrmMasterRealtime'
 
 const MONTH_SHORT = ['Ян', 'Фев', 'Мар', 'Апр', 'Май', 'Юни', 'Юли', 'Авг', 'Сеп', 'Окт', 'Ное', 'Дек']
 const QUARTERS: Array<{ q: number; months: [number, number, number]; label: string }> = [
@@ -48,7 +49,6 @@ export function YearlyViewPage() {
   const columnsQ = useColumns()
   const cellsQ = useCellValues()
   const dropdownsQ = useDropdownOptions()
-  const { invalidateClients, invalidateCells, invalidateColumns, invalidateDropdowns } = useInvalidateCrm()
 
   const clients = useMemo(() => clientsQ.data ?? [], [clientsQ.data])
   const columns = useMemo(() => columnsQ.data ?? [], [columnsQ.data])
@@ -80,17 +80,10 @@ export function YearlyViewPage() {
 
   // Realtime — разделено на два канала: мастер → invalidate RQ кеша;
   // годишните данни → loadYear (без full reload на master).
-  useRealtime({
-    channel: 'yearly-master',
-    tables: ['crm_cell_values', 'crm_clients'],
-    onChange: () => {
-      invalidateClients()
-      invalidateCells()
-      invalidateColumns()
-      invalidateDropdowns()
-    },
-    shouldDefer: deferEdits,
-  })
+  // Мастър таблиците (клиенти + клетки) се слушат от ЕДИН споделен абонамент
+  // в Layout — активен на всяка страница, не само на тази. Тук се регистрира
+  // само защитата: докато се редактира, споделеното презареждане изчаква.
+  useRefreshGuard(deferEdits)
   useRealtime({
     channel: 'yearly-year',
     tables: ['crm_monthly_work', 'crm_art55_entries', 'crm_art55_quarter_status'],
