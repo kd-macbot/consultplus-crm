@@ -822,6 +822,8 @@ export interface ContractTemplate {
   name: string
   body: string
   is_bilingual: boolean
+  /** Пълномощното е документ на клиента, не бланка на фирмата — без лого. */
+  show_logo: boolean
   position: number
   created_by: string | null
   created_at: string

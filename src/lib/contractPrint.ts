@@ -18,7 +18,8 @@ import logoNavy from '../assets/brand/logo-navy.png'
  *   – горе/долу: <thead>/<tfoot> на обгръщащата таблица, които браузърът
  *     повтаря на всяка страница.
  * Бонус: логото стои в thead-а, тоест на всяка страница — точно както е в
- * header-а на оригиналния Word документ.
+ * header-а на оригиналния Word документ. Пълномощното обаче е документ на
+ * КЛИЕНТА и се заверява нотариално — там лого няма (opts.logo = false).
  */
 
 const PRINT_CSS = `
@@ -38,6 +39,8 @@ const PRINT_CSS = `
   table.sheet > thead > tr > td { padding: 0; }
   table.sheet > tfoot > tr > td { padding: 0; }
   .run-head { padding: 11mm 0 4mm; }
+  /* Без лого горното поле остава същото — само че празно. */
+  .run-head:empty { padding: 15mm 0 0; }
   .run-foot { height: 9mm; }
   .logo { display: block; height: 26px; width: auto; }
   h1 { font-size: 15pt; text-align: center; margin: 0 0 2pt; letter-spacing: .5pt; }
@@ -75,7 +78,7 @@ const PRINT_CSS = `
   .keep { margin-top: 6mm; }
 `
 
-export function printContract(opts: { title: string; body: string }): boolean {
+export function printContract(opts: { title: string; body: string; logo?: boolean }): boolean {
   const win = window.open('', '_blank')
   if (!win) return false  // блокиран popup — извикващият показва съобщение
 
@@ -92,7 +95,7 @@ export function printContract(opts: { title: string; body: string }): boolean {
 <style>${PRINT_CSS}</style>
 </head><body>
 <table class="sheet">
-<thead><tr><td><div class="run-head"><img class="logo" src="${esc(logoUrl)}" alt="Консулт Плюс"></div></td></tr></thead>
+<thead><tr><td><div class="run-head">${opts.logo === false ? '' : `<img class="logo" src="${esc(logoUrl)}" alt="Консулт Плюс">`}</div></td></tr></thead>
 <tfoot><tr><td><div class="run-foot"></div></td></tr></tfoot>
 <tbody><tr><td>
 ${renderContractHtml(opts.body)}
