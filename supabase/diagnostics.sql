@@ -9,12 +9,18 @@
 -- ---- 1. Кои таблици колко тежат ---------------------------------------
 -- Показва къде реално са данните. Ако нещо неочаквано е най-голямо, там е и
 -- първата работа по оптимизация.
+-- NB: „индекси" се смята с pg_indexes_size(), а НЕ като общо − данни.
+-- Разликата общо − данни включва и TOAST — отделното място, където Postgres
+-- държи дългите текстове (body на шаблоните, metadata на audit log-а). Ако се
+-- слеят в една колона, таблица с 3 реда изглежда все едно има 200 kB индекси,
+-- а всъщност това са самите текстове.
 select
   relname as таблица,
   n_live_tup as редове,
   pg_size_pretty(pg_total_relation_size(relid)) as общо,
   pg_size_pretty(pg_relation_size(relid)) as данни,
-  pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) as индекси
+  pg_size_pretty(pg_indexes_size(relid)) as индекси,
+  pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid) - pg_indexes_size(relid)) as дълги_текстове
 from pg_stat_user_tables
 where schemaname = 'public'
 order by pg_total_relation_size(relid) desc
