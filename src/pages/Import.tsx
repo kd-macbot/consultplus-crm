@@ -269,6 +269,10 @@ export function ImportPage() {
         getClients(),
         supabase.from('crm_cell_values').select('client_id,value_text').eq('column_id', nameCol.id),
       ])
+      // Без тази проверка провалилото се четене даваше празен clientByName и
+      // импортът приемаше ВСЯКА фирма за нова — тоест създаваше дубликат на
+      // целия списък, без нито едно съобщение за грешка.
+      if (nameCellsResult.error) throw nameCellsResult.error
 
       const clientByName = new Map<string, string>()
       for (const cell of nameCellsResult.data ?? []) {
