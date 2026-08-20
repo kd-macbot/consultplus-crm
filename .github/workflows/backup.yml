@@ -11,9 +11,10 @@ name: Бекъп на базата
 # достъп до репото.
 #
 # Нужни secrets (Settings → Secrets and variables → Actions):
-#   SUPABASE_DB_URL   — connection string на PROD базата
-#                       (Supabase → Settings → Database → Connection string →
-#                        URI, режим „Session"; паролата се вписва вътре)
+#   SUPABASE_DB_URL   — connection string на PROD базата:
+#                       Supabase → Connect → Direct → Session pooler.
+#                       ВНИМАНИЕ: при pooler потребителят е „postgres.<ref>",
+#                       не само „postgres" — иначе автентикацията пада.
 #   BACKUP_PASSPHRASE — дълга парола за криптирането. ПАЗИ Я ОТДЕЛНО —
 #                       без нея бекъпът е безполезен.
 
@@ -56,17 +57,28 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-17
-          pg_dump --version
+          # Инсталацията НЕ пренасочва `pg_dump` към новата версия — в PATH
+          # остава старият клиент от образа. Затова ползваме пълния път.
+          echo "PG_DUMP=/usr/lib/postgresql/17/bin/pg_dump" >> "$GITHUB_ENV"
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Дъмп
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
+          # При Session pooler потребителят е „postgres.<project-ref>", не само
+          # „postgres" — най-честата причина за „password authentication failed".
+          if echo "$DB_URL" | grep -q 'pooler\.supabase\.com'; then
+            if echo "$DB_URL" | grep -qE '://postgres:'; then
+              echo "::error::Низът сочи pooler, но потребителят е само 'postgres'. При Session pooler трябва да е 'postgres.<project-ref>' — вземи низа наново от Supabase → Connect → Direct → Session pooler."
+              exit 1
+            fi
+          fi
           STAMP=$(date -u +%Y-%m-%d)
           # Само схемата public — служебните на Supabase (auth, storage) се
           # управляват от тях и не бива да се пипат при възстановяване.
-          pg_dump "$DB_URL" \
+          "$PG_DUMP" "$DB_URL" \
             --schema=public \
             --no-owner --no-privileges \
             --format=plain \
