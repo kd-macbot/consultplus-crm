@@ -290,6 +290,13 @@ function inline(s: string): string {
 export const LANG_SEPARATOR = '@@'
 
 /**
+ * Празен ред в документа. Обикновеният празен ред в шаблона не става — в
+ * двуезичните той разделя редовете на таблицата, а в едноезичните затваря
+ * списък. Затова изрично: „~" на самостоятелен ред = един празен ред.
+ */
+export const SPACER = '~'
+
+/**
  * Маркер за неделима секция: „===" на самостоятелен ред. Всичко след него до
  * следващия маркер се държи като едно цяло при печат — не се цепи между
  * страници, а ако не се събира, слиза цяло на следващата. Ползва се за
@@ -336,6 +343,7 @@ function renderBlock(text: string): string {
   for (const raw of text.split('\n')) {
     const line = raw.trim()
     if (!line) { closeList(); continue }
+    if (line === SPACER) { closeList(); out.push('<p class="spacer"></p>'); continue }
     if (line.startsWith('- ')) {
       if (!inList) { out.push('<ul>'); inList = true }
       out.push(`<li>${inline(line.slice(2))}</li>`)

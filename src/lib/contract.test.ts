@@ -387,3 +387,28 @@ describe('род по пол', () => {
     expect(applyGender('нищо за мен', 'жена')).toBe('нищо за мен')
   })
 })
+
+describe('празен ред', () => {
+  it('маркерът „~" дава празен абзац', () => {
+    expect(renderContractHtml('едно\n~\nдве'))
+      .toBe('<p>едно</p>\n<p class="spacer"></p>\n<p>две</p>')
+  })
+
+  it('обикновеният празен ред не дава отстъп — той е разделител', () => {
+    expect(renderContractHtml('едно\n\nдве')).toBe('<p>едно</p>\n<p>две</p>')
+  })
+
+  it('затваря отворен списък преди себе си', () => {
+    expect(renderContractHtml('- едно\n~\nкрай'))
+      .toBe('<ul>\n<li>едно</li>\n</ul>\n<p class="spacer"></p>\n<p>край</p>')
+  })
+
+  it('„~" насред ред е обикновен текст', () => {
+    expect(renderContractHtml('текст ~ друг')).toBe('<p>текст ~ друг</p>')
+  })
+
+  it('работи и в двуезичен шаблон', () => {
+    expect(renderContractHtml('едно\n~\n@@\none\n~'))
+      .toContain('<p class="spacer"></p>')
+  })
+})

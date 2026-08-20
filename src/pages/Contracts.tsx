@@ -410,12 +410,14 @@ export function ContractsPage() {
 type Block =
   | { kind: 'h1' | 'h2' | 'h3' | 'p'; text: string }
   | { kind: 'ul'; items: string[] }
+  | { kind: 'spacer' }
 
 function parseBlocks(text: string): Block[] {
   const acc: Block[] = []
   for (const raw of text.split('\n')) {
     const line = raw.trim()
     if (!line) continue
+    if (line === '~') { acc.push({ kind: 'spacer' }); continue }
     if (line.startsWith('- ')) {
       const last = acc[acc.length - 1]
       if (last && last.kind === 'ul') last.items.push(line.slice(2))
@@ -449,6 +451,7 @@ function Blocks({ blocks }: { blocks: Block[] }) {
   return (
     <>
       {blocks.map((b, i) => {
+        if (b.kind === 'spacer') return <div key={i} className="h-3" />
         if (b.kind === 'ul') {
           return (
             <ul key={i} className="list-disc pl-5 mb-2 space-y-1">
@@ -804,7 +807,8 @@ function TemplatesTab({ templates, onChanged }: {
                 <span className="font-mono">- булет</span> ·{' '}
                 <span className="font-mono">**удебелен**</span> ·{' '}
                 <span className="font-mono">===</span> неделима секция ·{' '}
-                <span className="font-mono">{'{пол:ият|ата}'}</span> мъжки/женски род · останалото е обикновен абзац
+                <span className="font-mono">{'{пол:ият|ата}'}</span> мъжки/женски род ·{' '}
+                <span className="font-mono">~</span> празен ред · останалото е обикновен абзац
               </div>
             </div>
             <textarea

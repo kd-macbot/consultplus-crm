@@ -43,9 +43,13 @@ const PRINT_CSS = `
   .run-head:empty { padding: 15mm 0 0; }
   .run-foot { height: 9mm; }
   .logo { display: block; height: 26px; width: auto; }
-  h1 { font-size: 15pt; text-align: center; margin: 0 0 2pt; letter-spacing: .5pt; }
-  h2 { font-size: 10.5pt; font-weight: 600; text-align: center; margin: 0 0 8pt; color: #333; }
-  h1 + h2 { margin-bottom: 3pt; }
+  /* Самостоятелно заглавие („ПЪЛНОМОЩНО") диша; когато под него има
+     подзаглавие (договорите), двете стоят слепени като едно цяло. */
+  h1 { font-size: 15pt; text-align: center; margin: 0 0 11pt; letter-spacing: .5pt; }
+  h1:has(+ h2) { margin-bottom: 2pt; }
+  h2 { font-size: 10.5pt; font-weight: 600; text-align: center; margin: 0 0 11pt; color: #333; }
+  /* Празен ред от шаблона (маркер „~"). */
+  p.spacer { margin: 0; height: 8pt; }
   h3 {
     font-size: 10pt; margin: 10pt 0 3pt; padding-bottom: 2pt;
     border-bottom: .75pt solid #d4d4d4; page-break-after: avoid; break-after: avoid;
