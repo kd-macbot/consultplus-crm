@@ -92,15 +92,36 @@ where schemaname = 'public' and n_dead_tup > 1000
 order by n_dead_tup desc;
 
 
--- ---- 7. Най-бавните заявки --------------------------------------------
--- Изисква разширението pg_stat_statements (в Supabase е налично, но може да
--- не е включено — ако даде грешка, пропусни тази секция).
+-- ---- 7. Кои заявки НА ПРИЛОЖЕНИЕТО тежат най-много ---------------------
+-- Изисква pg_stat_statements (в Supabase е налично; ако даде грешка —
+-- пропусни секцията).
+--
+-- Сортира се по ОБЩО време, не по средно. Средното изкарва отгоре редки, но
+-- бавни служебни заявки; реалната цена е брой × време. Филтърът оставя само
+-- нашите таблици — иначе списъкът се пълни с интроспекция на самия Supabase
+-- (Dashboard, PostgREST schema cache, realtime housekeeping, pg_timezone_names),
+-- която не идва от кода ни и не можем да я променим.
 select
-  round(mean_exec_time::numeric, 1) as средно_ms,
-  calls as извиквания,
   round(total_exec_time::numeric / 1000, 1) as общо_сек,
-  left(query, 120) as заявка
+  calls as извиквания,
+  round(mean_exec_time::numeric, 1) as средно_ms,
+  round(max_exec_time::numeric, 1) as най_бавно_ms,
+  left(query, 140) as заявка
 from pg_stat_statements
-where query not ilike '%pg_stat%'
-order by mean_exec_time desc
-limit 15;
+where query ilike '%crm\_%' escape '\'
+  and query not ilike '%pg_stat%'
+order by total_exec_time desc
+limit 20;
+
+
+-- ---- 8. Общата картина: колко от времето изобщо е наше -----------------
+-- Ако „приложение" е малка част от общото, тясното място не е в кода ни.
+select
+  case when query ilike '%crm\_%' escape '\' then 'приложение' else 'служебни/Supabase' end as вид,
+  count(*) as различни_заявки,
+  sum(calls) as извиквания,
+  round(sum(total_exec_time)::numeric / 1000, 1) as общо_сек,
+  round((100.0 * sum(total_exec_time) / nullif(sum(sum(total_exec_time)) over (), 0))::numeric, 1) as дял_процент
+from pg_stat_statements
+group by 1
+order by общо_сек desc;
