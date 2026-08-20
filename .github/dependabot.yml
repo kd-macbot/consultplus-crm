@@ -1,0 +1,30 @@
+# Автоматични PR-и за остарели и уязвими зависимости.
+#
+# Без това уязвимост в зависимост се забелязва само ако някой се сети да пусне
+# `npm audit` — а такова „да се сети" не се е случвало месеци наред.
+#
+# Групирано и веднъж месечно НАРОЧНО: целта е един преглед на месец, а не
+# двайсет отделни PR-а, които никой не отваря.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      # Козметичните ъпдейти в един PR — разглеждат се заедно или никак.
+      minor-and-patch:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "Зависимости:"
+    labels: [dependencies]
+
+  # Самите GitHub Actions също остаряват (actions/checkout@v4 и т.н.).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "Actions:"
+    labels: [dependencies]
