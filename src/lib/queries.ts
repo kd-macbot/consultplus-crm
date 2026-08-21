@@ -11,6 +11,7 @@ import {
   getFinancialClosings, getFinancialSettings,
   getCashRegisters, getCashTurnover, getCashFirmMonthly,
   getContracts, getContractTemplates, getContractBody,
+  getNotifications, getNotificationSettings, getNotifyStaff,
 } from './storage'
 import { timed } from './perf'
 import { useRealtimeHealthy } from './realtimeHealth'
@@ -33,6 +34,9 @@ export const qk = {
   contracts: ['contracts'] as const,
   contractTemplates: ['contractTemplates'] as const,
   contractBody: ['contractBody'] as const,
+  notifications: ['notifications'] as const,
+  notificationSettings: ['notificationSettings'] as const,
+  notifyStaff: ['notifyStaff'] as const,
 }
 
 /**
@@ -204,6 +208,18 @@ export function useClientMessages() {
 export function useMessageTemplates() {
   return useQuery({ queryKey: ['messageTemplates'] as const, queryFn: getMessageTemplates })
 }
+// Известия — само страницата „Известия" ги ползва (admin). Кратък
+// staleTime: дневникът се променя от cron-а извън браузъра, тоест
+// realtime не помага толкова, колкото едно свежо отваряне.
+export function useNotifications() {
+  return useQuery({ queryKey: qk.notifications, queryFn: () => getNotifications() })
+}
+export function useNotificationSettings() {
+  return useQuery({ queryKey: qk.notificationSettings, queryFn: getNotificationSettings })
+}
+export function useNotifyStaff() {
+  return useQuery({ queryKey: qk.notifyStaff, queryFn: getNotifyStaff })
+}
 export function useContracts() {
   return useQuery({ queryKey: qk.contracts, queryFn: getContracts })
 }
@@ -318,6 +334,9 @@ export function useInvalidateCrm() {
       qc.invalidateQueries({ queryKey: ['clientMessages'] }),
     invalidateMessageTemplates: () =>
       qc.invalidateQueries({ queryKey: ['messageTemplates'] }),
+    invalidateNotifications: () => qc.invalidateQueries({ queryKey: qk.notifications }),
+    invalidateNotificationSettings: () => qc.invalidateQueries({ queryKey: qk.notificationSettings }),
+    invalidateNotifyStaff: () => qc.invalidateQueries({ queryKey: qk.notifyStaff }),
     invalidateChecklist: (year: number, month: number) =>
       qc.invalidateQueries({ queryKey: ['checklist', year, month] }),
     invalidateAll: () => qc.invalidateQueries(),
