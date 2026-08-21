@@ -261,9 +261,20 @@ function notifiable(staff: StaffRow[]): StaffRow[] {
   return staff.filter(s => s.notify_email !== false && isValidEmail(s.email))
 }
 
-/** Първото име — „Иван Петров Георгиев" → „Иван". */
+/**
+ * Първото име за обръщението — „Иван Петров Георгиев" → „Иван".
+ *
+ * Имената в Персонал често са изписани с ГЛАВНИ букви („КРАСИМИРА
+ * ГЕОРГИЕВА"). В таблица това е нормално, но в имейл „Здравей,
+ * КРАСИМИРА," звучи като викане — затова само-главните се привеждат.
+ * Смесеното изписване не се пипа: „МарИя" си е нечие решение.
+ */
 function firstName(full: string): string {
-  return (full ?? "").trim().split(/\s+/)[0] ?? ""
+  const first = (full ?? "").trim().split(/\s+/)[0] ?? ""
+  const isAllCaps = first === first.toUpperCase() && first !== first.toLowerCase()
+  if (!isAllCaps) return first
+  // По части, за да оцелеят двойните имена: „АННА-МАРИЯ" → „Анна-Мария".
+  return first.split("-").map(p => p.charAt(0) + p.slice(1).toLowerCase()).join("-")
 }
 
 const CHECKLIST_FIELDS = [
