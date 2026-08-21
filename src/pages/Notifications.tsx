@@ -63,6 +63,21 @@ export function NotificationsPage() {
 
   const parsedDays = useMemo(() => parseChecklistDays(daysText), [daysText])
 
+  // Черновата се записва чак с бутона (за да не тръгне нещо от едно
+  // случайно кликване). Затова разликата спрямо записаното трябва да е
+  // ВИДИМА — иначе човек отмята главния ключ, вижда зелено и си тръгва
+  // с грешното убеждение, че е пуснал известията.
+  const saved = settingsQ.data
+  const dirty = useMemo(() => {
+    if (!draft || !saved) return false
+    return draft.enabled !== saved.enabled
+      || draft.tasks_enabled !== saved.tasks_enabled
+      || draft.tasks_days_before !== saved.tasks_days_before
+      || draft.checklist_enabled !== saved.checklist_enabled
+      || (draft.test_email?.trim() || null) !== (saved.test_email?.trim() || null)
+      || parsedDays.join(',') !== (saved.checklist_days ?? []).join(',')
+  }, [draft, saved, parsedDays])
+
   async function saveSettings() {
     if (!draft) return
     if (draft.tasks_days_before < 0 || draft.tasks_days_before > 30) {
@@ -192,13 +207,18 @@ export function NotificationsPage() {
       <div className="px-3 py-2 md:px-5 md:py-3 flex flex-wrap gap-y-2 items-center justify-between border-b border-border bg-card">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-base md:text-lg font-semibold text-foreground">🔔 Известия</h1>
-          {draft && (
+          {saved && (
             <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
-              draft.enabled
+              saved.enabled
                 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200'
                 : 'bg-muted text-muted-foreground'
             }`}>
-              {draft.enabled ? 'автоматичните са ВКЛЮЧЕНИ' : 'автоматичните са изключени'}
+              {saved.enabled ? 'автоматичните са ВКЛЮЧЕНИ' : 'автоматичните са изключени'}
+            </span>
+          )}
+          {dirty && (
+            <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
+              незаписани промени
             </span>
           )}
         </div>
@@ -305,9 +325,9 @@ export function NotificationsPage() {
             </section>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={saveSettings} disabled={saving}>
+              <Button onClick={saveSettings} disabled={saving || !dirty}>
                 {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
-                Запази настройките
+                {dirty ? 'Запази настройките' : 'Настройките са записани'}
               </Button>
               <Button variant="outline" onClick={doDryRun} disabled={busy !== null}>
                 {busy === 'dry' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
