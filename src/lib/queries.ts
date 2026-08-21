@@ -13,6 +13,7 @@ import {
   getContracts, getContractTemplates, getContractBody,
 } from './storage'
 import { timed } from './perf'
+import { useRealtimeHealthy } from './realtimeHealth'
 
 // Централизирани query ключове — ползвай ги за invalidate след мутации.
 export const qk = {
@@ -48,18 +49,31 @@ export const qk = {
  * се виждат чак след половин час.
  */
 const MASTER_STALE = 30 * 60_000
+/** Докато realtime не е потвърден — поведението отпреди: 5 минути. */
+const MASTER_STALE_FALLBACK = 5 * 60_000
+
+/**
+ * Дългият staleTime важи САМО докато абонаментът е жив. Ако падне (заспал
+ * лаптоп, паднала мрежа, изтекъл токен), допускането „промените идват като
+ * събитие" вече не важи и кешът се връща към 5 минути, докато връзката се
+ * възстанови. Без това колега би гледал стари данни половин час, без да
+ * подозира.
+ */
+function useMasterStale() {
+  return useRealtimeHealthy() ? MASTER_STALE : MASTER_STALE_FALLBACK
+}
 
 export function useClients() {
-  return useQuery({ queryKey: qk.clients, queryFn: () => timed('clients', getClients), staleTime: MASTER_STALE })
+  return useQuery({ queryKey: qk.clients, queryFn: () => timed('clients', getClients), staleTime: useMasterStale() })
 }
 export function useColumns() {
-  return useQuery({ queryKey: qk.columns, queryFn: () => timed('columns', getColumns), staleTime: MASTER_STALE })
+  return useQuery({ queryKey: qk.columns, queryFn: () => timed('columns', getColumns), staleTime: useMasterStale() })
 }
 export function useCellValues() {
-  return useQuery({ queryKey: qk.cells, queryFn: () => timed('cells (всички)', () => getCellValues()), staleTime: MASTER_STALE })
+  return useQuery({ queryKey: qk.cells, queryFn: () => timed('cells (всички)', () => getCellValues()), staleTime: useMasterStale() })
 }
 export function useDropdownOptions() {
-  return useQuery({ queryKey: qk.dropdowns, queryFn: () => timed('dropdowns', () => getDropdownOptions()), staleTime: MASTER_STALE })
+  return useQuery({ queryKey: qk.dropdowns, queryFn: () => timed('dropdowns', () => getDropdownOptions()), staleTime: useMasterStale() })
 }
 export function useContactsWithClients() {
   return useQuery({ queryKey: qk.contacts, queryFn: getContactsWithClients })
