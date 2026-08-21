@@ -1,0 +1,90 @@
+name: Известия по имейл
+
+# Автоматичните напомняния (задачи + ДДС чек лист). Приложението е SPA —
+# браузърът може да прати писмо само докато някой е логнат, затова спусъкът
+# е тук: Action-ът вика edge функцията mail-send, тя смята и изпраща.
+#
+# Самата функция решава КАКВО да тръгне (виж таблицата
+# crm_notification_settings). Ако главният ключ е изключен, пускането
+# минава и не изпраща нищо — това е нормално, не е грешка.
+#
+# Нужни secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_FUNCTIONS_URL — https://<project-ref>.supabase.co/functions/v1
+#                            (PROD проектът; за dev се пуска ръчно с друг URL)
+#   NOTIFY_CRON_SECRET     — същият низ като secret-а на edge функцията
+#
+# NB: функцията се deploy-ва с --no-verify-jwt и се пази сама през
+# x-cron-secret. Затова тук НЕ е нужен ключ на Supabase.
+
+on:
+  schedule:
+    # 06:15 UTC = 09:15 българско лятно време (08:15 през зимата) —
+    # писмото чака колегата в началото на работния ден.
+    - cron: '15 6 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Само пресметни, без да изпращаш'
+        type: boolean
+        default: false
+
+concurrency:
+  group: email-notifications
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Проверка на secrets
+        env:
+          URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          SECRET: ${{ secrets.NOTIFY_CRON_SECRET }}
+        run: |
+          if [ -z "$URL" ]; then echo "::error::Липсва secret SUPABASE_FUNCTIONS_URL"; exit 1; fi
+          if [ -z "$SECRET" ]; then echo "::error::Липсва secret NOTIFY_CRON_SECRET"; exit 1; fi
+
+      - name: Пускане
+        env:
+          URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          SECRET: ${{ secrets.NOTIFY_CRON_SECRET }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          BODY='{"action":"run"}'
+          if [ "${DRY:-false}" = "true" ]; then BODY='{"action":"run","dry_run":true}'; fi
+
+          # -sS: тихо, но с видима грешка. Кодът се хваща отделно, за да
+          # различим „функцията върна грешка" от „мрежата падна".
+          HTTP=$(curl -sS -o /tmp/resp.json -w '%{http_code}' \
+            -X POST "${URL%/}/mail-send" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: $SECRET" \
+            --max-time 300 \
+            -d "$BODY")
+
+          echo "HTTP $HTTP"
+          cat /tmp/resp.json
+
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::mail-send върна HTTP $HTTP"
+            exit 1
+          fi
+
+          # Тялото може да съдържа { "error": ... } дори при 200 от прокси.
+          if grep -q '"error"' /tmp/resp.json; then
+            echo "::error::mail-send върна грешка в тялото"
+            exit 1
+          fi
+
+      - name: Обобщение
+        if: always()
+        run: |
+          {
+            echo "## Известия по имейл"
+            echo ""
+            echo '```json'
+            cat /tmp/resp.json 2>/dev/null || echo "(няма отговор)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

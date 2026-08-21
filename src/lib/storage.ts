@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem, NotificationEntry, NotificationSettings, NotificationResult, NotificationDryRun, NotifyStaff } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -2679,4 +2679,117 @@ export async function addContract(c: {
 export async function deleteContract(id: string): Promise<void> {
   const { error } = await supabase.from('crm_contracts').delete().eq('id', id)
   if (error) throw error
+}
+
+// ==================== ИЗВЕСТИЯ ПО ИМЕЙЛ (RESEND) ====================
+// Изпращането минава ИЗЦЯЛО през edge функцията mail-send (API ключът е
+// secret и не бива да стига до браузъра). Тук се чете само дневникът и
+// настройките — и те са admin-only на ниво RLS.
+
+async function invokeMail<T = unknown>(body: object): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('mail-send', { body })
+  if (error) {
+    // Edge функциите връщат тялото на грешката в context — без това
+    // потребителят вижда само „non-2xx status".
+    const ctx = (error as any).context
+    if (ctx && typeof ctx.text === 'function') {
+      try {
+        const text = await ctx.text()
+        try {
+          const parsed = JSON.parse(text)
+          throw new Error(parsed?.error ?? text ?? error.message)
+        } catch {
+          throw new Error(text || error.message)
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message !== error.message) throw e
+      }
+    }
+    throw error
+  }
+  if ((data as any)?.error) throw new Error((data as any).error)
+  return data as T
+}
+
+export async function getNotifications(limit = 200): Promise<NotificationEntry[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return (data ?? []) as NotificationEntry[]
+  })
+}
+
+export async function getNotificationSettings(): Promise<NotificationSettings> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_notification_settings')
+      .select('*')
+      .eq('id', true)
+      .single()
+    if (error) throw error
+    return data as NotificationSettings
+  })
+}
+
+export async function updateNotificationSettings(
+  patch: Partial<Omit<NotificationSettings, 'updated_at'>>,
+): Promise<void> {
+  return await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_notification_settings')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', true)
+    if (error) throw error
+  })())
+}
+
+/**
+ * Персоналът през призмата на известията. Нарочно ОТДЕЛНА заявка от
+ * getStaff: тя храни споделения мастър кеш на всички страници и няма
+ * причина да носи имейлите навсякъде.
+ */
+export async function getNotifyStaff(): Promise<NotifyStaff[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_staff')
+      .select('id,full_name,email,department,notify_email')
+      .eq('is_active', true)
+      .order('full_name')
+    if (error) throw error
+    return (data ?? []) as NotifyStaff[]
+  })
+}
+
+export async function setStaffNotifyEmail(id: string, value: boolean): Promise<void> {
+  return await trackSave((async () => {
+    const { error } = await supabase.from('crm_staff').update({ notify_email: value }).eq('id', id)
+    if (error) throw error
+  })())
+}
+
+/** Ръчно писмо до колеги (admin). */
+export async function sendStaffEmails(
+  messages: Array<{ to: string; to_name?: string; subject: string; text: string; staff_id?: string | null }>,
+): Promise<{ results: NotificationResult[] }> {
+  return invokeMail({ action: 'send', messages })
+}
+
+/** Пробно писмо — без адрес отива на test_email от настройките. */
+export async function sendTestEmail(to?: string): Promise<{ results: NotificationResult[] }> {
+  return invokeMail({ action: 'test', ...(to ? { to } : {}) })
+}
+
+/**
+ * Ръчно пускане на напомнянията. dryRun=true само пресмята и връща какво
+ * БИ тръгнало — без да праща и без да пише в дневника. Автоматичното
+ * пускане е същият action, но от GitHub Action-а по график.
+ */
+export async function runNotifications(dryRun: true): Promise<NotificationDryRun>
+export async function runNotifications(dryRun?: false): Promise<{ date: string; notes: string[]; sent: number; skipped: number; errors: number; results: NotificationResult[] }>
+export async function runNotifications(dryRun = false): Promise<unknown> {
+  return invokeMail({ action: 'run', dry_run: dryRun })
 }
