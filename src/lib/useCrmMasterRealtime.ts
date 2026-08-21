@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { setRealtimeHealthy } from './realtimeHealth'
 import { useRealtime } from './useRealtime'
 import { useInvalidateCrm } from './queries'
 
@@ -44,14 +45,34 @@ export function useCrmMasterRealtime() {
     invalidateClients, invalidateCells, invalidateColumns, invalidateDropdowns,
   } = useInvalidateCrm()
 
+  const refreshAll = () => {
+    invalidateClients()
+    invalidateCells()
+    invalidateColumns()
+    invalidateDropdowns()
+  }
+  const refreshRef = useRef(refreshAll)
+  refreshRef.current = refreshAll
+
+  // Първото SUBSCRIBED е нормалното вдигане. Всяко следващо значи, че
+  // връзката е падала и се е върнала — а събитията от прекъсването са
+  // загубени завинаги. Затова тогава се пречита всичко.
+  const wasSubscribed = useRef(false)
+
   useRealtime({
     channel: 'crm-master',
     tables: ['crm_cell_values', 'crm_clients'],
-    onChange: () => {
-      invalidateClients()
-      invalidateCells()
-      invalidateColumns()
-      invalidateDropdowns()
+    onChange: () => refreshRef.current(),
+    onStatus: status => {
+      if (status === 'SUBSCRIBED') {
+        setRealtimeHealthy(true)
+        if (wasSubscribed.current) refreshRef.current()  // наваксваме пропуснатото
+        wasSubscribed.current = true
+      } else {
+        // CHANNEL_ERROR / TIMED_OUT / CLOSED — от този момент кешът не бива
+        // да се доверява на абонамента и се връща към 5-минутното поведение.
+        setRealtimeHealthy(false)
+      }
     },
     shouldDefer: () => {
       for (const g of guards) if (g()) return true

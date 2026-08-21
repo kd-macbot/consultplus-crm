@@ -17,17 +17,25 @@ interface RealtimeOptions {
    * пак след debounceMs.
    */
   shouldDefer?: () => boolean
+  /**
+   * Известява за състоянието на канала: 'SUBSCRIBED', 'CHANNEL_ERROR',
+   * 'TIMED_OUT', 'CLOSED'. Без него никой не знае дали връзката е жива —
+   * а тихо умрял абонамент изглежда точно като „няма промени".
+   */
+  onStatus?: (status: string) => void
 }
 
 /**
  * Слуша Supabase Realtime за промени по подадените таблици и вика onChange
  * (debounced). Така промени от колеги се отразяват без ръчен refresh.
  */
-export function useRealtime({ channel, tables, onChange, enabled = true, debounceMs = 1200, shouldDefer }: RealtimeOptions) {
+export function useRealtime({ channel, tables, onChange, enabled = true, debounceMs = 1200, shouldDefer, onStatus }: RealtimeOptions) {
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
   const deferRef = useRef(shouldDefer)
   deferRef.current = shouldDefer
+  const statusRef = useRef(onStatus)
+  statusRef.current = onStatus
 
   const tablesKey = tables.join(',')
 
@@ -51,11 +59,13 @@ export function useRealtime({ channel, tables, onChange, enabled = true, debounc
     for (const table of tables) {
       ch.on('postgres_changes', { event: '*', schema: 'public', table }, trigger)
     }
-    ch.subscribe()
+    ch.subscribe(status => statusRef.current?.(status))
 
     return () => {
       if (timer) clearTimeout(timer)
       supabase.removeChannel(ch)
+      // Каналът вече го няма — не бива да минава за жив.
+      statusRef.current?.('CLOSED')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel, tablesKey, enabled, debounceMs])
