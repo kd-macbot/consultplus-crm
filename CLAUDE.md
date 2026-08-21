@@ -44,7 +44,10 @@ CRM за българска счетоводна фирма (Консулт Пл
   attemptAutoReload). Запис: `trackSave` (15s timeout → auto-reload при hang)
 - `recovery.ts` — `attemptAutoReload` със smart backoff (max 4 reload-а/5мин)
 - `queries.ts` — RQ hooks (`useClients`, `useTasks`…) + `useInvalidateCrm()`;
-  staleTime 5мин, refetchOnWindowFocus ИЗКЛЮЧЕН (умишлено!)
+  staleTime 5мин по подразбиране, refetchOnWindowFocus ИЗКЛЮЧЕН (умишлено!).
+  ИЗКЛЮЧЕНИЕ: мастър заявките (clients/columns/cells/dropdowns) са с
+  `MASTER_STALE` = **30 мин** — свежестта им идва от споделения realtime
+  абонамент, не от изтичане на кеша. НЕ вдигай това, ако абонаментът спре.
 - `usePendingPatches.ts` — durable pending слой (localStorage) за записи:
   промяна оцелява refetch/reload до потвърден запис. Ползва се от Trz и
   WorkSheet; Checklist има собствена по-стара имплементация (не пипай без повод)
@@ -54,6 +57,19 @@ CRM за българска счетоводна фирма (Консулт Пл
   `calcTenure`, `namesMatch`, `previousMonth`, `workingDays*` (Пн-Пт, БЕЗ
   официални празници — ако се добавят, пипа се само тук)
 - `useRealtime.ts` — подписка по таблици → invalidate (с optional shouldDefer)
+- `useCrmMasterRealtime.ts` — ЕДИН споделен абонамент за мастър таблиците
+  (crm_cell_values + crm_clients), монтиран в **Layout** → активен на ВСЯКА
+  страница. Преди беше преписан в 5 страници, а другите 12, които четат същите
+  данни, нямаха абонамент изобщо. Debounce 5 сек (не 1200 мс): стига до повече
+  хора, а презареждането тегли най-тежката заявка.
+  **`useRefreshGuard(isEditing)`** — страница, в която се пише, регистрира
+  guard; докато той връща true, споделеното презареждане изчаква. Това замени
+  `shouldDefer` на собствените абонаменти. Ако добавяш страница с редакция на
+  клетки, регистрирай guard — иначе свежите данни презаписват полето изпод
+  ръцете на колегата.
+- `monitoring.ts` / `sentryClient.ts` — мониторинг на грешките (виж по-долу).
+  Двата файла НЕ се сливат: `sentryClient.ts` има поименни статични импорти,
+  за да може Rollup да отреже Replay/tracing (150 kB → 26 kB).
 - `contract.ts` — шаблони на документи: `splitLegalForm` (АВОМИС ЕООД → име + форма),
   `transliterate` (Закона за транслитерацията, вкл. -ия→-ia), `buildContractValues`,
   `fillTemplate`, `missingFields`. Шаблоните са в БД; `contractTemplates.ts` са
@@ -121,7 +137,7 @@ CRM за българска счетоводна фирма (Консулт Пл
 `Оставащ = От минали години + За тек. година + Допълнителен − Σ(одобрени vacation работни дни)`
 Използваните дни се смятат АВТОМАТИЧНО от crm_absences (само status=approved).
 
-## Миграции (25→52, всички пуснати на dev + prod)
+## Миграции (25→55, всички пуснати на dev + prod)
 
 025/026 чек лист · 027 additional_departments · 028 профили · 029 колони
 is_hidden · 030 плащания · 031 absences+quota · 032 approval workflow ·
@@ -151,6 +167,26 @@ master колона „Касов апарат"=ДА; апарати × месе
 profiles↔crm_staff в базата, затова функцията повтаря namesMatch в SQL:
 lower+btrim+collapse spaces; брои и additional_departments) · 055 лого по шаблон
 (`show_logo` в crm_contract_templates, default true)
+
+## CI и инструменти
+
+`.github/workflows/ci.yml` — lint + тестове + build (`tsc` + vite). Пуска се на
+PR **и към main, и към dev**, плюс при push към двата. Дълго време пазеше само
+main, тоест PR-ите към dev минаваха без нито една проверка — а именно на dev
+се тества.
+
+103 теста (`npm test`, vitest) — чиста логика: `contract`, `utils`, `trz`,
+`tableIndices`, `subscriptionBuckets`, `monitoring`. НЯМА тестове на компоненти
+(няма jsdom/testing-library) и НЯМА тестове на `storage.ts` — той иска мокване
+на Supabase. Знае се, съзнателно е.
+
+`npm run lint` излиза с 0 при warning-и; в момента са 26 (най-вече неползвани
+променливи). Ако решиш да не растат — `--max-warnings 26`.
+
+`.github/dependabot.yml` — месечен ГРУПИРАН PR за npm и за самите Actions.
+Групиран нарочно: един преглед на месец, а не двайсет PR-а, които никой не
+отваря. Security alerts са ОТДЕЛНА настройка в Settings → Security (не се
+правят от файл).
 
 ## Мониторинг на грешките
 
@@ -250,9 +286,31 @@ GitHub — без нея бекъпите са безполезни).
    crm_contacts + вадене от RegData. Причина да НЕ се пипа таблицата Клиенти —
    името е EAV и `clientDisplayName` се ползва на 13 места. NB: същият списък
    с форми стои дублиран в `cleanName()` на edge функцията swift-task.
-10. Стари клони (~67) — НЕ могат да се трият (org ruleset „Restrict deletions"
+10. Две уязвимости БЕЗ поправка (08.2026, `npm audit`):
+   – **`xlsx` (high)** — prototype pollution + ReDoS в SheetJS. Публикуваният в
+     npm пакет е изоставен; поддържаната версия е на cdn.sheetjs.com. Импортът
+     е динамичен и парсва файлове САМО от колеги (Импорт), не от външни хора.
+     Приет риск. Алтернативи, ако някога стане нужно: CDN версията или exceljs.
+   – **`react-router` (moderate)** — open redirect; пълната поправка иска 7.x,
+     което е major и пипа рутирането на всичките 26 страници. Приложението
+     ползва HashRouter, което стеснява проблема. Не се прави без причина.
+   Останалите 5 (ws, uuid, @remix-run/router…) са поправени.
+11. Стари клони (~67) — НЕ могат да се трият (org ruleset „Restrict deletions"
    блокира; git push --delete → 403, UI → „could not be deleted"). Решено да
    се оставят — безобидни са, козметично. НЕ разхлабвай правилото.
+
+## Отворени ръчни задачи (извън репото)
+
+Неща, които НЕ се правят от код — питай потребителя дали са свършени, ако
+темата изникне. Състояние към 08.2026:
+
+- **`VITE_SENTRY_DSN` за Production** в Cloudflare. Добавена е за Preview и е
+  тествана там (тестовата грешка стигна до Sentry). Ако не е и за Production,
+  на live мониторингът просто не праща — нищо не се чупи.
+- **„Възстанови стартовите"** в Шаблони на LIVE — за да влязат пълномощното и
+  маркерът за пол. Шаблоните живеят в БД, не в кода, затова деплоят не ги носи.
+- **`BACKUP_PASSPHRASE` записана ИЗВЪН GitHub** (мениджър за пароли). Без нея
+  90-дневните архиви са нечетими, а GitHub не я показва обратно.
 
 ## Уроци от бъгове (не ги повтаряй)
 
