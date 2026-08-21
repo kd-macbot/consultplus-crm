@@ -854,3 +854,74 @@ export interface Contract {
  */
 export type ContractListItem = Omit<Contract, 'body_snapshot' | 'fields'>
 
+
+// ============================================================
+// Известия по имейл до служителите (migration 056)
+// ============================================================
+export type NotificationKind = 'task_due' | 'checklist_dds' | 'manual' | 'test'
+export type NotificationStatus = 'pending' | 'sent' | 'error'
+
+/** Ред от дневника — какво е тръгнало, до кого и минало ли е. */
+export interface NotificationEntry {
+  id: string
+  kind: NotificationKind | string
+  to_email: string
+  to_name: string | null
+  staff_id: string | null
+  subject: string
+  /** Текстовият вариант на писмото (HTML-ът не се пази). */
+  body: string
+  status: NotificationStatus | string
+  error: string | null
+  provider_id: string | null
+  dedupe_key: string | null
+  /** null = автоматично изпратено от cron-а. */
+  created_by: string | null
+  created_at: string
+}
+
+export interface NotificationSettings {
+  enabled: boolean
+  tasks_enabled: boolean
+  tasks_days_before: number
+  checklist_enabled: boolean
+  /** Дати от месеца, на които се напомня за чек листа (срок 14-ти). */
+  checklist_days: number[]
+  test_email: string | null
+  updated_at: string
+}
+
+/** Резултат за едно писмо от edge функцията mail-send. */
+export interface NotificationResult {
+  to: string
+  kind: string
+  subject: string
+  status: 'sent' | 'error' | 'skipped'
+  error?: string
+}
+
+/** Черновата от „Пусни сега (пробно)" — какво БИ тръгнало. */
+export interface NotificationDraft {
+  kind: string
+  to: string
+  to_name: string
+  subject: string
+  text: string
+}
+
+export interface NotificationDryRun {
+  dry_run: true
+  enabled: boolean
+  date: string
+  notes: string[]
+  drafts: NotificationDraft[]
+}
+
+/** Служител, гледан през призмата на известията (имейл + отписване). */
+export interface NotifyStaff {
+  id: string
+  full_name: string
+  email: string | null
+  department: string | null
+  notify_email: boolean
+}
