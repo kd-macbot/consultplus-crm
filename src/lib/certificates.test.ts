@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   certStatus, daysLeft, daysBetween, normalizeSerial, looksLikeExcelFloat,
-  splitAssignee, CERT_STATUS_LABELS,
+  looksTruncated, splitAssignee, CERT_STATUS_LABELS,
 } from './certificates'
 
 const TODAY = '2026-08-28'
@@ -51,7 +51,7 @@ describe('daysLeft / daysBetween', () => {
 describe('normalizeSerial', () => {
   it('маха интервали и тирета', () => {
     expect(normalizeSerial(' 3356 7737-9738 5379401 ')).toEqual({
-      value: '3356773797385379401', error: null,
+      value: '3356773797385379401', error: null, warning: null,
     })
   })
   it('хваща номер, минал през Excel като число', () => {
@@ -64,8 +64,33 @@ describe('normalizeSerial', () => {
     expect(normalizeSerial('ABC123').error).toContain('само цифри')
   })
   it('празното е позволено — номерът може да дойде по-късно', () => {
-    expect(normalizeSerial('')).toEqual({ value: '', error: null })
-    expect(normalizeSerial('   ')).toEqual({ value: '', error: null })
+    expect(normalizeSerial('')).toEqual({ value: '', error: null, warning: null })
+    expect(normalizeSerial('   ')).toEqual({ value: '', error: null, warning: null })
+  })
+})
+
+describe('looksTruncated', () => {
+  it('хваща закръглените от Excel — 15 значещи цифри и нули отзад', () => {
+    // Точно случаят от подадения файл: изглежда като цял 19-цифрен номер.
+    expect(looksTruncated('2645493022173440000')).toBe(true)
+    expect(looksTruncated('8575064889358200000')).toBe(true)
+    expect(looksTruncated('116856180670558000')).toBe(true)
+  })
+  it('не пипа истинските номера', () => {
+    expect(looksTruncated('3356773797385379401')).toBe(false)
+  })
+  it('къси номера и нецифрени не се проверяват', () => {
+    expect(looksTruncated('120000')).toBe(false)
+    // 15 цифри е границата — дотам плаващата запетая не губи нищо.
+    expect(looksTruncated('100000000000000')).toBe(false)
+    expect(looksTruncated('ABC0000')).toBe(false)
+    expect(looksTruncated('')).toBe(false)
+  })
+  it('предупреждава, но НЕ отказва записа', () => {
+    const r = normalizeSerial('2645493022173440000')
+    expect(r.error).toBeNull()
+    expect(r.warning).toContain('нули')
+    expect(r.value).toBe('2645493022173440000')
   })
 })
 

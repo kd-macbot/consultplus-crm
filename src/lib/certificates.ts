@@ -67,7 +67,25 @@ export function looksLikeExcelFloat(raw: string): boolean {
   return /^\s*[\d.]+\s*[eE][+-]?\d+\s*$/.test(raw)
 }
 
-export interface SerialCheck { value: string; error: string | null }
+/**
+ * Номер, който ИЗГЛЕЖДА цял, но е закръглен от Excel.
+ *
+ * Правилото не е „много нули на края", а точното поведение на числото с
+ * плаваща запетая: пазят се 15 значещи цифри, всичко след тях става нула.
+ * Тоест подозрителен е номер по-дълъг от 15 цифри, чиято ОПАШКА СЛЕД
+ * 15-ата цифра е само нули — „2645493022173440000" е точно това, докато
+ * „3356773797385379401" минава чист.
+ *
+ * Не е доказателство (истински номер може да свърши на нули), затова е
+ * ПРЕДУПРЕЖДЕНИЕ, не отказ: блокирането би спряло и валиден номер.
+ */
+export function looksTruncated(serial: string): boolean {
+  const digits = (serial ?? '').replace(/[\s-]/g, '')
+  if (!/^\d+$/.test(digits) || digits.length <= 15) return false
+  return /^0+$/.test(digits.slice(15))
+}
+
+export interface SerialCheck { value: string; error: string | null; warning: string | null }
 
 /**
  * Нормализира сериен номер: маха интервали и разделители, приема само
@@ -76,18 +94,25 @@ export interface SerialCheck { value: string; error: string | null }
  */
 export function normalizeSerial(raw: string): SerialCheck {
   const trimmed = (raw ?? '').trim()
-  if (!trimmed) return { value: '', error: null }
+  if (!trimmed) return { value: '', error: null, warning: null }
   if (looksLikeExcelFloat(trimmed)) {
     return {
       value: trimmed,
       error: 'Това е номер, минал през Excel като число — цифрите след 15-ата са загубени. Въведи го от източника.',
+      warning: null,
     }
   }
   const cleaned = trimmed.replace(/[\s-]/g, '')
   if (!/^\d+$/.test(cleaned)) {
-    return { value: cleaned, error: 'Серийният номер съдържа само цифри.' }
+    return { value: cleaned, error: 'Серийният номер съдържа само цифри.', warning: null }
   }
-  return { value: cleaned, error: null }
+  return {
+    value: cleaned,
+    error: null,
+    warning: looksTruncated(cleaned)
+      ? 'Номерът завършва с много нули — типичният белег на закръгляне от Excel. Сверѝ го със сертификата.'
+      : null,
+  }
 }
 
 /**

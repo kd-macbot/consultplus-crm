@@ -440,6 +440,11 @@ function CertificateForm({ cert, staff, onClose, onSaved, user }: {
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" /> {serialCheck.error}
               </p>
             )}
+            {!serialCheck.error && serialCheck.warning && (
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 flex items-start gap-1">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" /> {serialCheck.warning}
+              </p>
+            )}
           </div>
 
           <div>
