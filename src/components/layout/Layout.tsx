@@ -8,7 +8,7 @@ import { useMyStaff } from '../../lib/useMyStaff'
 import { useCrmMasterRealtime } from '../../lib/useCrmMasterRealtime'
 import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
-  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark, KanbanSquare, Coins, MessageSquare, Calculator, FileSignature, BellRing,
+  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark, KanbanSquare, Coins, MessageSquare, Calculator, FileSignature, BellRing, KeyRound,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -72,6 +72,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/absence-requests', label: 'Заявки за отпуска', icon: Inbox, roles: ['admin', 'manager'], badgeKeys: ['absenceRequests'], showOnlyForTrzOrAdmin: true },
       { to: '/vacations', label: 'Справка отпуска', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
       { to: '/form76', label: 'Форма 76', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
+      { to: '/certificates', label: 'Електронни подписи', icon: KeyRound, roles: ['admin', 'manager'], showOnlyForManagement: true },
       { to: '/notifications', label: 'Известия', icon: BellRing, roles: ['admin'] },
       { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin'] },
       { to: '/admin', label: 'Настройки', icon: Settings, roles: ['admin'] },
