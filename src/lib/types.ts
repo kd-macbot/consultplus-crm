@@ -925,3 +925,31 @@ export interface NotifyStaff {
   department: string | null
   notify_email: boolean
 }
+
+// ============================================================
+// Електронни подписи (КЕП) — инвентар (migration 057)
+// ============================================================
+export interface Certificate {
+  id: string
+  /** Номерът, изписан върху самото устройство („5", „8", „A"). */
+  device_no: string | null
+  /** Автор (CN) от сертификата — собственикът, на когото е издаден. */
+  owner_cn: string | null
+  cert_type: string | null
+  /** ТЕКСТ, не число: 19-цифрен е и всяко числово поле го поврежда. */
+  serial_number: string | null
+  valid_from: string | null
+  valid_to: string | null
+  pin: string | null
+  puk: string | null
+  /** null = подписът е свободен. */
+  assigned_staff_id: string | null
+  notes: string | null
+  position: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Полетата, които формата подава при създаване/редакция. */
+export type CertificatePatch = Partial<Omit<Certificate, 'id' | 'created_by' | 'created_at' | 'updated_at'>>

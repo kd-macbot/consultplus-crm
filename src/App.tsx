@@ -27,6 +27,7 @@ const ChecklistPage = lazy(() => import('./pages/Checklist').then(m => ({ defaul
 const CashLoansPage = lazy(() => import('./pages/CashLoans').then(m => ({ default: m.CashLoansPage })))
 const MessagesPage = lazy(() => import('./pages/Messages').then(m => ({ default: m.MessagesPage })))
 const NotificationsPage = lazy(() => import('./pages/Notifications').then(m => ({ default: m.NotificationsPage })))
+const CertificatesPage = lazy(() => import('./pages/Certificates').then(m => ({ default: m.CertificatesPage })))
 const CashRegistersPage = lazy(() => import('./pages/CashRegisters').then(m => ({ default: m.CashRegistersPage })))
 const ContractsPage = lazy(() => import('./pages/Contracts').then(m => ({ default: m.ContractsPage })))
 const ClientProfilesPage = lazy(() => import('./pages/ClientProfiles').then(m => ({ default: m.ClientProfilesPage })))
@@ -106,6 +107,11 @@ export default function App() {
                     ролята се проверява тук, отделът вътре в страницата. */}
                 <Route path="/contracts" element={
                   <ProtectedRoute allowedRoles={['admin', 'manager']}><ContractsPage /></ProtectedRoute>
+                } />
+                {/* Отделът („Управление") живее в crm_staff — ролята се
+                    проверява тук, отделът вътре в страницата и в RLS. */}
+                <Route path="/certificates" element={
+                  <ProtectedRoute allowedRoles={['admin', 'manager']}><CertificatesPage /></ProtectedRoute>
                 } />
                 <Route path="/notifications" element={
                   <ProtectedRoute allowedRoles={['admin']}><NotificationsPage /></ProtectedRoute>

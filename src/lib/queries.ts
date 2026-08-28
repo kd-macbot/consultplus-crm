@@ -12,6 +12,7 @@ import {
   getCashRegisters, getCashTurnover, getCashFirmMonthly,
   getContracts, getContractTemplates, getContractBody,
   getNotifications, getNotificationSettings, getNotifyStaff,
+  getCertificates,
 } from './storage'
 import { timed } from './perf'
 import { useRealtimeHealthy } from './realtimeHealth'
@@ -37,6 +38,7 @@ export const qk = {
   notifications: ['notifications'] as const,
   notificationSettings: ['notificationSettings'] as const,
   notifyStaff: ['notifyStaff'] as const,
+  certificates: ['certificates'] as const,
 }
 
 /**
@@ -220,6 +222,10 @@ export function useNotificationSettings() {
 export function useNotifyStaff() {
   return useQuery({ queryKey: qk.notifyStaff, queryFn: getNotifyStaff })
 }
+// Електронни подписи — малка таблица, гледат я двама души.
+export function useCertificates() {
+  return useQuery({ queryKey: qk.certificates, queryFn: getCertificates })
+}
 export function useContracts() {
   return useQuery({ queryKey: qk.contracts, queryFn: getContracts })
 }
@@ -334,6 +340,7 @@ export function useInvalidateCrm() {
       qc.invalidateQueries({ queryKey: ['clientMessages'] }),
     invalidateMessageTemplates: () =>
       qc.invalidateQueries({ queryKey: ['messageTemplates'] }),
+    invalidateCertificates: () => qc.invalidateQueries({ queryKey: qk.certificates }),
     invalidateNotifications: () => qc.invalidateQueries({ queryKey: qk.notifications }),
     invalidateNotificationSettings: () => qc.invalidateQueries({ queryKey: qk.notificationSettings }),
     invalidateNotifyStaff: () => qc.invalidateQueries({ queryKey: qk.notifyStaff }),
