@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem, NotificationEntry, NotificationSettings, NotificationResult, NotificationDryRun, NotifyStaff } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem, NotificationEntry, NotificationSettings, NotificationResult, NotificationDryRun, NotifyStaff, Certificate, CertificatePatch } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -2792,4 +2792,75 @@ export async function runNotifications(dryRun: true): Promise<NotificationDryRun
 export async function runNotifications(dryRun?: false): Promise<{ date: string; notes: string[]; sent: number; skipped: number; errors: number; results: NotificationResult[] }>
 export async function runNotifications(dryRun = false): Promise<unknown> {
   return invokeMail({ action: 'run', dry_run: dryRun })
+}
+
+// ==================== ЕЛЕКТРОННИ ПОДПИСИ (КЕП) ====================
+// RLS пуска само admin и мениджър от „Управление" — редът съдържа ПИН и
+// ПУК. Затова тук няма гейт по роля: базата връща празно на всеки друг.
+//
+// Смяната на зачисления колега се пише в одит лога — това е историята
+// „кой кога е държал подписа" (решение 08.2026: без отделна таблица).
+
+export async function getCertificates(): Promise<Certificate[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_certificates')
+      .select('*')
+      .order('position', { ascending: true })
+      .order('created_at', { ascending: true })
+    if (error) throw error
+    return (data ?? []) as Certificate[]
+  })
+}
+
+export async function addCertificate(
+  patch: CertificatePatch,
+  audit?: { userId?: string; userName?: string },
+): Promise<Certificate> {
+  return await trackSave((async () => {
+    const { data, error } = await supabase
+      .from('crm_certificates')
+      .insert([{ ...patch, created_by: audit?.userId ?? null }])
+      .select()
+      .single()
+    if (error) throw error
+    const row = data as Certificate
+    await logAudit(audit?.userId, audit?.userName ?? '', 'create_certificate', 'certificate', row.id, {
+      new_value: row.device_no ? `подпис №${row.device_no}` : 'нов подпис',
+    })
+    return row
+  })())
+}
+
+export async function updateCertificate(
+  id: string,
+  patch: CertificatePatch,
+  audit?: { userId?: string; userName?: string; oldAssignee?: string; newAssignee?: string },
+): Promise<void> {
+  return await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_certificates')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+    // Смяната на колега се записва отделно и с ИМЕНА (не id-та) — одит
+    // логът се чете от човек, а staff id не говори нищо.
+    if (audit && audit.oldAssignee !== audit.newAssignee) {
+      await logAudit(audit.userId, audit.userName ?? '', 'assign_certificate', 'certificate', id, {
+        old_value: audit.oldAssignee || 'свободен',
+        new_value: audit.newAssignee || 'свободен',
+      })
+    }
+  })())
+}
+
+export async function deleteCertificate(
+  id: string,
+  audit?: { userId?: string; userName?: string; label?: string },
+): Promise<void> {
+  const { error } = await supabase.from('crm_certificates').delete().eq('id', id)
+  if (error) throw error
+  await logAudit(audit?.userId, audit?.userName ?? '', 'delete_certificate', 'certificate', id, {
+    old_value: audit?.label ?? '',
+  })
 }
