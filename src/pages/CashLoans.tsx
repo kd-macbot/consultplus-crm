@@ -161,12 +161,13 @@ function CashLoanSection({ kind, year, search }: { kind: CashLoanKind; year: num
     return row.monthly.slice(0, monthIdx + 1).reduce((s, v) => s + v, 0)
   }
 
-  const footerTotals = useMemo(() => {
-    const perMonth = ALL_MONTHS.map((_, i) =>
-      filteredRows.reduce((s, r) => s + (cumulative ? r.monthly.slice(0, i + 1).reduce((x, v) => x + v, 0) : r.monthly[i]), 0))
-    const grand = filteredRows.reduce((s, r) => s + r.total, 0)
-    return { perMonth, grand }
-  }, [filteredRows, cumulative])
+  // Сборът за годината храни лентата с филтрите. Колоната „Общо" на реда и
+  // редът „Общо" под таблицата бяха махнати (08.2026) — при 12 месеца на
+  // екран те само шумят, а числото за годината стои горе.
+  const grandTotal = useMemo(
+    () => filteredRows.reduce((s, r) => s + r.total, 0),
+    [filteredRows],
+  )
 
   async function exportSheet() {
     if (filteredRows.length === 0) { toast.error('Няма редове за експорт'); return }
@@ -216,8 +217,8 @@ function CashLoanSection({ kind, year, search }: { kind: CashLoanKind; year: num
         <div className="ml-auto flex items-center gap-4">
           <span><strong className="text-foreground">{filteredRows.length}</strong> {filteredRows.length === 1 ? 'фирма' : 'фирми'}</span>
           <span>Общо за годината: <strong className={`tabular-nums ${
-            footerTotals.grand > 0 ? 'text-emerald-700 dark:text-emerald-400' : footerTotals.grand < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'
-          }`}>{fmt(footerTotals.grand) || '0,00'} €</strong></span>
+            grandTotal > 0 ? 'text-emerald-700 dark:text-emerald-400' : grandTotal < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'
+          }`}>{fmt(grandTotal) || '0,00'} €</strong></span>
           <Button variant="outline" size="sm" onClick={() => void exportSheet()} title="Excel експорт на видимите редове">
             <Download className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Експорт</span>
@@ -241,13 +242,12 @@ function CashLoanSection({ kind, year, search }: { kind: CashLoanKind; year: num
                 {MONTH_NAMES.map(m => (
                   <th key={m} className="px-2 py-2 text-right text-xs font-medium uppercase tracking-wider whitespace-nowrap">{m.slice(0, 3)}</th>
                 ))}
-                <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider whitespace-nowrap" title={cumulative ? 'Общо за годината' : 'Сбор на месечните движения'}>Общо</th>
               </tr>
             </thead>
             <tbody>
               {filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={15} className="p-10 text-center text-muted-foreground">
+                  <td colSpan={14} className="p-10 text-center text-muted-foreground">
                     Няма записи „{kind === 'cash' ? 'Каса' : 'Заем'}" за {year} г. — добавят се от Работния лист (клетката „Каса/Заем" до „Банка") или с клик върху клетка тук.
                   </td>
                 </tr>
@@ -277,31 +277,10 @@ function CashLoanSection({ kind, year, search }: { kind: CashLoanKind; year: num
                         </td>
                       )
                     })}
-                    <td className={`px-3 py-1.5 text-right text-xs font-semibold tabular-nums whitespace-nowrap ${
-                      row.total > 0 ? 'text-emerald-700 dark:text-emerald-400' : row.total < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
-                    }`}>
-                      {fmt(row.total)}
-                    </td>
                   </tr>
                 )
               })}
             </tbody>
-            {filteredRows.length > 0 && (
-              <tfoot>
-                <tr className="border-t-2 border-border bg-muted/30 font-semibold text-foreground">
-                  <td className="px-3 py-2"></td>
-                  <td className="px-3 py-2 sticky left-0 bg-muted/30 z-20">Общо</td>
-                  {footerTotals.perMonth.map((v, i) => (
-                    <td key={i} className={`px-2 py-2 text-right text-xs tabular-nums whitespace-nowrap ${
-                      v > 0 ? 'text-emerald-700 dark:text-emerald-400' : v < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
-                    }`}>{fmt(v)}</td>
-                  ))}
-                  <td className={`px-3 py-2 text-right text-xs tabular-nums whitespace-nowrap ${
-                    footerTotals.grand > 0 ? 'text-emerald-700 dark:text-emerald-400' : footerTotals.grand < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
-                  }`}>{fmt(footerTotals.grand)}</td>
-                </tr>
-              </tfoot>
-            )}
           </table>
         )}
       </div>
