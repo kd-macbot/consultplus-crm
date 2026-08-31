@@ -305,6 +305,14 @@ function pathGroup(url: string): string {
   }
 }
 
+function pathOf(url: string): string {
+  try {
+    return new URL(url).pathname
+  } catch {
+    return ""
+  }
+}
+
 function extractListing(html: string, base: string): FeedItem[] {
   let origin = ""
   try { origin = new URL(base).origin } catch { origin = "" }
@@ -318,16 +326,35 @@ function extractListing(html: string, base: string): FeedItem[] {
     return true
   })
 
-  const groups = new Map<string, PageLink[]>()
-  for (const a of anchors) {
-    const g = pathGroup(a.link)
-    const list = groups.get(g) ?? []
-    list.push(a)
-    groups.set(g, list)
+  // НАЙ-СИЛНИЯТ сигнал е самият подаден адрес: човек сочи раздела, който
+  // чете ("/novini/nap/"), а новините стоят под него. "Най-многолюдната
+  // група" сама по себе си бърка — в kik-info страничното меню с 31
+  // калкулатора е по-многолюдно от списъка с новини, и печели то.
+  const basePath = pathOf(base).replace(/\/$/, "")
+  const baseGroup = pathGroup(base)
+
+  let best = anchors.filter(a => {
+    const p = pathOf(a.link)
+    return basePath.length > 1 && p.startsWith(basePath + "/")
+  })
+
+  if (best.length < MIN_GROUP && baseGroup.length > 1) {
+    best = anchors.filter(a => pathGroup(a.link) === baseGroup)
   }
 
-  let best: PageLink[] = []
-  for (const list of groups.values()) if (list.length > best.length) best = list
+  if (best.length < MIN_GROUP) {
+    const groups = new Map<string, PageLink[]>()
+    for (const a of anchors) {
+      const g = pathGroup(a.link)
+      const list = groups.get(g) ?? []
+      list.push(a)
+      groups.set(g, list)
+    }
+    let largest: PageLink[] = []
+    for (const list of groups.values()) if (list.length > largest.length) largest = list
+    best = largest
+  }
+
   if (best.length < MIN_GROUP) best = anchors
 
   return best.map(a => ({ title: a.title, link: a.link, summary: "", published: null }))
