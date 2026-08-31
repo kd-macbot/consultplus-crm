@@ -730,6 +730,8 @@ export interface NewsSettings {
 export interface FeedCheck {
   ok: boolean
   error?: string
+  /** 'feed' = истински RSS/Atom; 'page' = четен е списъкът в страницата. */
+  mode?: 'feed' | 'page'
   feed_url?: string
   count?: number
   latest?: Array<{ title: string; link: string; published: string | null }>
