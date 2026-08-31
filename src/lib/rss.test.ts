@@ -253,3 +253,42 @@ describe('extractListing — гранични случаи', () => {
     expect(extractListing(html, 'https://x.bg/spisak/')).toHaveLength(2)
   })
 })
+
+describe('extractListing — менюто не бива да побеждава новините', () => {
+  // Точният случай от kik-info: странично меню с 31 калкулатора, всеки с
+  // дълъг надпис под обща пътека. Само по "най-многолюдна група" печели
+  // менюто и лентата се пълни с "Калкулатор: …".
+  const MENU_HEAVY = `<html><body>
+    <aside>
+      ${Array.from({ length: 31 }, (_, i) =>
+        `<a href="/kalkulatori/kalkulator-${i}.php">Калкулатор: Заплата по трудов договор и всички начисления ${i}</a>`,
+      ).join('\n')}
+    </aside>
+    <div class="content">
+      <a href="/novini/nap/NAP-Politsiyata-proveri-obekti.15317.php">НАП и Полицията провериха обекти по морето през август</a>
+      <a href="/novini/nap/Sroka-po-chl-55-izticha.15316.php">Срокът по чл. 55 ЗДДФЛ изтича на 30 октомври тази година</a>
+      <a href="/novini/nap/Promeni-v-naredba-N-18.15315.php">Промени в Наредба № Н-18 за касовите апарати от догодина</a>
+      <a href="/novini/nap/Novi-praktiki-pri-revizii.15314.php">Нови практики при ревизиите на дружества с нулеви обороти</a>
+    </div>
+  </body></html>`
+
+  it('взима новините от раздела, а не менюто', () => {
+    const items = extractListing(MENU_HEAVY, 'https://kik-info.com/novini/nap/')
+    expect(items).toHaveLength(4)
+    expect(items.every(i => i.link.includes('/novini/nap/'))).toBe(true)
+    expect(items.some(i => i.title.startsWith('Калкулатор'))).toBe(false)
+  })
+
+  it('раздел с една част в пътеката също работи', () => {
+    const items = extractListing(MENU_HEAVY, 'https://kik-info.com/novini/')
+    expect(items).toHaveLength(4)
+    expect(items.every(i => i.link.includes('/novini/'))).toBe(true)
+  })
+
+  it('от НАЧАЛНАТА страница пада на най-многолюдната група', () => {
+    // Тук подаденият адрес не носи информация за раздел — тогава
+    // старото правило е единственото, с което разполагаме.
+    const items = extractListing(MENU_HEAVY, 'https://kik-info.com/')
+    expect(items).toHaveLength(31)
+  })
+})
