@@ -159,3 +159,97 @@ describe('absolute / parseDate / clip', () => {
     expect(clip('късо', 20)).toBe('късо')
   })
 })
+
+// ============================================================
+// Списъчна страница (сайт без феед)
+// ============================================================
+import { extractListing, extractAnchors } from './rss'
+
+// Скелет по образец на kik-info: меню с кратки надписи, три новини с
+// дълги заглавия под обща пътека, реклама към чужд сайт, футър.
+const LISTING = `<html><body>
+  <nav>
+    <a href="/">Начало</a>
+    <a href="/novini/nap/">НАП</a>
+    <a href="/novini/trud/">Труд</a>
+    <a href="/vhod.php">Вход в системата</a>
+  </nav>
+  <div class="content">
+    <a href="/novini/nap/NAP-Politsiyata-i-Glavna-inspektsiya-po-truda-proveriha.15317.php">
+      НАП, Полицията и Главна инспекция по труда провериха обекти в морските курорти
+    </a>
+    <a href="/novini/nap/Sroka-za-podavane-na-deklaratsiya-po-chl-55.15316.php">
+      <span>Срокът за подаване на декларация по чл. 55 ЗДДФЛ изтича на 30 октомври</span>
+    </a>
+    <a href="/novini/nap/Promeni-v-naredba-N-H-18.15315.php">
+      Промени в Наредба № Н-18 за касовите апарати от началото на годината
+    </a>
+  </div>
+  <a href="https://reklama.example.com/oferta">Голяма оферта за счетоводен софтуер тук</a>
+  <footer><a href="/za-nas.php">За нас</a></footer>
+</body></html>`
+
+const BASE = 'https://kik-info.com/novini/nap/'
+
+describe('extractListing', () => {
+  const items = extractListing(LISTING, BASE)
+
+  it('хваща трите новини и нищо друго', () => {
+    expect(items).toHaveLength(3)
+    expect(items[0].title).toContain('НАП, Полицията и Главна инспекция')
+    expect(items[0].link)
+      .toBe('https://kik-info.com/novini/nap/NAP-Politsiyata-i-Glavna-inspektsiya-po-truda-proveriha.15317.php')
+  })
+
+  it('маха вложените тагове от заглавието', () => {
+    expect(items[1].title).toBe('Срокът за подаване на декларация по чл. 55 ЗДДФЛ изтича на 30 октомври')
+  })
+
+  it('пази реда на страницата — най-горе е най-новото', () => {
+    expect(items.map(i => i.link.match(/\.(\d+)\.php$/)![1])).toEqual(['15317', '15316', '15315'])
+  })
+
+  it('изхвърля външните връзки (реклами и партньори)', () => {
+    expect(items.some(i => i.link.includes('reklama.example.com'))).toBe(false)
+  })
+
+  it('изхвърля менюто — късият текст не е заглавие', () => {
+    expect(items.some(i => i.title === 'Вход в системата')).toBe(false)
+    expect(items.some(i => i.link.endsWith('/za-nas.php'))).toBe(false)
+  })
+
+  it('няма резюме и дата — от списъчна страница не се вадят надеждно', () => {
+    expect(items[0].summary).toBe('')
+    expect(items[0].published).toBeNull()
+  })
+})
+
+describe('extractAnchors', () => {
+  it('пропуска котви, javascript и mailto', () => {
+    const html = `
+      <a href="#gore">Връщане към началото на страницата тук</a>
+      <a href="javascript:void(0)">Отвори менюто с всички категории</a>
+      <a href="mailto:office@x.bg">Пишете ни на електронната поща</a>
+      <a href="/novini/dobra-novina-za-schetovoditelite.1.php">Добра новина за счетоводителите днес</a>`
+    const links = extractAnchors(html, 'https://x.bg/')
+    expect(links).toHaveLength(1)
+    expect(links[0].link).toBe('https://x.bg/novini/dobra-novina-za-schetovoditelite.1.php')
+  })
+})
+
+describe('extractListing — гранични случаи', () => {
+  it('страница без връзки не хвърля', () => {
+    expect(extractListing('<html><body>нищо</body></html>', BASE)).toEqual([])
+  })
+  it('връзка към самата страница не е новина', () => {
+    const html = `<a href="/novini/nap/">Новини от НАП — целият раздел тук</a>`
+    expect(extractListing(html, BASE)).toEqual([])
+  })
+  it('при малко връзки взима каквото има, вместо да върне празно', () => {
+    // Под прага за група (3) — по-добре две новини, отколкото нищо.
+    const html = `
+      <a href="/a/parva-novina-s-dostatachno-dalgo-zaglavie.php">Първа новина с достатъчно дълго заглавие</a>
+      <a href="/b/vtora-novina-s-dostatachno-dalgo-zaglavie.php">Втора новина с достатъчно дълго заглавие</a>`
+    expect(extractListing(html, 'https://x.bg/spisak/')).toHaveLength(2)
+  })
+})

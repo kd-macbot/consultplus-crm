@@ -123,3 +123,87 @@ export function clip(s: string, n: number): string {
   const t = (s ?? '').trim()
   return t.length <= n ? t : t.slice(0, n - 1).trimEnd() + '…'
 }
+
+// ============================================================
+// Четене на СПИСЪЧНА СТРАНИЦА, когато сайтът няма феед
+// ============================================================
+// Български институционални сайтове (НАП, КиК Инфо) не публикуват RSS.
+// Затова новините се вадят от самата страница.
+//
+// БЕЗ ръчно настроен шаблон за всеки сайт: такъв трябва да се поддържа и
+// се чупи тихо. Вместо това се ползва това, което всяка списъчна страница
+// има по устройство — МНОГО връзки с ДЪЛЪГ текст, сочещи към ЕДНА И СЪЩА
+// част от сайта. Менюто, футърът и рекламите имат кратък текст и водят
+// навсякъде; заглавията на новини са дълги и споделят обща пътека.
+//
+// Затова: взимат се връзките с достатъчно дълъг текст, групират се по
+// първата част от пътеката и печели най-многолюдната група.
+
+/** Под този праг текстът е меню („Вход", „За нас"), не заглавие. */
+const MIN_TITLE_LEN = 25
+const MAX_TITLE_LEN = 300
+/** Под три връзки не е списък, а съвпадение. */
+const MIN_GROUP = 3
+
+export interface PageLink { title: string; link: string }
+
+/** Всички <a href> с техния текст, в реда на страницата. */
+export function extractAnchors(html: string, base: string): PageLink[] {
+  const out: PageLink[] = []
+  const re = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(html)) !== null) {
+    const href = m[1].trim()
+    if (!href || href.startsWith('#') || /^(javascript|mailto|tel):/i.test(href)) continue
+    const title = stripTags(m[2])
+    if (title.length < MIN_TITLE_LEN || title.length > MAX_TITLE_LEN) continue
+    out.push({ title, link: absolute(href, base) })
+  }
+  return out
+}
+
+/** Първата част от пътеката: „/novini/12345/…" → „/novini". */
+function pathGroup(url: string): string {
+  try {
+    const p = new URL(url).pathname.split('/').filter(Boolean)
+    return '/' + (p[0] ?? '')
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Новините от списъчна страница. Връща ги в реда на страницата — най-горе
+ * обикновено е най-новото, а дата от такава страница не се вади надеждно.
+ */
+export function extractListing(html: string, base: string): FeedItem[] {
+  let origin = ''
+  try { origin = new URL(base).origin } catch { origin = '' }
+
+  const seen = new Set<string>()
+  const anchors = extractAnchors(html, base).filter(a => {
+    // Само вътрешни връзки: външните са реклами и партньори.
+    if (origin && !a.link.startsWith(origin)) return false
+    // Връзка към самата страница не е новина.
+    if (a.link.replace(/\/$/, '') === base.replace(/\/$/, '')) return false
+    if (seen.has(a.link)) return false
+    seen.add(a.link)
+    return true
+  })
+
+  const groups = new Map<string, PageLink[]>()
+  for (const a of anchors) {
+    const g = pathGroup(a.link)
+    const list = groups.get(g) ?? []
+    list.push(a)
+    groups.set(g, list)
+  }
+
+  let best: PageLink[] = []
+  for (const list of groups.values()) {
+    if (list.length > best.length) best = list
+  }
+  if (best.length < MIN_GROUP) best = anchors
+
+  return best.map(a => ({ title: a.title, link: a.link, summary: '', published: null }))
+}

@@ -300,7 +300,7 @@ export function NewsSourcesPage() {
                         {c && (
                           <div className={`text-[11px] mt-1 ${c.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                             {c.ok
-                              ? <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> {c.count} новини · последна: {c.latest?.[0]?.title}</span>
+                              ? <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> {c.count} новини ({c.mode === 'page' ? 'от страницата' : 'от феед'}) · последна: {c.latest?.[0]?.title}</span>
                               : <span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> {c.error}</span>}
                           </div>
                         )}
@@ -348,9 +348,10 @@ export function NewsSourcesPage() {
                   </Button>
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-2">
-                  Сложи адреса, който сам би отворил — функцията търси фееда в страницата,
-                  после пробва обичайните адреси и спрямо пътеката, и спрямо корена на домейна.
-                  Ако сайтът няма RSS, работи и търсене в Google Новини:{' '}
+                  Сложи адреса, който сам би отворил. Функцията търси феед (в страницата и на
+                  обичайните адреси), а ако сайтът няма такъв — чете самия списък с новини.
+                  При четене от страница има заглавие и линк, но не и резюме и дата.
+                  Работи и търсене в Google Новини:{' '}
                   <code className="text-[10px]">
                     https://news.google.com/rss/search?q=НАП+ДДС&amp;hl=bg&amp;gl=BG&amp;ceid=BG:bg
                   </code>
@@ -360,7 +361,10 @@ export function NewsSourcesPage() {
                     {checks.new.ok ? (
                       <>
                         <div className="flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3" /> Феед: {checks.new.feed_url} · {checks.new.count} новини
+                          <CheckCircle2 className="h-3 w-3" />
+                          {checks.new.mode === 'page'
+                            ? `Няма феед — чете се самата страница · ${checks.new.count} новини`
+                            : `Феед: ${checks.new.feed_url} · ${checks.new.count} новини`}
                         </div>
                         <ul className="mt-1 ml-4 list-disc text-muted-foreground">
                           {(checks.new.latest ?? []).map((l, i) => <li key={i}>{l.title}</li>)}

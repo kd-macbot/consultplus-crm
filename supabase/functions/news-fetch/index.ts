@@ -146,26 +146,67 @@ function guessUrls(finalUrl: string): string[] {
   return [...new Set(out)]
 }
 
-async function resolveFeed(url: string): Promise<{ feedUrl: string; body: string }> {
-  const first = await getText(url)
-  if (looksLikeFeed(first.body, first.contentType)) {
-    return { feedUrl: first.finalUrl, body: first.body }
-  }
-  const declared = findFeedLink(first.body, first.finalUrl)
-  if (declared) {
-    const f = await getText(declared)
-    if (looksLikeFeed(f.body, f.contentType)) return { feedUrl: f.finalUrl, body: f.body }
-  }
-  for (const guess of guessUrls(first.finalUrl)) {
+/**
+ * Взима новините от извор. Редът на опитите е нарочен:
+ *
+ *   1. запомненият феед  2. самият адрес, ако е феед
+ *   3. феед, обявен в страницата
+ *   4. (само при „Провери") обичайните адреси — 16 заявки, които нямат
+ *      място в ежедневното пускане
+ *   5. четене на самата страница
+ *
+ * `deep` дели интерактивната проверка от cron-а: гадаенето е за
+ * откриване, не за всяка сутрин.
+ */
+async function loadItems(
+  url: string,
+  feedUrl: string | null,
+  deep: boolean,
+): Promise<{ items: FeedItem[]; mode: "feed" | "page"; feedUrl: string | null }> {
+  if (feedUrl) {
     try {
-      const f = await getText(guess)
-      if (looksLikeFeed(f.body, f.contentType)) return { feedUrl: f.finalUrl, body: f.body }
+      const f = await getText(feedUrl)
+      if (looksLikeFeed(f.body, f.contentType)) {
+        return { items: parseFeed(f.body, f.finalUrl), mode: "feed", feedUrl: f.finalUrl }
+      }
     } catch {
-      // пробата се проваля тихо — това е гадаене, не грешка
+      // запомненият феед е умрял → продължаваме по общия път
     }
   }
-  throw new Error("на този адрес няма RSS/Atom феед — нито обявен в страницата, нито на обичайните адреси (пробвани са и пътеката, и коренът на домейна)")
+
+  const first = await getText(url)
+  if (looksLikeFeed(first.body, first.contentType)) {
+    return { items: parseFeed(first.body, first.finalUrl), mode: "feed", feedUrl: first.finalUrl }
+  }
+
+  const declared = findFeedLink(first.body, first.finalUrl)
+  if (declared) {
+    try {
+      const f = await getText(declared)
+      if (looksLikeFeed(f.body, f.contentType)) {
+        return { items: parseFeed(f.body, f.finalUrl), mode: "feed", feedUrl: f.finalUrl }
+      }
+    } catch { /* обявеният феед не отговаря → надолу */ }
+  }
+
+  if (deep) {
+    for (const guess of guessUrls(first.finalUrl)) {
+      try {
+        const f = await getText(guess)
+        if (looksLikeFeed(f.body, f.contentType)) {
+          return { items: parseFeed(f.body, f.finalUrl), mode: "feed", feedUrl: f.finalUrl }
+        }
+      } catch { /* гадаене — провалът е нормален */ }
+    }
+  }
+
+  const items = extractListing(first.body, first.finalUrl)
+  if (items.length === 0) {
+    throw new Error("нито феед, нито разпознаваем списък с новини на тази страница")
+  }
+  return { items, mode: "page", feedUrl: null }
 }
+
 
 // ============================================================
 // Разбор на феед
@@ -223,6 +264,75 @@ function parseFeed(xml: string, base: string): FeedItem[] {
   return out
 }
 
+// ============================================================
+// Четене на СПИСЪЧНА СТРАНИЦА, когато сайтът няма феед
+// ============================================================
+// Огледало на src/lib/rss.ts (там са тестовете). Български
+// институционални сайтове не публикуват RSS, затова новините се вадят от
+// самата страница — БЕЗ ръчно настроен шаблон за всеки сайт: такъв трябва
+// да се поддържа и се чупи тихо.
+//
+// Вместо това се ползва това, което всяка списъчна страница има по
+// устройство: МНОГО връзки с ДЪЛЪГ текст към ЕДНА И СЪЩА част от сайта.
+// Менюто и футърът имат кратък текст и водят навсякъде.
+
+const MIN_TITLE_LEN = 25
+const MAX_TITLE_LEN = 300
+const MIN_GROUP = 3
+
+interface PageLink { title: string; link: string }
+
+function extractAnchors(html: string, base: string): PageLink[] {
+  const out: PageLink[] = []
+  const re = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(html)) !== null) {
+    const href = m[1].trim()
+    if (!href || href.startsWith("#") || /^(javascript|mailto|tel):/i.test(href)) continue
+    const title = stripTags(m[2])
+    if (title.length < MIN_TITLE_LEN || title.length > MAX_TITLE_LEN) continue
+    out.push({ title, link: absolute(href, base) })
+  }
+  return out
+}
+
+function pathGroup(url: string): string {
+  try {
+    const p = new URL(url).pathname.split("/").filter(Boolean)
+    return "/" + (p[0] ?? "")
+  } catch {
+    return ""
+  }
+}
+
+function extractListing(html: string, base: string): FeedItem[] {
+  let origin = ""
+  try { origin = new URL(base).origin } catch { origin = "" }
+
+  const seen = new Set<string>()
+  const anchors = extractAnchors(html, base).filter(a => {
+    if (origin && !a.link.startsWith(origin)) return false
+    if (a.link.replace(/\/$/, "") === base.replace(/\/$/, "")) return false
+    if (seen.has(a.link)) return false
+    seen.add(a.link)
+    return true
+  })
+
+  const groups = new Map<string, PageLink[]>()
+  for (const a of anchors) {
+    const g = pathGroup(a.link)
+    const list = groups.get(g) ?? []
+    list.push(a)
+    groups.set(g, list)
+  }
+
+  let best: PageLink[] = []
+  for (const list of groups.values()) if (list.length > best.length) best = list
+  if (best.length < MIN_GROUP) best = anchors
+
+  return best.map(a => ({ title: a.title, link: a.link, summary: "", published: null }))
+}
+
 const MAX_TITLE = 300
 const MAX_SUMMARY = 500
 
@@ -275,11 +385,11 @@ Deno.serve(async (req) => {
       const url = String(payload.url ?? "").trim()
       if (!url) return json({ error: "url е задължителен" }, 400)
       try {
-        const { feedUrl, body } = await resolveFeed(url)
-        const items = parseFeed(body, feedUrl)
+        const { items, mode, feedUrl } = await loadItems(url, null, true)
         return json({
           ok: true,
-          feed_url: feedUrl,
+          mode,
+          feed_url: feedUrl ?? url,
           count: items.length,
           latest: items.slice(0, 3).map(i => ({ title: i.title, link: i.link, published: i.published })),
         })
@@ -314,17 +424,20 @@ Deno.serve(async (req) => {
 
     for (const s of sources) {
       try {
-        const { feedUrl, body } = await resolveFeed(s.feed_url || s.url)
-        const items = parseFeed(body, feedUrl)
-        if (items.length === 0) throw new Error("феедът е празен")
+        const { items, feedUrl } = await loadItems(s.url, s.feed_url, false)
+        if (items.length === 0) throw new Error("източникът не върна нито една новина")
 
         // Диагностиката се пише винаги — „от N дни нищо оттук" е сигнал
         // за счупен извор, а не мълчание.
         if (!dryRun) {
           await db.from("crm_news_sources").update({
+            // Запомня се САМО истински феед. При четене на страница
+            // остава null, за да не се "запечата" грешен адрес.
             feed_url: feedUrl,
             last_ok_at: new Date().toISOString(),
-            last_item_at: items[0].published,
+            // Страницата не дава дата → пише се времето на четене, иначе
+            // "последна новина" би стояло празно завинаги.
+            last_item_at: items[0].published ?? new Date().toISOString(),
             last_error: null,
             updated_at: new Date().toISOString(),
           }).eq("id", s.id)
