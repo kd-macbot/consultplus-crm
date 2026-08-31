@@ -1,0 +1,82 @@
+name: Новини от бранша
+
+# Чете настроените RSS феедове и добавя няколко новини в блока „От бранша"
+# под Календара. Същият модел като известията: спусъкът е ИЗВЪН SPA-то.
+#
+# Функцията решава КОЛКО и ОТКЪДЕ (crm_news_settings + crm_news_sources).
+# Ако главният ключ е изключен, пускането минава и не добавя нищо — това е
+# нормално, не е грешка.
+#
+# Нужни secrets (същите като при известията):
+#   SUPABASE_FUNCTIONS_URL, NOTIFY_CRON_SECRET
+
+on:
+  schedule:
+    # 05:45 UTC = 08:45 наше лятно време — новините са на място, преди
+    # известията в 06:15 UTC да подсетят кой какво има за деня.
+    - cron: '45 5 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Само пресметни, без да добавяш'
+        type: boolean
+        default: false
+
+concurrency:
+  group: industry-news
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Проверка на secrets
+        env:
+          URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          SECRET: ${{ secrets.NOTIFY_CRON_SECRET }}
+        run: |
+          if [ -z "$URL" ]; then echo "::error::Липсва secret SUPABASE_FUNCTIONS_URL"; exit 1; fi
+          if [ -z "$SECRET" ]; then echo "::error::Липсва secret NOTIFY_CRON_SECRET"; exit 1; fi
+
+      - name: Четене на феедовете
+        env:
+          URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          SECRET: ${{ secrets.NOTIFY_CRON_SECRET }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          BODY='{"action":"run"}'
+          if [ "${DRY:-false}" = "true" ]; then BODY='{"action":"run","dry_run":true}'; fi
+
+          HTTP=$(curl -sS -o /tmp/resp.json -w '%{http_code}' \
+            -X POST "${URL%/}/news-fetch" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: $SECRET" \
+            --max-time 300 \
+            -d "$BODY")
+
+          echo "HTTP $HTTP"
+          cat /tmp/resp.json
+
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::news-fetch върна HTTP $HTTP"
+            exit 1
+          fi
+          # "notes" носи проблемите по отделни извори — те НЕ спират
+          # пускането (другите извори са минали), но трябва да се видят.
+          if grep -q '"error"' /tmp/resp.json; then
+            echo "::error::news-fetch върна грешка в тялото"
+            exit 1
+          fi
+
+      - name: Обобщение
+        if: always()
+        run: |
+          {
+            echo "## Новини от бранша"
+            echo ""
+            echo '```json'
+            cat /tmp/resp.json 2>/dev/null || echo "(няма отговор)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

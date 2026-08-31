@@ -13,6 +13,7 @@ import {
   getContracts, getContractTemplates, getContractBody,
   getNotifications, getNotificationSettings, getNotifyStaff,
   getCertificates,
+  getIndustryNews, getNewsSources, getNewsSettings,
 } from './storage'
 import { timed } from './perf'
 import { useRealtimeHealthy } from './realtimeHealth'
@@ -39,6 +40,9 @@ export const qk = {
   notificationSettings: ['notificationSettings'] as const,
   notifyStaff: ['notifyStaff'] as const,
   certificates: ['certificates'] as const,
+  industryNews: ['industryNews'] as const,
+  newsSources: ['newsSources'] as const,
+  newsSettings: ['newsSettings'] as const,
 }
 
 /**
@@ -222,6 +226,17 @@ export function useNotificationSettings() {
 export function useNotifyStaff() {
   return useQuery({ queryKey: qk.notifyStaff, queryFn: getNotifyStaff })
 }
+// Новини от бранша — отделен поток от новините на екипа.
+export function useIndustryNews() {
+  return useQuery({ queryKey: qk.industryNews, queryFn: () => getIndustryNews() })
+}
+export function useNewsSources() {
+  return useQuery({ queryKey: qk.newsSources, queryFn: getNewsSources })
+}
+export function useNewsSettings() {
+  return useQuery({ queryKey: qk.newsSettings, queryFn: getNewsSettings })
+}
+
 // Електронни подписи — малка таблица, гледат я двама души.
 export function useCertificates() {
   return useQuery({ queryKey: qk.certificates, queryFn: getCertificates })
@@ -340,6 +355,9 @@ export function useInvalidateCrm() {
       qc.invalidateQueries({ queryKey: ['clientMessages'] }),
     invalidateMessageTemplates: () =>
       qc.invalidateQueries({ queryKey: ['messageTemplates'] }),
+    invalidateIndustryNews: () => qc.invalidateQueries({ queryKey: qk.industryNews }),
+    invalidateNewsSources: () => qc.invalidateQueries({ queryKey: qk.newsSources }),
+    invalidateNewsSettings: () => qc.invalidateQueries({ queryKey: qk.newsSettings }),
     invalidateCertificates: () => qc.invalidateQueries({ queryKey: qk.certificates }),
     invalidateNotifications: () => qc.invalidateQueries({ queryKey: qk.notifications }),
     invalidateNotificationSettings: () => qc.invalidateQueries({ queryKey: qk.notificationSettings }),
