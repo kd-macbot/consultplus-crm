@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { attemptAutoReload } from './recovery'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem, NotificationEntry, NotificationSettings, NotificationResult, NotificationDryRun, NotifyStaff, Certificate, CertificatePatch } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem, NewsSource, NewsSettings, FeedCheck, NotificationEntry, NotificationSettings, NotificationResult, NotificationDryRun, NotifyStaff, Certificate, CertificatePatch } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -1320,7 +1320,11 @@ export async function getNews(limit = 30): Promise<NewsItem[]> {
     const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60_000).toISOString()
     const { data, error } = await supabase
       .from('crm_news')
-      .select('id,title,body,type,pinned,author_name,created_by,created_at,updated_at')
+      .select('id,title,body,type,pinned,author_name,created_by,created_at,updated_at,is_auto,source_name,source_url')
+      // САМО новините на екипа. Автоматичните („От бранша") са отделен
+      // поток: при 4 на ден за пет дни те щяха да изтласкат обявленията
+      // на колегите извън лимита от 30 реда.
+      .eq('is_auto', false)
       .or(`pinned.eq.true,created_at.gte.${cutoff}`)
       .order('pinned', { ascending: false })
       .order('created_at', { ascending: false })
@@ -2863,4 +2867,122 @@ export async function deleteCertificate(
   await logAudit(audit?.userId, audit?.userName ?? '', 'delete_certificate', 'certificate', id, {
     old_value: audit?.label ?? '',
   })
+}
+
+// ==================== НОВИНИ ОТ БРАНША (RSS) ====================
+// Четенето на феедовете е в edge функцията news-fetch (браузърът не може
+// заради CORS). Тук са изворите, настройките и извикването на функцията.
+
+async function invokeNewsFetch<T = unknown>(body: object): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('news-fetch', { body })
+  if (error) {
+    const ctx = (error as any).context
+    if (ctx && typeof ctx.text === 'function') {
+      try {
+        const text = await ctx.text()
+        try {
+          const parsed = JSON.parse(text)
+          throw new Error(parsed?.error ?? text ?? error.message)
+        } catch {
+          throw new Error(text || error.message)
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message !== error.message) throw e
+      }
+    }
+    throw error
+  }
+  if ((data as any)?.error) throw new Error((data as any).error)
+  return data as T
+}
+
+/** Автоматичните новини — отделен поток от тези на екипа. */
+export async function getIndustryNews(limit = 20): Promise<NewsItem[]> {
+  return withRetry(async () => {
+    // Същият 5-дневен прозорец като при новините на екипа.
+    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60_000).toISOString()
+    const { data, error } = await supabase
+      .from('crm_news')
+      .select('id,title,body,type,pinned,author_name,created_by,created_at,updated_at,is_auto,source_name,source_url')
+      .eq('is_auto', true)
+      .gte('created_at', cutoff)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return (data ?? []) as NewsItem[]
+  })
+}
+
+export async function getNewsSources(): Promise<NewsSource[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_news_sources')
+      .select('*')
+      .order('position', { ascending: true })
+      .order('created_at', { ascending: true })
+    if (error) throw error
+    return (data ?? []) as NewsSource[]
+  })
+}
+
+export async function addNewsSource(
+  patch: { name: string; url: string; enabled?: boolean; max_per_run?: number },
+): Promise<NewsSource> {
+  return await trackSave((async () => {
+    const { data, error } = await supabase.from('crm_news_sources').insert([patch]).select().single()
+    if (error) throw error
+    return data as NewsSource
+  })())
+}
+
+export async function updateNewsSource(
+  id: string,
+  patch: Partial<Pick<NewsSource, 'name' | 'url' | 'feed_url' | 'enabled' | 'max_per_run' | 'position'>>,
+): Promise<void> {
+  return await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_news_sources')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+  })())
+}
+
+export async function deleteNewsSource(id: string): Promise<void> {
+  const { error } = await supabase.from('crm_news_sources').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getNewsSettings(): Promise<NewsSettings> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_news_settings').select('*').eq('id', true).single()
+    if (error) throw error
+    return data as NewsSettings
+  })
+}
+
+export async function updateNewsSettings(
+  patch: Partial<Omit<NewsSettings, 'updated_at'>>,
+): Promise<void> {
+  return await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_news_settings')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', true)
+    if (error) throw error
+  })())
+}
+
+/** „Провери" — има ли феед на този адрес и какво дава. */
+export async function checkNewsSource(url: string): Promise<FeedCheck> {
+  return invokeNewsFetch({ action: 'check', url })
+}
+
+/** Ръчно четене на изворите. dryRun връща какво БИ влязло, без да пише. */
+export async function runNewsFetch(dryRun = false): Promise<{
+  added?: number; skipped?: string; notes?: string[]
+  drafts?: Array<{ title: string; body: string | null; source_name: string; source_url: string }>
+}> {
+  return invokeNewsFetch({ action: 'run', dry_run: dryRun })
 }

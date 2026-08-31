@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, CalendarDays, Plus, Trash2, X, Download, Spa
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import {
-  useStaff, useAbsences, useVacationQuotas, useEvents, useNews, useInvalidateCrm,
+  useStaff, useAbsences, useVacationQuotas, useEvents, useNews, useIndustryNews, useInvalidateCrm,
 } from '../lib/queries'
 import { addAbsence, updateAbsence, deleteAbsence, approveAbsence, rejectAbsence, addEvent, updateEvent, deleteEvent, addNews, updateNews, deleteNews } from '../lib/storage'
 import {
@@ -55,6 +55,7 @@ export function CalendarPage() {
   const absencesQ = useAbsences(year)
   const eventsQ = useEvents(year)
   const newsQ = useNews()
+  const industryQ = useIndustryNews()
   const quotasQ = useVacationQuotas(year)
   const { invalidateAbsences, invalidateEvents, invalidateNews } = useInvalidateCrm()
 
@@ -63,6 +64,7 @@ export function CalendarPage() {
   const absences = useMemo(() => absencesQ.data ?? [], [absencesQ.data])
   const events = useMemo(() => eventsQ.data ?? [], [eventsQ.data])
   const news = useMemo(() => newsQ.data ?? [], [newsQ.data])
+  const industryNews = useMemo(() => industryQ.data ?? [], [industryQ.data])
   const quotas = useMemo(() => quotasQ.data ?? [], [quotasQ.data])
 
   // Текущият потребител → staff запис — от споделения useMyStaff lookup.
@@ -533,6 +535,7 @@ export function CalendarPage() {
           onAdd={() => setNewsModal({})}
           onEdit={(n) => setNewsModal({ existing: n })}
         />
+        <IndustryNewsSection news={industryNews} />
         </div>
       </div>
 
@@ -1079,6 +1082,46 @@ function NewsSection({
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+// ============================================================
+// „От бранша" — автоматичните новини от феедовете.
+//
+// Отделен блок нарочно: това е ФОН, а обявленията на колегите горе са
+// съобщения между хора. Смесени в една лента, автоматичните (до 4 на ден)
+// щяха да ги затрупат за два дни.
+//
+// Всяка новина е заглавие + източник + линк към ОРИГИНАЛА, без преразказ.
+// ============================================================
+function IndustryNewsSection({ news }: { news: NewsItem[] }) {
+  if (news.length === 0) return null
+  return (
+    <div className="border-t border-border bg-muted/20 px-3 md:px-5 py-2">
+      <div className="flex items-center gap-2 mb-1.5">
+        <Newspaper className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-semibold text-muted-foreground">От бранша</span>
+        <span className="text-[11px] text-muted-foreground/70">{news.length}</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
+        {news.map(n => (
+          <a
+            key={n.id}
+            href={n.source_url ?? '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-start gap-1.5 text-[11px] leading-snug py-0.5"
+            title={n.body ?? ''}
+          >
+            <span className="text-muted-foreground/50 shrink-0">›</span>
+            <span className="min-w-0">
+              <span className="text-foreground group-hover:underline">{n.title}</span>
+              <span className="text-muted-foreground/70 whitespace-nowrap"> · {n.source_name}</span>
+            </span>
+          </a>
+        ))}
+      </div>
     </div>
   )
 }
