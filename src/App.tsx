@@ -28,6 +28,7 @@ const CashLoansPage = lazy(() => import('./pages/CashLoans').then(m => ({ defaul
 const MessagesPage = lazy(() => import('./pages/Messages').then(m => ({ default: m.MessagesPage })))
 const NotificationsPage = lazy(() => import('./pages/Notifications').then(m => ({ default: m.NotificationsPage })))
 const CertificatesPage = lazy(() => import('./pages/Certificates').then(m => ({ default: m.CertificatesPage })))
+const NewsSourcesPage = lazy(() => import('./pages/NewsSources').then(m => ({ default: m.NewsSourcesPage })))
 const CashRegistersPage = lazy(() => import('./pages/CashRegisters').then(m => ({ default: m.CashRegistersPage })))
 const ContractsPage = lazy(() => import('./pages/Contracts').then(m => ({ default: m.ContractsPage })))
 const ClientProfilesPage = lazy(() => import('./pages/ClientProfiles').then(m => ({ default: m.ClientProfilesPage })))
@@ -112,6 +113,9 @@ export default function App() {
                     проверява тук, отделът вътре в страницата и в RLS. */}
                 <Route path="/certificates" element={
                   <ProtectedRoute allowedRoles={['admin', 'manager']}><CertificatesPage /></ProtectedRoute>
+                } />
+                <Route path="/news-sources" element={
+                  <ProtectedRoute allowedRoles={['admin', 'manager']}><NewsSourcesPage /></ProtectedRoute>
                 } />
                 <Route path="/notifications" element={
                   <ProtectedRoute allowedRoles={['admin']}><NotificationsPage /></ProtectedRoute>

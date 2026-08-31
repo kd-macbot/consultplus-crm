@@ -694,6 +694,45 @@ export interface NewsItem {
   created_by: string | null
   created_at: string
   updated_at: string
+  /** true = дошла автоматично от феед („От бранша"), не е писана от колега. */
+  is_auto?: boolean
+  source_name?: string | null
+  /** Линк към оригинала — уникален, пази от повторно вмъкване. */
+  source_url?: string | null
+}
+
+// ============================================================
+// Новини от бранша — извори (migration 058)
+// ============================================================
+export interface NewsSource {
+  id: string
+  name: string
+  /** Адресът, който човек би отворил; функцията сама открива фееда. */
+  url: string
+  feed_url: string | null
+  enabled: boolean
+  max_per_run: number
+  last_ok_at: string | null
+  last_item_at: string | null
+  last_error: string | null
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+export interface NewsSettings {
+  enabled: boolean
+  max_per_run: number
+  updated_at: string
+}
+
+/** Отговорът на бутона „Провери" — какво е намерено на адреса. */
+export interface FeedCheck {
+  ok: boolean
+  error?: string
+  feed_url?: string
+  count?: number
+  latest?: Array<{ title: string; link: string; published: string | null }>
 }
 
 // ============================================================
