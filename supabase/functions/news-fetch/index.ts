@@ -120,7 +120,31 @@ function findFeedLink(html: string, base: string): string | null {
 }
 
 /** Ако сайтът не обявява феед, пробваме обичайните адреси. */
-const GUESSES = ["rss", "feed", "rss.xml", "feed.xml", "index.xml", "rss.php", "?feed=rss2"]
+const GUESSES = ["rss", "feed", "feed/", "rss.xml", "feed.xml", "index.xml", "rss.php", "?feed=rss2"]
+
+/**
+ * Списък с адреси за пробване — И спрямо подадената пътека, И спрямо
+ * КОРЕНА на домейна.
+ *
+ * Коренът е важният: повечето сайтове държат фееда си там
+ * (kik-info.com/rss), а човек подава адреса на раздела, който чете
+ * (kik-info.com/novini/nap/). Търсене само спрямо пътеката пропуска
+ * точно най-честия случай.
+ */
+function guessUrls(finalUrl: string): string[] {
+  const out: string[] = []
+  const withSlash = finalUrl.endsWith("/") ? finalUrl : finalUrl + "/"
+  let origin = ""
+  try {
+    origin = new URL(finalUrl).origin + "/"
+  } catch {
+    origin = ""
+  }
+  for (const g of GUESSES) out.push(absolute(g, withSlash))
+  if (origin) for (const g of GUESSES) out.push(absolute(g, origin))
+  // Без повторения — пътеката и коренът съвпадат за начална страница.
+  return [...new Set(out)]
+}
 
 async function resolveFeed(url: string): Promise<{ feedUrl: string; body: string }> {
   const first = await getText(url)
@@ -132,16 +156,15 @@ async function resolveFeed(url: string): Promise<{ feedUrl: string; body: string
     const f = await getText(declared)
     if (looksLikeFeed(f.body, f.contentType)) return { feedUrl: f.finalUrl, body: f.body }
   }
-  for (const g of GUESSES) {
+  for (const guess of guessUrls(first.finalUrl)) {
     try {
-      const guess = absolute(g, first.finalUrl.endsWith("/") ? first.finalUrl : first.finalUrl + "/")
       const f = await getText(guess)
       if (looksLikeFeed(f.body, f.contentType)) return { feedUrl: f.finalUrl, body: f.body }
     } catch {
       // пробата се проваля тихо — това е гадаене, не грешка
     }
   }
-  throw new Error("на този адрес няма RSS/Atom феед (нито обявен, нито на обичайните адреси)")
+  throw new Error("на този адрес няма RSS/Atom феед — нито обявен в страницата, нито на обичайните адреси (пробвани са и пътеката, и коренът на домейна)")
 }
 
 // ============================================================

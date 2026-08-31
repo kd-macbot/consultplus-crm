@@ -347,6 +347,14 @@ export function NewsSourcesPage() {
                     <Plus className="h-3.5 w-3.5 mr-1" /> Добави
                   </Button>
                 </div>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  Сложи адреса, който сам би отворил — функцията търси фееда в страницата,
+                  после пробва обичайните адреси и спрямо пътеката, и спрямо корена на домейна.
+                  Ако сайтът няма RSS, работи и търсене в Google Новини:{' '}
+                  <code className="text-[10px]">
+                    https://news.google.com/rss/search?q=НАП+ДДС&amp;hl=bg&amp;gl=BG&amp;ceid=BG:bg
+                  </code>
+                </p>
                 {checks.new && (
                   <div className={`text-[11px] mt-2 ${checks.new.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                     {checks.new.ok ? (
