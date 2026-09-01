@@ -2403,7 +2403,7 @@ export async function getCashFirmMonthly(year: number): Promise<CashFirmMonthly[
 
 export async function upsertCashFirmMonthly(
   clientId: string, year: number, month: number,
-  patch: Partial<Pick<CashFirmMonthly, 'invoices_cash_20' | 'invoices_cash_9' | 'credit_note_20' | 'credit_note_9' | 'rzok'>>,
+  patch: Partial<Pick<CashFirmMonthly, 'invoices_cash_20' | 'invoices_cash_9' | 'credit_note_20' | 'credit_note_9' | 'other_fiscal_20' | 'other_fiscal_9'>>,
 ): Promise<void> {
   const { error } = await supabase.from('crm_cash_firm_monthly')
     .upsert({ client_id: clientId, year, month, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'client_id,year,month' })

@@ -262,6 +262,14 @@ export interface CashFirmMonthly {
   invoices_cash_9: number
   credit_note_20: number
   credit_note_9: number
+  /** „Други фискализирани документи" — изваждат се от СПО, като фактурите. */
+  other_fiscal_20: number
+  other_fiscal_9: number
+  /**
+   * СТАРОТО поле „Финансов отчет РЗОК". Стойностите му са пренесени в
+   * other_fiscal_20 (мигр. 059) и вече не се чете и пише. Колоната стои в
+   * базата, докато новите не се потвърдят на живо.
+   */
   rzok: number
   updated_at: string
 }
