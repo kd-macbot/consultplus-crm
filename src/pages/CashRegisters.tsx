@@ -64,8 +64,10 @@ function CalcCell({ v, strong }: { v: number; strong?: boolean }) {
 // ============================================================
 // Касови апарати / СПО — за фирми с „Касов апарат" = ДА.
 // По фирма: апаратите × 12 месеца (оборот/сторно 20%/9%) + фактури в
-// брой + РЗОК; Общо/Чист оборот/СПО се смятат. Обобщение: СПО по фирма.
-// СПО 20% = (Общо20 − Сторно20) − Фактури20 − РЗОК; СПО 9% = (Общо9 − Сторно9) − Фактури9.
+// брой, КИ и други фискализирани документи; Общо/Чист оборот/СПО се
+// смятат. Обобщение: СПО по фирма.
+// СПО 20% = (Общо20 − Сторно20) − Фактури20 − ДругиФиск20 + КИ20
+// СПО 9%  = (Общо9  − Сторно9)  − Фактури9  − ДругиФиск9  + КИ9
 // ============================================================
 export function CashRegistersPage() {
   const { user } = useAuth()
@@ -152,15 +154,20 @@ export function CashRegistersPage() {
       if (t) { total20 += t.turnover_20; storno20 += t.storno_20; total9 += t.turnover_9; storno9 += t.storno_9 }
     }
     const fm = firmByClient.get(clientId)?.get(month)
-    const inv20 = fm?.invoices_cash_20 ?? 0, inv9 = fm?.invoices_cash_9 ?? 0, rzok = fm?.rzok ?? 0
+    const inv20 = fm?.invoices_cash_20 ?? 0, inv9 = fm?.invoices_cash_9 ?? 0
+    const other20 = fm?.other_fiscal_20 ?? 0, other9 = fm?.other_fiscal_9 ?? 0
     const ki20 = fm?.credit_note_20 ?? 0, ki9 = fm?.credit_note_9 ?? 0
     const net20 = total20 - storno20
     const net9 = total9 - storno9
     const chist = net20 + net9
-    // КИ (кредитни известия) се ПРИБАВЯТ; фактурите в брой и РЗОК се изваждат.
-    const spo20 = net20 - inv20 - rzok + ki20
-    const spo9 = net9 - inv9 + ki9
-    return { total20, storno20, total9, storno9, inv20, inv9, ki20, ki9, rzok, net20, net9, chist, spo20, spo9, spoTotal: spo20 + spo9, finalRow: chist - rzok }
+    // КИ (кредитни известия) се ПРИБАВЯТ; фактурите в брой и другите
+    // фискализирани документи се изваждат — симетрично за 20% и 9%.
+    const spo20 = net20 - inv20 - other20 + ki20
+    const spo9 = net9 - inv9 - other9 + ki9
+    return {
+      total20, storno20, total9, storno9, inv20, inv9, ki20, ki9, other20, other9,
+      net20, net9, chist, spo20, spo9, spoTotal: spo20 + spo9,
+    }
   }
 
   // Ако избраната фирма изчезне от списъка — избираме първата.
@@ -204,13 +211,22 @@ export function CashRegistersPage() {
       rows.push([`${label} — Сторно 20%`, ...MONTHS.map(m => turnoverByReg.get(r.id)?.get(m)?.storno_20 || '')])
       rows.push([`${label} — Оборот 9%`, ...MONTHS.map(m => turnoverByReg.get(r.id)?.get(m)?.turnover_9 || '')])
       rows.push([`${label} — Сторно 9%`, ...MONTHS.map(m => turnoverByReg.get(r.id)?.get(m)?.storno_9 || '')])
+      rows.push([`${label} — Общо оборот`, ...MONTHS.map(m => {
+        const t = turnoverByReg.get(r.id)?.get(m)
+        return t ? (t.turnover_20 + t.turnover_9) || '' : ''
+      })])
+      rows.push([`${label} — Общо сторно`, ...MONTHS.map(m => {
+        const t = turnoverByReg.get(r.id)?.get(m)
+        return t ? (t.storno_20 + t.storno_9) || '' : ''
+      })])
     }
     const calc = (sel: (c: ReturnType<typeof computeFirmMonth>) => number) => MONTHS.map(m => sel(computeFirmMonth(selectedClient, m)) || '')
     rows.push(['Фактури в брой 20%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.invoices_cash_20 || '')])
     rows.push(['Фактури в брой 9%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.invoices_cash_9 || '')])
     rows.push(['КИ 20%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.credit_note_20 || '')])
     rows.push(['КИ 9%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.credit_note_9 || '')])
-    rows.push(['Финансов отчет РЗОК', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.rzok || '')])
+    rows.push(['Други фискализирани документи 20%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.other_fiscal_20 || '')])
+    rows.push(['Други фискализирани документи 9%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.other_fiscal_9 || '')])
     rows.push(['Общо 20%', ...calc(c => c.total20)])
     rows.push(['Общо 9%', ...calc(c => c.total9)])
     rows.push(['Чист оборот', ...calc(c => c.chist)])
@@ -345,7 +361,8 @@ function FirmDetail({ clientId, name, year, registers, turnoverByReg, firmByClie
           <FirmRow label="Фактури в брой 9%" clientId={clientId} field="invoices_cash_9" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
           <FirmRow label="КИ 20%" clientId={clientId} field="credit_note_20" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
           <FirmRow label="КИ 9%" clientId={clientId} field="credit_note_9" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
-          <FirmRow label="Финансов отчет РЗОК" clientId={clientId} field="rzok" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
+          <FirmRow label="Други фискализирани документи 20%" clientId={clientId} field="other_fiscal_20" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
+          <FirmRow label="Други фискализирани документи 9%" clientId={clientId} field="other_fiscal_9" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
 
           {/* Смятащи се редове */}
           <CalcRow label="Общо 20%" calc={calc} sel={c => c.total20} />
@@ -357,7 +374,8 @@ function FirmDetail({ clientId, name, year, registers, turnoverByReg, firmByClie
         </tbody>
       </table>
       <p className="text-[11px] text-muted-foreground mt-2">
-        {name} • СПО 20% = (Общо20 − Сторно20) − Фактури 20% − РЗОК + КИ 20% · СПО 9% = (Общо9 − Сторно9) − Фактури 9% + КИ 9%
+        {name} • СПО 20% = (Общо20 − Сторно20) − Фактури 20% − Други фиск. 20% + КИ 20%
+        {' · '}СПО 9% = (Общо9 − Сторно9) − Фактури 9% − Други фиск. 9% + КИ 9%
       </p>
     </div>
   )
@@ -409,12 +427,25 @@ function RegisterRows({ reg, index, year, turnoverByReg, canEdit, onSaveTurnover
           })}
         </tr>
       ))}
+      {/* Сборове НА ТОЗИ апарат: 20% + 9%. Смятат се, не се въвеждат. */}
+      {([
+        { label: 'Общо оборот', a: 'turnover_20', b: 'turnover_9' },
+        { label: 'Общо сторно', a: 'storno_20', b: 'storno_9' },
+      ] as const).map(sum => (
+        <tr key={sum.label} className="border-b border-border/40 bg-muted/10">
+          <td className="px-2 py-0.5 text-xs font-semibold text-foreground sticky left-0 bg-muted/10 z-10 pl-6">{sum.label}</td>
+          {MONTHS.map(m => {
+            const t = turnoverByReg.get(reg.id)?.get(m)
+            return <CalcCell key={m} v={(t?.[sum.a] ?? 0) + (t?.[sum.b] ?? 0)} />
+          })}
+        </tr>
+      ))}
     </>
   )
 }
 
 function FirmRow({ label, clientId, field, firmByClient, canEdit, onSave }: {
-  label: string; clientId: string; field: keyof Pick<CashFirmMonthly, 'invoices_cash_20' | 'invoices_cash_9' | 'credit_note_20' | 'credit_note_9' | 'rzok'>
+  label: string; clientId: string; field: keyof Pick<CashFirmMonthly, 'invoices_cash_20' | 'invoices_cash_9' | 'credit_note_20' | 'credit_note_9' | 'other_fiscal_20' | 'other_fiscal_9'>
   firmByClient: Map<string, Map<number, CashFirmMonthly>>
   canEdit: boolean
   onSave: (clientId: string, month: number, patch: Partial<CashFirmMonthly>) => void
