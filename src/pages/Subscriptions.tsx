@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { addColumn, deleteColumn } from '../lib/storage'
-import { useClients, useColumns, useCellValues, useDropdownOptions, useTags, useClientTags, useInvalidateCrm, qk } from '../lib/queries'
+import { useClients, useColumns, useCellValues, useDropdownOptions, useTags, useClientTags, useAllContacts, useInvalidateCrm, qk } from '../lib/queries'
 import { queryClient } from '../lib/queryClient'
 import { CellEditor } from '../components/table/CellEditor'
 import { useAuth } from '../lib/auth'
@@ -12,7 +12,11 @@ import {
 import { statusBadgeClass } from '../lib/statusBadge'
 import { type AmountBucket, BUCKET_LABEL, inBucket } from '../lib/subscriptionBuckets'
 import { exportRowsToExcel } from '../lib/export'
-import { Plus, Search, X, Download } from 'lucide-react'
+import {
+  INVOICE_HEADERS, INVOICE_DEFAULTS, buildInvoiceRows, toCsv, downloadCsv,
+  checkInvoiceRows, invoiceDescription, type InvoiceClient,
+} from '../lib/invoiceExport'
+import { Plus, Search, X, Download, FileSpreadsheet, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -84,6 +88,7 @@ export function SubscriptionsPage() {
     )
   }, [allClients, allColumns, cellIdx, user])
 
+  const contactsQ = useAllContacts()
   const honorarColumn = useMemo(() => allColumns.find(c => c.name === 'Хонорар'), [allColumns])
   const statusColumn = useMemo(() => allColumns.find(c => c.name === 'Статус'), [allColumns])
   const subColumns = useMemo(() => allColumns.filter(c => c.staff_department === SUB_MARKER), [allColumns])
@@ -277,6 +282,31 @@ export function SubscriptionsPage() {
     })
   }
 
+  // ---------- Месечни абонаментни фактури ----------
+  // Влизат ВСИЧКИ клиенти с попълнен хонорар (включително нулев) —
+  // филтрите на страницата НЕ влияят: те са за разглеждане, а
+  // фактурирането не бива да зависи от забравен филтър.
+  const [showInvoices, setShowInvoices] = useState(false)
+
+  const eikByClient = useMemo(() => {
+    const m = new Map<string, string | null>()
+    for (const c of contactsQ.data ?? []) m.set(c.client_id, c.eik)
+    return m
+  }, [contactsQ.data])
+
+  const invoiceClients: InvoiceClient[] = useMemo(() => {
+    if (!honorarColumn) return []
+    return clients
+      // null = клетката е празна; 0 е попълнена стойност и влиза.
+      .filter(c => resolveNumber(c.id, honorarColumn, cellIdx) !== null)
+      .map(c => ({
+        name: clientName(c.id),
+        eik: eikByClient.get(c.id) ?? null,
+        price: resolveNumber(c.id, honorarColumn, cellIdx) ?? 0,
+      }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clients, cellIdx, honorarColumn, eikByClient])
+
   async function exportRows(rowsClients: Client[], suffix: string) {
     if (rowsClients.length === 0) { toast.error('Няма редове за експорт'); return }
     const headers = ['Клиент', ...(statusColumn ? ['Статус'] : []), 'Тагове', ...tableColumns.map(c => c.name)]
@@ -352,6 +382,12 @@ export function SubscriptionsPage() {
           <Button variant="outline" size="sm" onClick={() => exportRows(sortedClients, isFiltered ? '_филтрирани' : '')} className="gap-1">
             <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Експорт</span>
           </Button>
+          {isAdmin && honorarColumn && (
+            <Button variant="outline" size="sm" onClick={() => setShowInvoices(true)} className="gap-1"
+              title="CSV за програмата за фактуриране">
+              <FileSpreadsheet className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Фактури</span>
+            </Button>
+          )}
           {isAdmin && (
             <Button size="sm" onClick={() => setShowAddCol(true)}>
               <Plus className="h-3.5 w-3.5" />
@@ -689,6 +725,13 @@ export function SubscriptionsPage() {
 
       <AddColumnModal open={showAddCol} onAdd={handleAddColumn} onClose={() => setShowAddCol(false)} />
 
+      {showInvoices && (
+        <InvoiceExportModal
+          clients={invoiceClients}
+          onClose={() => setShowInvoices(false)}
+        />
+      )}
+
       <ConfirmDialog
         open={!!confirmDeleteCol}
         title={`Изтриване на колона "${confirmDeleteCol?.name}"?`}
@@ -758,6 +801,150 @@ function AddColumnModal({
           <Button variant="outline" onClick={onClose}>Отказ</Button>
           <Button onClick={handleSubmit} disabled={saving || !name.trim()}>
             {saving ? 'Добавяне...' : 'Добави'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================================
+// Месечни абонаментни фактури → CSV за програмата за фактуриране
+//
+// Форматът е ЧУЖД (диктува го вносителят) и живее в lib/invoiceExport.ts.
+// Тук е само диалогът: период, дата, начален номер и ПРЕГЛЕД преди
+// сваляне — файлът тръгва към счетоводна програма, тоест грешка в него
+// става фактура към клиент.
+// ============================================================
+function InvoiceExportModal({ clients, onClose }: {
+  clients: InvoiceClient[]
+  onClose: () => void
+}) {
+  const now = new Date()
+  const [period, setPeriod] = useState(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+  )
+  const [date, setDate] = useState(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+  )
+  // Номерът се въвежда всеки път — решение на потребителя: системата да
+  // не предполага номер, който може да е зает от друга фактура.
+  const [startNumber, setStartNumber] = useState('')
+
+  const [year, month] = useMemo(() => {
+    const m = /^(\d{4})-(\d{2})$/.exec(period)
+    return m ? [Number(m[1]), Number(m[2])] : [now.getFullYear(), now.getMonth() + 1]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period])
+
+  const warnings = useMemo(() => checkInvoiceRows(clients), [clients])
+  const total = useMemo(() => clients.reduce((s, c) => s + c.price, 0), [clients])
+  const startNum = Number(startNumber)
+  const valid = Number.isInteger(startNum) && startNum > 0 && clients.length > 0
+
+  function download() {
+    if (!valid) { toast.error('Въведи начален номер на фактурата'); return }
+    const rows = buildInvoiceRows(clients, {
+      startNumber: startNum,
+      date,
+      year,
+      month,
+      ...INVOICE_DEFAULTS,
+    })
+    downloadCsv(
+      `Fakturi_${year}-${String(month).padStart(2, '0')}.csv`,
+      toCsv(INVOICE_HEADERS, rows),
+    )
+    toast.success(`Свалени ${rows.length} реда`)
+    onClose()
+  }
+
+  return (
+    <Dialog open onOpenChange={o => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Фактури за абонамент</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <Label htmlFor="inv-period" className="text-xs">Период</Label>
+              <Input id="inv-period" type="month" value={period} onChange={e => setPeriod(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="inv-date" className="text-xs">Дата на фактурите</Label>
+              <Input id="inv-date" type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="inv-num" className="text-xs">Начален номер</Label>
+              <Input
+                id="inv-num" type="number" min={1} value={startNumber}
+                onChange={e => setStartNumber(e.target.value)} placeholder="7379"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Фирми с попълнен хонорар</span>
+              <strong className="text-foreground tabular-nums">{clients.length}</strong>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Обща сума</span>
+              <strong className="text-foreground tabular-nums">
+                {total.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
+              </strong>
+            </div>
+            {valid && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Номера</span>
+                <strong className="text-foreground tabular-nums">
+                  {startNum} – {startNum + clients.length - 1}
+                </strong>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Описание</span>
+              <span className="text-foreground">{invoiceDescription(year, month)}</span>
+            </div>
+          </div>
+
+          {(warnings.missingEik.length > 0 || warnings.zeroPrice.length > 0) && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-xs space-y-1.5">
+              {warnings.missingEik.length > 0 && (
+                <div className="flex items-start gap-1.5 text-amber-900 dark:text-amber-200">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>{warnings.missingEik.length}</strong> без ЕИК в Контакти — редът излиза с празна колона:{' '}
+                    {warnings.missingEik.slice(0, 5).join(', ')}
+                    {warnings.missingEik.length > 5 && ` и още ${warnings.missingEik.length - 5}`}
+                  </span>
+                </div>
+              )}
+              {warnings.zeroPrice.length > 0 && (
+                <div className="flex items-start gap-1.5 text-amber-900 dark:text-amber-200">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>{warnings.zeroPrice.length}</strong> с нулев хонорар:{' '}
+                    {warnings.zeroPrice.slice(0, 5).join(', ')}
+                    {warnings.zeroPrice.length > 5 && ` и още ${warnings.zeroPrice.length - 5}`}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            Влизат всички клиенти с попълнен хонорар — филтрите на страницата не влияят.
+            Номерата се раздават по азбучен ред на фирмите.
+          </p>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Отказ</Button>
+          <Button onClick={download} disabled={!valid}>
+            <Download className="h-4 w-4 mr-1" /> Свали CSV
           </Button>
         </DialogFooter>
       </DialogContent>
