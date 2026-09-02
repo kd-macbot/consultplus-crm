@@ -52,7 +52,12 @@ export function VacationsPage() {
   const quotasQ = useVacationQuotas(year)
   const { invalidateVacationQuotas } = useInvalidateCrm()
 
-  const staff = useMemo(() => (staffQ.data ?? []).filter(s => s.is_active), [staffQ.data])
+  // Виж бележката във Form76: отметнатите за изключване не влизат в
+  // ТРЗ справките, макар да са в Календара.
+  const staff = useMemo(
+    () => (staffQ.data ?? []).filter(s => s.is_active && s.in_trz_reports !== false),
+    [staffQ.data],
+  )
   const absences: Absence[] = useMemo(() => absencesQ.data ?? [], [absencesQ.data])
   const quotas = useMemo(() => quotasQ.data ?? [], [quotasQ.data])
 

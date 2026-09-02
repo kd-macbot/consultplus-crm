@@ -178,12 +178,20 @@ export interface StaffMember {
   additional_departments?: string[]
   hire_date: string | null  // ISO date YYYY-MM-DD
   is_active: boolean
+  /**
+   * false = човекът НЕ влиза във Форма 76 и Справка отпуска (нито в
+   * месечния Excel на Календара). Отсъствията му си остават видими в
+   * самия Календар — признакът е за отчетността, не за видимостта.
+   * Признак по ЧОВЕК, не по отдел: в „Управление" двамата се водят
+   * различно.
+   */
+  in_trz_reports?: boolean
 }
 
 export async function getStaff(department?: string): Promise<StaffMember[]> {
   const { data, error } = await supabase
     .from('crm_staff')
-    .select('id,full_name,position,department,additional_departments,hire_date,is_active')
+    .select('id,full_name,position,department,additional_departments,hire_date,is_active,in_trz_reports')
     .eq('is_active', true)
     .order('full_name')
   if (error) throw error
