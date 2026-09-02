@@ -396,7 +396,11 @@ export function CalendarPage() {
             така таблицата не разтяга страницата, а на широк екран остава
             място за колоната отдясно. Ограничената височина пази
             залепената глава на таблицата да работи. */}
-        <div className="w-full min-[1700px]:flex-1 min-w-0 rounded-xl border border-border bg-card shadow-sm overflow-auto min-[1700px]:max-h-[calc(100vh-12rem)]">
+        {/* Картата се свива до ШИРОЧИНАТА НА ТАБЛИЦАТА (w-fit), а не заема
+            всичко останало. Иначе вдясно от последния ден оставаше празно
+            поле, а колоната с новините се притискаше. min-w-0 позволява
+            свиване и скролване, когато екранът не стига. */}
+        <div className="w-full min-[1700px]:w-fit min-[1700px]:max-w-full min-w-0 rounded-xl border border-border bg-card shadow-sm overflow-auto min-[1700px]:max-h-[calc(100vh-12rem)]">
         <table className="text-xs border-collapse" style={{ minWidth: 200 + daysCount * 28 + 'px' }}>
           <thead className="sticky top-0 z-20 bg-navy text-white">
             <tr>
@@ -538,7 +542,9 @@ export function CalendarPage() {
 
         {/* Дясната колона. Фиксирана широчина на голям екран, за да не
             се свива под заглавията на новините. */}
-        <aside className="w-full min-[1700px]:w-[320px] shrink-0 space-y-3 md:space-y-4">
+        {/* Взима каквото остане след календара — на широк екран това са
+            500-700px, тоест новините дишат вместо да са тесен списък. */}
+        <aside className="w-full min-[1700px]:flex-1 min-[1700px]:min-w-[300px] space-y-3 md:space-y-4">
           <NewsSection
             news={news}
             canEdit={canEditEvents}
@@ -1062,7 +1068,7 @@ function NewsSection({
       ) : (
         // Една под друга — колоната е тясна. При много новини се скролва
         // вътре в картата, за да не избута „От бранша" извън екрана.
-        <div className="grid grid-cols-1 sm:grid-cols-2 min-[1700px]:grid-cols-1 min-[1700px]:max-h-[46vh] min-[1700px]:overflow-auto gap-2">
+        <div className="grid gap-2 grid-cols-[repeat(auto-fill,minmax(240px,1fr))] min-[1700px]:max-h-[46vh] min-[1700px]:overflow-auto">
           {visible.map(n => {
             const color = NEWS_TYPE_COLORS[n.type as NewsType] ?? NEWS_TYPE_COLORS.general
             const icon = NEWS_TYPE_ICONS[n.type as NewsType] ?? '📰'
@@ -1117,7 +1123,7 @@ function IndustryNewsSection({ news }: { news: NewsItem[] }) {
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">От бранша</span>
         <span className="text-[11px] text-muted-foreground/70">{news.length}</span>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 min-[1700px]:grid-cols-1 gap-x-4 gap-y-1 min-[1700px]:max-h-[32vh] min-[1700px]:overflow-auto">
+      <div className="grid gap-x-4 gap-y-1 grid-cols-[repeat(auto-fill,minmax(220px,1fr))] min-[1700px]:max-h-[32vh] min-[1700px]:overflow-auto">
         {news.map(n => (
           <a
             key={n.id}
