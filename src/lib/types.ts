@@ -232,9 +232,17 @@ export interface MessageTemplate {
 }
 
 // Касови апарати / СПО — за фирми с „Касов апарат" = ДА.
+/**
+ * 'simple'   — перата (фактури, КИ, други фиск.) са на ниво ФИРМА;
+ * 'detailed' — на ниво АПАРАТ, а фирменият ред е само сбор.
+ * Видът е еднакъв за всички апарати на фирмата (виж мигр. 061).
+ */
+export type CashRegisterKind = 'simple' | 'detailed'
+
 export interface CashRegister {
   id: string
   client_id: string
+  kind: CashRegisterKind | string
   object_name: string | null
   memory_number: string | null
   position: number
@@ -251,6 +259,14 @@ export interface CashRegisterTurnover {
   storno_20: number
   turnover_9: number
   storno_9: number
+  // Само за апарати с kind='detailed'. При 'simple' стоят нули и не се
+  // показват — перата тогава живеят на ниво фирма (crm_cash_firm_monthly).
+  invoices_cash_20: number
+  invoices_cash_9: number
+  credit_note_20: number
+  credit_note_9: number
+  other_fiscal_20: number
+  other_fiscal_9: number
   updated_at: string
 }
 export interface CashFirmMonthly {
