@@ -79,7 +79,13 @@ export function Form76Page() {
   const { myStaff, isAdmin } = useMyStaff()
   const canSee = isAdmin || myStaff?.department === 'ТРЗ'
 
-  const staff = useMemo(() => allStaff.filter(s => s.is_active), [allStaff])
+  // Извън справката остават хората с изключена отметка „Влиза в ТРЗ
+  // справките" (управител): отсъствията им се виждат в Календара, но не
+  // се отчитат тук.
+  const staff = useMemo(
+    () => allStaff.filter(s => s.is_active && s.in_trz_reports !== false),
+    [allStaff],
+  )
   const absences = useMemo(() => absencesQ.data ?? [], [absencesQ.data])
   const overrides = useMemo(() => overridesQ.data ?? [], [overridesQ.data])
   const overridesIdx = useMemo(() => {

@@ -134,7 +134,9 @@ export function CalendarPage() {
       'Отпуска', 'Болничен', 'Служебно', 'Дистанционно', 'Майчинство', 'Учебен', 'Неплатен',
       'Σ отсъствия', 'Присъствие', 'Дати на отсъствия',
     ]
-    const rows = staff.map(s => {
+    // Този експорт е справка за ТРЗ (заплати) — важи същото правило като
+    // във Форма 76: отметнатите за изключване не влизат.
+    const rows = staff.filter(s => s.in_trz_reports !== false).map(s => {
       const perType: Record<string, number> = {
         vacation: 0, sick: 0, business: 0, remote: 0, maternity: 0, study: 0, unpaid: 0,
       }

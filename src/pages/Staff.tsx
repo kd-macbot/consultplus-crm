@@ -23,6 +23,8 @@ interface StaffMember {
   phone: string | null
   hire_date: string | null
   is_active: boolean
+  /** false = извън Форма 76 и Справка отпуска (виж мигр. 060). */
+  in_trz_reports: boolean | null
   created_at: string
 }
 
@@ -311,6 +313,13 @@ function StaffCard({ member, isAdmin, profile, onEdit, onToggle, onCreateAccount
               </div>
             )
           })()}
+          {member.in_trz_reports === false && (
+            <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400"
+              title="Отсъствията се виждат в Календара, но не влизат във Форма 76, Справка отпуска и месечния експорт">
+              <CalendarDays className="h-3 w-3 shrink-0" />
+              <span>Извън ТРЗ справките</span>
+            </div>
+          )}
           {profile && (
             <div className="flex items-center gap-1.5 text-xs">
               <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-600" />
@@ -355,6 +364,7 @@ function StaffForm({ open, member, onSave, onClose }: {
   const [email, setEmail] = useState(member?.email ?? '')
   const [phone, setPhone] = useState(member?.phone ?? '')
   const [hireDate, setHireDate] = useState(member?.hire_date ?? '')
+  const [inTrz, setInTrz] = useState(member?.in_trz_reports !== false)
 
   useEffect(() => {
     if (open) {
@@ -365,6 +375,7 @@ function StaffForm({ open, member, onSave, onClose }: {
       setEmail(member?.email ?? '')
       setPhone(member?.phone ?? '')
       setHireDate(member?.hire_date ?? '')
+      setInTrz(member?.in_trz_reports !== false)
     }
   }, [open, member])
 
@@ -383,6 +394,7 @@ function StaffForm({ open, member, onSave, onClose }: {
       email: email.trim() || null,
       phone: phone.trim() || null,
       hire_date: hireDate || null,
+      in_trz_reports: inTrz,
     })
   }
 
@@ -456,6 +468,24 @@ function StaffForm({ open, member, onSave, onClose }: {
           <div className="space-y-1.5">
             <Label htmlFor="sf-hire-date">Дата на назначаване</Label>
             <Input id="sf-hire-date" type="date" value={hireDate} onChange={e => setHireDate(e.target.value)} />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox" checked={inTrz}
+                onChange={e => setInTrz(e.target.checked)}
+                className="mt-0.5 h-4 w-4"
+              />
+              <span>
+                <span className="text-sm text-foreground">Влиза в ТРЗ справките</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">
+                  Форма 76, Справка отпуска и месечният експорт на Календара.
+                  Изключи за управител: отсъствията му се виждат в Календара,
+                  за да знаят колегите, но не се отчитат никъде.
+                </span>
+              </span>
+            </label>
             <p className="text-[11px] text-muted-foreground">
               Ще се ползва за изчисление на стаж и придобивки.
             </p>
