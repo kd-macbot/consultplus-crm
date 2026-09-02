@@ -99,6 +99,10 @@ export function CalendarPage() {
   // ============================================================
   const myBalance = useMemo(() => {
     if (!myStaff) return null
+    // Извън ТРЗ справките няма и баланс за показване: човекът не отчита
+    // отпуск, а „Оставащ платен отпуск: 19 дни" в главата подсказва точно
+    // обратното. Бутонът за добавяне остава — отсъствията му се виждат.
+    if (myStaff.in_trz_reports === false) return null
     const quota = quotas.find(q => q.staff_id === myStaff.id)
     const entitlement = (Number(quota?.prev_years_days) || 0)
       + (Number(quota?.current_year_days) || 20)
@@ -334,14 +338,17 @@ export function CalendarPage() {
           </div>
         </div>
 
-        {/* Личен баланс — само за служители с регистриран staff запис. */}
-        {myStaff && myBalance && (
+        {/* Ред с личния баланс и бутона. Балансът се показва само на онези,
+            които отчитат отпуск; бутонът — на всеки със staff запис. */}
+        {myStaff && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800">
-              <span className="text-xs text-emerald-700 dark:text-emerald-300">Оставащ платен отпуск ({year}):</span>
-              <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">{myBalance.remaining} дни</span>
-            </div>
-            {myBalance.pendingDays > 0 && (
+            {myBalance && (
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800">
+                <span className="text-xs text-emerald-700 dark:text-emerald-300">Оставащ платен отпуск ({year}):</span>
+                <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">{myBalance.remaining} дни</span>
+              </div>
+            )}
+            {myBalance && myBalance.pendingDays > 0 && (
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800" title="Дни в чакащи заявки — не намаляват баланса до одобрение">
                 <span className="text-xs text-amber-700 dark:text-amber-300">Чакащи за одобрение:</span>
                 <span className="text-sm font-semibold text-amber-800 dark:text-amber-200">{myBalance.pendingDays} дни</span>
