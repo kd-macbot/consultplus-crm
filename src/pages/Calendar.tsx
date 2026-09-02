@@ -273,7 +273,9 @@ export function CalendarPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
+    // Сив фон на страницата — той е причината белите карти изобщо да се
+    // четат като карти. Върху бяло върху бяло рамката не стига.
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen bg-muted/30">
       {/* Header */}
       <div className="px-3 py-2 md:px-5 md:py-3 border-b border-border bg-card">
         <div className="flex flex-wrap items-center gap-3 justify-between">
@@ -381,12 +383,20 @@ export function CalendarPage() {
         </div>
       </div>
 
-      {/* Grid */}
-      <div className="flex-1 overflow-auto">
-        {/* Inner wrapper с width: max-content — заемa точно колкото е
-            таблицата. Без minWidth 100% → когато viewport е по-широк от
-            календара, контейнерът НЕ се разтяга до края на екрана. */}
-        <div style={{ width: 'max-content' }}>
+      {/* Съдържание: календарът вляво като карта, новините вдясно като
+          отделна колона. На тесен екран колоната пада под календара. */}
+      <div className="flex-1 overflow-auto p-3 md:p-4">
+        {/* Прагът е 1700px, а не обичайният xl (1280): таблицата иска ~1070px
+            за 31 дни, плюс менюто и колоната с новините. Под този праг
+            колоната пада под календара — иначе месецът спира да се вижда
+            цял, а това е основната работа на екрана. */}
+        <div className="flex flex-col min-[1700px]:flex-row gap-3 md:gap-4 items-start">
+
+        {/* Картата с календара. Хоризонталното скролване е ВЪТРЕ в нея —
+            така таблицата не разтяга страницата, а на широк екран остава
+            място за колоната отдясно. Ограничената височина пази
+            залепената глава на таблицата да работи. */}
+        <div className="w-full min-[1700px]:flex-1 min-w-0 rounded-xl border border-border bg-card shadow-sm overflow-auto min-[1700px]:max-h-[calc(100vh-12rem)]">
         <table className="text-xs border-collapse" style={{ minWidth: 200 + daysCount * 28 + 'px' }}>
           <thead className="sticky top-0 z-20 bg-navy text-white">
             <tr>
@@ -521,21 +531,23 @@ export function CalendarPage() {
                 </tr>
               )
             })}
-            {/* 2 празни „дишащи" реда между последния служител и
-                секция Новини — височина 28px, колкото е и редът. */}
-            <tr className="border-b border-transparent"><td colSpan={1 + daysCount} style={{ height: 28 }} /></tr>
-            <tr className="border-b border-transparent"><td colSpan={1 + daysCount} style={{ height: 28 }} /></tr>
           </tbody>
         </table>
 
-        {/* Секция Новини — наследява max-content широчината от родителя. */}
-        <NewsSection
-          news={news}
-          canEdit={canEditEvents}
-          onAdd={() => setNewsModal({})}
-          onEdit={(n) => setNewsModal({ existing: n })}
-        />
-        <IndustryNewsSection news={industryNews} />
+        </div>
+
+        {/* Дясната колона. Фиксирана широчина на голям екран, за да не
+            се свива под заглавията на новините. */}
+        <aside className="w-full min-[1700px]:w-[320px] shrink-0 space-y-3 md:space-y-4">
+          <NewsSection
+            news={news}
+            canEdit={canEditEvents}
+            onAdd={() => setNewsModal({})}
+            onEdit={(n) => setNewsModal({ existing: n })}
+          />
+          <IndustryNewsSection news={industryNews} />
+        </aside>
+
         </div>
       </div>
 
@@ -1030,11 +1042,11 @@ function NewsSection({
   const visible = news.slice(0, 15)
 
   return (
-    <div className="border-t border-border bg-card px-3 md:px-5 py-2">
+    <div className="rounded-xl border border-border bg-card shadow-sm p-3">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Newspaper className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-xs font-semibold text-foreground">Новини</span>
+          <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Новини</span>
           <span className="text-[11px] text-muted-foreground">
             {news.length === 0 ? 'все още няма' : `${news.length}`}
           </span>
@@ -1048,8 +1060,9 @@ function NewsSection({
       {visible.length === 0 ? (
         <p className="text-[11px] text-muted-foreground py-2">Все още няма публикувани новини.</p>
       ) : (
-        // До 3 карти на ред (responsive: 1 на телефон, 2 на среден екран).
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        // Една под друга — колоната е тясна. При много новини се скролва
+        // вътре в картата, за да не избута „От бранша" извън екрана.
+        <div className="grid grid-cols-1 sm:grid-cols-2 min-[1700px]:grid-cols-1 min-[1700px]:max-h-[46vh] min-[1700px]:overflow-auto gap-2">
           {visible.map(n => {
             const color = NEWS_TYPE_COLORS[n.type as NewsType] ?? NEWS_TYPE_COLORS.general
             const icon = NEWS_TYPE_ICONS[n.type as NewsType] ?? '📰'
@@ -1098,13 +1111,13 @@ function NewsSection({
 function IndustryNewsSection({ news }: { news: NewsItem[] }) {
   if (news.length === 0) return null
   return (
-    <div className="border-t border-border bg-muted/20 px-3 md:px-5 py-2">
+    <div className="rounded-xl border border-border bg-card shadow-sm p-3">
       <div className="flex items-center gap-2 mb-1.5">
         <Newspaper className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-xs font-semibold text-muted-foreground">От бранша</span>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">От бранша</span>
         <span className="text-[11px] text-muted-foreground/70">{news.length}</span>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 min-[1700px]:grid-cols-1 gap-x-4 gap-y-1 min-[1700px]:max-h-[32vh] min-[1700px]:overflow-auto">
         {news.map(n => (
           <a
             key={n.id}
