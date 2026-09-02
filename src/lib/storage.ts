@@ -2361,14 +2361,15 @@ export async function getCashRegisters(): Promise<CashRegister[]> {
 }
 
 export async function addCashRegister(row: {
-  client_id: string; object_name?: string | null; memory_number?: string | null; createdBy?: string
+  client_id: string; object_name?: string | null; memory_number?: string | null
+  kind?: string; createdBy?: string
 }): Promise<CashRegister> {
   const { data: existing } = await supabase
     .from('crm_cash_registers').select('position')
     .eq('client_id', row.client_id).order('position', { ascending: false }).limit(1)
   const pos = (existing?.[0]?.position ?? -1) + 1
   const { data, error } = await supabase.from('crm_cash_registers')
-    .insert([{ client_id: row.client_id, object_name: row.object_name ?? null, memory_number: row.memory_number ?? null, position: pos, created_by: row.createdBy ?? null }])
+    .insert([{ client_id: row.client_id, object_name: row.object_name ?? null, memory_number: row.memory_number ?? null, kind: row.kind ?? 'simple', position: pos, created_by: row.createdBy ?? null }])
     .select().single()
   if (error) throw error
   return data as CashRegister
@@ -2394,7 +2395,10 @@ export async function getCashTurnover(year: number): Promise<CashRegisterTurnove
 
 export async function upsertCashTurnover(
   registerId: string, year: number, month: number,
-  patch: Partial<Pick<CashRegisterTurnover, 'turnover_20' | 'storno_20' | 'turnover_9' | 'storno_9'>>,
+  patch: Partial<Pick<CashRegisterTurnover,
+    'turnover_20' | 'storno_20' | 'turnover_9' | 'storno_9'
+    | 'invoices_cash_20' | 'invoices_cash_9' | 'credit_note_20' | 'credit_note_9'
+    | 'other_fiscal_20' | 'other_fiscal_9'>>,
 ): Promise<void> {
   const { error } = await supabase.from('crm_cash_register_turnover')
     .upsert({ register_id: registerId, year, month, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'register_id,year,month' })

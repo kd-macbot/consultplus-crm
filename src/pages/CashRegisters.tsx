@@ -148,15 +148,29 @@ export function CashRegistersPage() {
   // Изчислените СПО стойности за (фирма × месец).
   function computeFirmMonth(clientId: string, month: number) {
     const regs = registersByClient.get(clientId) ?? []
+    // Видът на фирмата се чете от апаратите ѝ — те са еднакви по дефиниция
+    // (мигр. 061). Без апарати режимът е без значение.
+    const detailed = regs.length > 0 && regs[0].kind === 'detailed'
+
     let total20 = 0, storno20 = 0, total9 = 0, storno9 = 0
+    // При разбивка перата се СЪБИРАТ от апаратите; иначе идват от фирмения ред.
+    let regInv20 = 0, regInv9 = 0, regKi20 = 0, regKi9 = 0, regOther20 = 0, regOther9 = 0
     for (const r of regs) {
       const t = turnoverByReg.get(r.id)?.get(month)
-      if (t) { total20 += t.turnover_20; storno20 += t.storno_20; total9 += t.turnover_9; storno9 += t.storno_9 }
+      if (!t) continue
+      total20 += t.turnover_20; storno20 += t.storno_20
+      total9 += t.turnover_9; storno9 += t.storno_9
+      regInv20 += t.invoices_cash_20 ?? 0; regInv9 += t.invoices_cash_9 ?? 0
+      regKi20 += t.credit_note_20 ?? 0; regKi9 += t.credit_note_9 ?? 0
+      regOther20 += t.other_fiscal_20 ?? 0; regOther9 += t.other_fiscal_9 ?? 0
     }
     const fm = firmByClient.get(clientId)?.get(month)
-    const inv20 = fm?.invoices_cash_20 ?? 0, inv9 = fm?.invoices_cash_9 ?? 0
-    const other20 = fm?.other_fiscal_20 ?? 0, other9 = fm?.other_fiscal_9 ?? 0
-    const ki20 = fm?.credit_note_20 ?? 0, ki9 = fm?.credit_note_9 ?? 0
+    const inv20 = detailed ? regInv20 : (fm?.invoices_cash_20 ?? 0)
+    const inv9 = detailed ? regInv9 : (fm?.invoices_cash_9 ?? 0)
+    const other20 = detailed ? regOther20 : (fm?.other_fiscal_20 ?? 0)
+    const other9 = detailed ? regOther9 : (fm?.other_fiscal_9 ?? 0)
+    const ki20 = detailed ? regKi20 : (fm?.credit_note_20 ?? 0)
+    const ki9 = detailed ? regKi9 : (fm?.credit_note_9 ?? 0)
     const net20 = total20 - storno20
     const net9 = total9 - storno9
     const chist = net20 + net9
@@ -165,6 +179,7 @@ export function CashRegistersPage() {
     const spo20 = net20 - inv20 - other20 + ki20
     const spo9 = net9 - inv9 - other9 + ki9
     return {
+      detailed,
       total20, storno20, total9, storno9, inv20, inv9, ki20, ki9, other20, other9,
       net20, net9, chist, spo20, spo9, spoTotal: spo20 + spo9,
     }
@@ -190,9 +205,9 @@ export function CashRegistersPage() {
     try { await upsertCashFirmMonthly(clientId, year, month, patch); invalidateCashFirmMonthly() }
     catch (e) { toast.error((e as Error).message ?? 'Грешка при запис') }
   }
-  async function addRegister() {
+  async function addRegister(kind: 'simple' | 'detailed') {
     if (!selectedClient) return
-    try { await addCashRegister({ client_id: selectedClient, createdBy: user?.id }); invalidateCashRegisters() }
+    try { await addCashRegister({ client_id: selectedClient, kind, createdBy: user?.id }); invalidateCashRegisters() }
     catch (e) { toast.error((e as Error).message ?? 'Грешка') }
   }
   async function removeRegister(id: string) {
@@ -219,14 +234,36 @@ export function CashRegistersPage() {
         const t = turnoverByReg.get(r.id)?.get(m)
         return t ? (t.storno_20 + t.storno_9) || '' : ''
       })])
+      // При разбивка перата и СПО-то на апарата също влизат в експорта.
+      if (r.kind === 'detailed') {
+        const perReg: Array<[string, (t: CashRegisterTurnover) => number]> = [
+          ['Фактури в брой 20%', t => t.invoices_cash_20 ?? 0],
+          ['Фактури в брой 9%', t => t.invoices_cash_9 ?? 0],
+          ['КИ 20%', t => t.credit_note_20 ?? 0],
+          ['КИ 9%', t => t.credit_note_9 ?? 0],
+          ['Други фискализирани документи 20%', t => t.other_fiscal_20 ?? 0],
+          ['Други фискализирани документи 9%', t => t.other_fiscal_9 ?? 0],
+          ['СПО 20%', t => (t.turnover_20 - t.storno_20) - (t.invoices_cash_20 ?? 0) - (t.other_fiscal_20 ?? 0) + (t.credit_note_20 ?? 0)],
+          ['СПО 9%', t => (t.turnover_9 - t.storno_9) - (t.invoices_cash_9 ?? 0) - (t.other_fiscal_9 ?? 0) + (t.credit_note_9 ?? 0)],
+        ]
+        for (const [lbl, sel] of perReg) {
+          rows.push([`${label} — ${lbl}`, ...MONTHS.map(m => {
+            const t = turnoverByReg.get(r.id)?.get(m)
+            return t ? sel(t) || '' : ''
+          })])
+        }
+      }
     }
     const calc = (sel: (c: ReturnType<typeof computeFirmMonth>) => number) => MONTHS.map(m => sel(computeFirmMonth(selectedClient, m)) || '')
-    rows.push(['Фактури в брой 20%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.invoices_cash_20 || '')])
-    rows.push(['Фактури в брой 9%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.invoices_cash_9 || '')])
-    rows.push(['КИ 20%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.credit_note_20 || '')])
-    rows.push(['КИ 9%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.credit_note_9 || '')])
-    rows.push(['Други фискализирани документи 20%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.other_fiscal_20 || '')])
-    rows.push(['Други фискализирани документи 9%', ...MONTHS.map(m => firmByClient.get(selectedClient)?.get(m)?.other_fiscal_9 || '')])
+    // Перата се взимат от изчислението, а не от фирмения ред: така при
+    // разбивка по апарат в експорта влиза СБОРЪТ, а при обикновен режим —
+    // същата стойност както преди.
+    rows.push(['Фактури в брой 20%', ...calc(c => c.inv20)])
+    rows.push(['Фактури в брой 9%', ...calc(c => c.inv9)])
+    rows.push(['КИ 20%', ...calc(c => c.ki20)])
+    rows.push(['КИ 9%', ...calc(c => c.ki9)])
+    rows.push(['Други фискализирани документи 20%', ...calc(c => c.other20)])
+    rows.push(['Други фискализирани документи 9%', ...calc(c => c.other9)])
     rows.push(['Общо 20%', ...calc(c => c.total20)])
     rows.push(['Общо 9%', ...calc(c => c.total9)])
     rows.push(['Чист оборот', ...calc(c => c.chist)])
@@ -328,11 +365,12 @@ function FirmDetail({ clientId, name, year, registers, turnoverByReg, firmByClie
   canEdit: boolean
   onSaveTurnover: (registerId: string, month: number, patch: Partial<CashRegisterTurnover>) => void
   onSaveFirm: (clientId: string, month: number, patch: Partial<CashFirmMonthly>) => void
-  onAddRegister: () => void
+  onAddRegister: (kind: 'simple' | 'detailed') => void
   onRemoveRegister: (id: string) => void
   onUpdateRegister: (id: string, patch: { object_name?: string | null; memory_number?: string | null }) => void
 }) {
   const calc = MONTHS.map(m => compute(clientId, m))
+  const detailed = registers.length > 0 && registers[0].kind === 'detailed'
   const th = 'px-2 py-2 text-right text-xs font-medium uppercase tracking-wider whitespace-nowrap'
   return (
     <div className="p-3">
@@ -346,23 +384,60 @@ function FirmDetail({ clientId, name, year, registers, turnoverByReg, firmByClie
         <tbody>
           {registers.map((r, ri) => (
             <RegisterRows key={r.id} reg={r} index={ri + 1} year={year} turnoverByReg={turnoverByReg}
+              detailed={detailed}
               canEdit={canEdit} onSaveTurnover={onSaveTurnover} onRemove={() => onRemoveRegister(r.id)} onUpdate={onUpdateRegister} />
           ))}
           {canEdit && (
             <tr>
               <td colSpan={13} className="px-3 py-2 sticky left-0 bg-card">
-                <Button variant="outline" size="sm" onClick={onAddRegister}><Plus className="h-3.5 w-3.5 mr-1" /> Добави апарат</Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Видът се определя от ПЪРВИЯ апарат и следващите го
+                      наследяват — смесване би позволило една фактура да
+                      се извади два пъти от СПО. */}
+                  <Button variant="outline" size="sm" onClick={() => onAddRegister(detailed ? 'detailed' : 'simple')}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    {registers.length === 0
+                      ? 'Добави апарат'
+                      : detailed ? 'Добави апарат (с разбивка)' : 'Добави апарат'}
+                  </Button>
+                  {registers.length === 0 && (
+                    <Button variant="outline" size="sm" onClick={() => onAddRegister('detailed')}>
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Добави апарат (с разбивка)
+                    </Button>
+                  )}
+                  {registers.length > 0 && (
+                    <span className="text-[11px] text-muted-foreground">
+                      {detailed
+                        ? 'Фактурите, КИ и другите документи се въвеждат при всеки апарат; фирмените редове са сбор.'
+                        : 'Перата са на ниво фирма. За разбивка по апарат: изтрий всички апарати и добави наново.'}
+                    </span>
+                  )}
+                </div>
               </td>
             </tr>
           )}
 
-          {/* Фирмени редове */}
-          <FirmRow label="Фактури в брой 20%" clientId={clientId} field="invoices_cash_20" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
-          <FirmRow label="Фактури в брой 9%" clientId={clientId} field="invoices_cash_9" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
-          <FirmRow label="КИ 20%" clientId={clientId} field="credit_note_20" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
-          <FirmRow label="КИ 9%" clientId={clientId} field="credit_note_9" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
-          <FirmRow label="Други фискализирани документи 20%" clientId={clientId} field="other_fiscal_20" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
-          <FirmRow label="Други фискализирани документи 9%" clientId={clientId} field="other_fiscal_9" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
+          {/* Фирмени редове. При разбивка по апарат те са СБОР и не се
+              пишат — стойностите идват от самите апарати. */}
+          {detailed ? (
+            <>
+              <CalcRow label="Фактури в брой 20% (сбор)" calc={calc} sel={c => c.inv20} />
+              <CalcRow label="Фактури в брой 9% (сбор)" calc={calc} sel={c => c.inv9} />
+              <CalcRow label="КИ 20% (сбор)" calc={calc} sel={c => c.ki20} />
+              <CalcRow label="КИ 9% (сбор)" calc={calc} sel={c => c.ki9} />
+              <CalcRow label="Други фискализирани документи 20% (сбор)" calc={calc} sel={c => c.other20} />
+              <CalcRow label="Други фискализирани документи 9% (сбор)" calc={calc} sel={c => c.other9} />
+            </>
+          ) : (
+            <>
+              <FirmRow label="Фактури в брой 20%" clientId={clientId} field="invoices_cash_20" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
+              <FirmRow label="Фактури в брой 9%" clientId={clientId} field="invoices_cash_9" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
+              <FirmRow label="КИ 20%" clientId={clientId} field="credit_note_20" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
+              <FirmRow label="КИ 9%" clientId={clientId} field="credit_note_9" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
+              <FirmRow label="Други фискализирани документи 20%" clientId={clientId} field="other_fiscal_20" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
+              <FirmRow label="Други фискализирани документи 9%" clientId={clientId} field="other_fiscal_9" firmByClient={firmByClient} canEdit={canEdit} onSave={onSaveFirm} />
+            </>
+          )}
 
           {/* Смятащи се редове */}
           <CalcRow label="Общо 20%" calc={calc} sel={c => c.total20} />
@@ -381,20 +456,43 @@ function FirmDetail({ clientId, name, year, registers, turnoverByReg, firmByClie
   )
 }
 
-function RegisterRows({ reg, index, year, turnoverByReg, canEdit, onSaveTurnover, onRemove, onUpdate }: {
+function RegisterRows({ reg, index, year, turnoverByReg, detailed, canEdit, onSaveTurnover, onRemove, onUpdate }: {
   reg: CashRegister; index: number; year: number
   turnoverByReg: Map<string, Map<number, CashRegisterTurnover>>
+  /** true = перата се въвеждат при апарата и СПО се смята за него. */
+  detailed: boolean
   canEdit: boolean
   onSaveTurnover: (registerId: string, month: number, patch: Partial<CashRegisterTurnover>) => void
   onRemove: () => void
   onUpdate: (id: string, patch: { object_name?: string | null; memory_number?: string | null }) => void
 }) {
-  const rows: Array<{ label: string; field: keyof Pick<CashRegisterTurnover, 'turnover_20' | 'storno_20' | 'turnover_9' | 'storno_9'> }> = [
+  type TurnoverField = keyof Pick<CashRegisterTurnover,
+    'turnover_20' | 'storno_20' | 'turnover_9' | 'storno_9'
+    | 'invoices_cash_20' | 'invoices_cash_9' | 'credit_note_20' | 'credit_note_9'
+    | 'other_fiscal_20' | 'other_fiscal_9'>
+  const rows: Array<{ label: string; field: TurnoverField }> = [
     { label: 'Оборот 20%', field: 'turnover_20' },
     { label: 'Сторно 20%', field: 'storno_20' },
     { label: 'Оборот 9%', field: 'turnover_9' },
     { label: 'Сторно 9%', field: 'storno_9' },
+    // Перата при разбивка — същите като фирмените, но за ТОЗИ апарат.
+    ...(detailed ? [
+      { label: 'Фактури в брой 20%', field: 'invoices_cash_20' as TurnoverField },
+      { label: 'Фактури в брой 9%', field: 'invoices_cash_9' as TurnoverField },
+      { label: 'КИ 20%', field: 'credit_note_20' as TurnoverField },
+      { label: 'КИ 9%', field: 'credit_note_9' as TurnoverField },
+      { label: 'Други фискализирани документи 20%', field: 'other_fiscal_20' as TurnoverField },
+      { label: 'Други фискализирани документи 9%', field: 'other_fiscal_9' as TurnoverField },
+    ] : []),
   ]
+
+  /** СПО на ТОЗИ апарат — същата формула като фирмената. */
+  function spoOf(t: CashRegisterTurnover | undefined, rate: 20 | 9): number {
+    if (!t) return 0
+    return rate === 20
+      ? (t.turnover_20 - t.storno_20) - (t.invoices_cash_20 ?? 0) - (t.other_fiscal_20 ?? 0) + (t.credit_note_20 ?? 0)
+      : (t.turnover_9 - t.storno_9) - (t.invoices_cash_9 ?? 0) - (t.other_fiscal_9 ?? 0) + (t.credit_note_9 ?? 0)
+  }
   return (
     <>
       <tr className="bg-muted/40 border-t border-border">
@@ -438,6 +536,15 @@ function RegisterRows({ reg, index, year, turnoverByReg, canEdit, onSaveTurnover
             const t = turnoverByReg.get(reg.id)?.get(m)
             return <CalcCell key={m} v={(t?.[sum.a] ?? 0) + (t?.[sum.b] ?? 0)} />
           })}
+        </tr>
+      ))}
+      {/* СПО на апарата — има смисъл само когато перата са при него. */}
+      {detailed && ([20, 9] as const).map(rate => (
+        <tr key={`spo-${rate}`} className="border-b border-border/40 bg-muted/20">
+          <td className="px-2 py-0.5 text-xs font-semibold text-foreground sticky left-0 bg-muted/20 z-10 pl-6">
+            СПО {rate}% (апарат)
+          </td>
+          {MONTHS.map(m => <CalcCell key={m} v={spoOf(turnoverByReg.get(reg.id)?.get(m), rate)} />)}
         </tr>
       ))}
     </>
