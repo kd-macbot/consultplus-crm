@@ -258,6 +258,10 @@ export function CashRegistersPage() {
         const t = turnoverByReg.get(r.id)?.get(m)
         return t ? (t.storno_20 + t.storno_9) || '' : ''
       })])
+      rows.push([`${label} — Чист оборот (КО)`, ...MONTHS.map(m => {
+        const t = turnoverByReg.get(r.id)?.get(m)
+        return t ? ((t.turnover_20 + t.turnover_9) - (t.storno_20 + t.storno_9)) || '' : ''
+      })])
       // При разбивка перата и СПО-то на апарата също влизат в експорта.
       if (r.kind === 'detailed') {
         const perReg: Array<[string, (t: CashRegisterTurnover) => number]> = [
@@ -590,6 +594,12 @@ function RegisterRows({ reg, index, year, turnoverByReg, detailed, canEdit, onSa
     ] : []),
   ]
 
+  /** Оборот минус сторно, двете ставки заедно (КО за месеца). */
+  function netTurnover(t: CashRegisterTurnover | undefined): number {
+    if (!t) return 0
+    return (t.turnover_20 + t.turnover_9) - (t.storno_20 + t.storno_9)
+  }
+
   /** СПО на ТОЗИ апарат — същата формула като фирмената. */
   function spoOf(t: CashRegisterTurnover | undefined, rate: 20 | 9): number {
     if (!t) return 0
@@ -642,6 +652,16 @@ function RegisterRows({ reg, index, year, turnoverByReg, detailed, canEdit, onSa
           })}
         </tr>
       ))}
+      {/* Оборотът БЕЗ сторното — месечният еквивалент на КО от годишната
+          таблица. Отделен ред, а не преправяне на „Общо оборот": там стои
+          самият оборот и по него се сверява с апарата. */}
+      <tr className="border-b border-border/40 bg-muted/10">
+        <td className="px-2 py-0.5 text-xs font-semibold text-foreground sticky left-0 bg-muted/10 z-10 pl-6">Чист оборот (КО)</td>
+        {MONTHS.map(m => {
+          const t = turnoverByReg.get(reg.id)?.get(m)
+          return <CalcCell key={m} v={netTurnover(t)} />
+        })}
+      </tr>
       {/* СПО на апарата — има смисъл само когато перата са при него. */}
       {detailed && ([20, 9] as const).map(rate => (
         <tr key={`spo-${rate}`} className="border-b border-border/40 bg-muted/20">
