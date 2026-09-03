@@ -197,7 +197,10 @@ crm_cash_register_turnover). При detailed фактурите/КИ/други�
 СБОР и не се пишат. РЕЖИМЪТ Е ПО ФИРМА: видът идва от ПЪРВИЯ апарат и
 следващите го наследяват — смесване би позволило една фактура да се извади
 два пъти от СПО, тихо. Смяна на вида = изтриване на всички апарати и
-добавяне наново (решение на потребителя). Заварените фирми са 'simple') · 053 договори (crm_contract_templates + crm_contracts; RLS admin) · 054 достъп до
+добавяне наново (решение на потребителя). Заварените фирми са 'simple'. NB: под месечната мрежа стои таблица „Годишен
+оборот" ПО АПАРАТ — КА (оборот 20%+9%), Сторно (20%+9%) и КО = КА − Сторно;
+БЕЗ миграция, смята се в UI (`src/lib/cashRegisters.ts`). Ставките се събират
+нарочно — справката е за оборота на апарата, не за ДДС) · 053 договори (crm_contract_templates + crm_contracts; RLS admin) · 054 достъп до
 Шаблони за Управление (`is_current_user_management()` — НЯМА връзка
 profiles↔crm_staff в базата, затова функцията повтаря namesMatch в SQL:
 lower+btrim+collapse spaces; брои и additional_departments) · 055 лого по шаблон
@@ -220,9 +223,9 @@ PR **и към main, и към dev**, плюс при push към двата. Д
 main, тоест PR-ите към dev минаваха без нито една проверка — а именно на dev
 се тества.
 
-193 теста (`npm test`, vitest) — чиста логика: `contract`, `utils`, `trz`,
+198 теста (`npm test`, vitest) — чиста логика: `contract`, `utils`, `trz`,
 `tableIndices`, `subscriptionBuckets`, `monitoring`, `notifications`, `certificates`,
-`rss`, `invoiceExport`. НЯМА тестове на компоненти
+`rss`, `invoiceExport`, `cashRegisters`. НЯМА тестове на компоненти
 (няма jsdom/testing-library) и НЯМА тестове на `storage.ts` — той иска мокване
 на Supabase. Знае се, съзнателно е.
 

@@ -14,6 +14,7 @@ import {
 } from '../lib/storage'
 import type { CashRegister, CashRegisterTurnover, CashFirmMonthly } from '../lib/types'
 import { buildCellIndex, buildDropdownIndex, clientDisplayName, resolveDropdownText } from '../lib/tableIndices'
+import { annualTurnover } from '../lib/cashRegisters'
 import { exportRowsToExcel } from '../lib/export'
 import { MONTH_NAMES } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
@@ -448,10 +449,73 @@ function FirmDetail({ clientId, name, year, registers, turnoverByReg, firmByClie
           <CalcRow label="СПО общо" calc={calc} sel={c => c.spoTotal} strong />
         </tbody>
       </table>
+      <AnnualTurnover registers={registers} turnoverByReg={turnoverByReg} year={year} />
+
       <p className="text-[11px] text-muted-foreground mt-2">
         {name} • СПО 20% = (Общо20 − Сторно20) − Фактури 20% − Други фиск. 20% + КИ 20%
         {' · '}СПО 9% = (Общо9 − Сторно9) − Фактури 9% − Други фиск. 9% + КИ 9%
       </p>
+    </div>
+  )
+}
+
+// -------- Годишен оборот по апарат --------
+// Отделна таблица, а не колони към месечната: КО (= КА − СТОРНО) има смисъл
+// само на годишен ред, а в месечната мрежа щеше да стои празно на 20 реда.
+function AnnualTurnover({ registers, turnoverByReg, year }: {
+  registers: CashRegister[]
+  turnoverByReg: Map<string, Map<number, CashRegisterTurnover>>
+  year: number
+}) {
+  const rows = registers.map((r, i) => {
+    const byMonth = turnoverByReg.get(r.id)
+    const sums = annualTurnover(MONTHS.map(m => byMonth?.get(m)))
+    const name = (r.object_name ?? '').trim()
+    return { id: r.id, label: name || `Апарат ${i + 1}`, memory: (r.memory_number ?? '').trim(), ...sums }
+  })
+  if (rows.length === 0) return null
+  const total = rows.reduce((s, r) => ({ ka: s.ka + r.ka, storno: s.storno + r.storno, ko: s.ko + r.ko }), { ka: 0, storno: 0, ko: 0 })
+  const th = 'px-3 py-1.5 text-right text-xs font-medium uppercase tracking-wider whitespace-nowrap'
+  return (
+    <div className="mt-5 max-w-[640px]">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="bg-navy text-white">
+            <th colSpan={4} className="px-3 py-1.5 text-center text-xs font-semibold uppercase tracking-wider">
+              Годишен оборот {year}
+            </th>
+          </tr>
+          <tr className="bg-navy/90 text-white">
+            <th className="px-3 py-1.5 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap">Апарат</th>
+            <th className={th} title="Оборот за годината (20% + 9%)">КА</th>
+            <th className={th} title="Сторно за годината (20% + 9%)">Сторно</th>
+            <th className={th} title="КА − Сторно">КО</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.id} className={`border-b border-border ${i % 2 === 0 ? 'bg-card' : 'bg-muted/20'}`}>
+              <td className="px-3 py-1.5 text-xs text-foreground whitespace-nowrap">
+                <span className="font-medium">{r.label}</span>
+                {r.memory && <span className="ml-2 font-mono text-muted-foreground">{r.memory}</span>}
+              </td>
+              <CalcCell v={r.ka} />
+              <CalcCell v={r.storno} />
+              <CalcCell v={r.ko} />
+            </tr>
+          ))}
+        </tbody>
+        {rows.length > 1 && (
+          <tfoot>
+            <tr className="border-t-2 border-border bg-navy/5 dark:bg-primary/10">
+              <td className="px-3 py-1.5 text-xs font-bold text-foreground">Общо</td>
+              <CalcCell v={total.ka} strong />
+              <CalcCell v={total.storno} strong />
+              <CalcCell v={total.ko} strong />
+            </tr>
+          </tfoot>
+        )}
+      </table>
     </div>
   )
 }
