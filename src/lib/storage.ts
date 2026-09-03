@@ -2375,7 +2375,7 @@ export async function addCashRegister(row: {
   return data as CashRegister
 }
 
-export async function updateCashRegister(id: string, patch: { object_name?: string | null; memory_number?: string | null }): Promise<void> {
+export async function updateCashRegister(id: string, patch: { object_name?: string | null; memory_number?: string | null; notes?: string | null }): Promise<void> {
   const { error } = await supabase.from('crm_cash_registers').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id)
   if (error) throw error
 }
