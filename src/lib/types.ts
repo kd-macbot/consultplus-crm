@@ -245,6 +245,9 @@ export interface CashRegister {
   kind: CashRegisterKind | string
   object_name: string | null
   memory_number: string | null
+  // Свободна бележка на апарата (мигр. 062) — показва се в „Годишен оборот".
+  // НЕ е по година: видима е във всяка.
+  notes: string | null
   position: number
   created_by: string | null
   created_at: string

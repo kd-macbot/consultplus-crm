@@ -53,6 +53,29 @@ function NumCell({ value, disabled, onSave }: { value: number; disabled?: boolea
   )
 }
 
+// Свободен текст (бележка на апарата) — запис на blur/Enter.
+// Стойността е низ, затова презареждането на данните не изтрива това, което
+// колегата пише в момента: ефектът се задейства само при РАЗЛИЧЕН текст.
+function NoteCell({ value, disabled, onSave }: { value: string; disabled?: boolean; onSave: (v: string) => void }) {
+  const [draft, setDraft] = useState(value)
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => { setDraft(value) }, [value])
+  function commit() {
+    const v = draft.trim()
+    if (v === value.trim()) return
+    onSave(v)
+  }
+  return (
+    <input ref={ref} disabled={disabled} value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') ref.current?.blur(); if (e.key === 'Escape') { setDraft(value); ref.current?.blur() } }}
+      placeholder="—"
+      className="h-7 w-full px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent"
+    />
+  )
+}
+
 // Само за четене клетка (смятащите се редове), с цвят.
 function CalcCell({ v, strong }: { v: number; strong?: boolean }) {
   return (
@@ -368,7 +391,7 @@ function FirmDetail({ clientId, name, year, registers, turnoverByReg, firmByClie
   onSaveFirm: (clientId: string, month: number, patch: Partial<CashFirmMonthly>) => void
   onAddRegister: (kind: 'simple' | 'detailed') => void
   onRemoveRegister: (id: string) => void
-  onUpdateRegister: (id: string, patch: { object_name?: string | null; memory_number?: string | null }) => void
+  onUpdateRegister: (id: string, patch: { object_name?: string | null; memory_number?: string | null; notes?: string | null }) => void
 }) {
   const calc = MONTHS.map(m => compute(clientId, m))
   const detailed = registers.length > 0 && registers[0].kind === 'detailed'
@@ -449,7 +472,8 @@ function FirmDetail({ clientId, name, year, registers, turnoverByReg, firmByClie
           <CalcRow label="СПО общо" calc={calc} sel={c => c.spoTotal} strong />
         </tbody>
       </table>
-      <AnnualTurnover registers={registers} turnoverByReg={turnoverByReg} year={year} />
+      <AnnualTurnover registers={registers} turnoverByReg={turnoverByReg} year={year}
+        canEdit={canEdit} onUpdate={onUpdateRegister} />
 
       <p className="text-[11px] text-muted-foreground mt-2">
         {name} • СПО 20% = (Общо20 − Сторно20) − Фактури 20% − Други фиск. 20% + КИ 20%
@@ -462,26 +486,31 @@ function FirmDetail({ clientId, name, year, registers, turnoverByReg, firmByClie
 // -------- Годишен оборот по апарат --------
 // Отделна таблица, а не колони към месечната: КО (= КА − СТОРНО) има смисъл
 // само на годишен ред, а в месечната мрежа щеше да стои празно на 20 реда.
-function AnnualTurnover({ registers, turnoverByReg, year }: {
+function AnnualTurnover({ registers, turnoverByReg, year, canEdit, onUpdate }: {
   registers: CashRegister[]
   turnoverByReg: Map<string, Map<number, CashRegisterTurnover>>
   year: number
+  canEdit: boolean
+  onUpdate: (id: string, patch: { notes?: string | null }) => void
 }) {
   const rows = registers.map((r, i) => {
     const byMonth = turnoverByReg.get(r.id)
     const sums = annualTurnover(MONTHS.map(m => byMonth?.get(m)))
     const name = (r.object_name ?? '').trim()
-    return { id: r.id, label: name || `Апарат ${i + 1}`, memory: (r.memory_number ?? '').trim(), ...sums }
+    return {
+      id: r.id, label: name || `Апарат ${i + 1}`,
+      memory: (r.memory_number ?? '').trim(), notes: r.notes ?? '', ...sums,
+    }
   })
   if (rows.length === 0) return null
   const total = rows.reduce((s, r) => ({ ka: s.ka + r.ka, storno: s.storno + r.storno, ko: s.ko + r.ko }), { ka: 0, storno: 0, ko: 0 })
   const th = 'px-3 py-1.5 text-right text-xs font-medium uppercase tracking-wider whitespace-nowrap'
   return (
-    <div className="mt-5 max-w-[640px]">
+    <div className="mt-5 max-w-[900px]">
       <table className="w-full border-collapse">
         <thead>
           <tr className="bg-navy text-white">
-            <th colSpan={4} className="px-3 py-1.5 text-center text-xs font-semibold uppercase tracking-wider">
+            <th colSpan={5} className="px-3 py-1.5 text-center text-xs font-semibold uppercase tracking-wider">
               Годишен оборот {year}
             </th>
           </tr>
@@ -490,6 +519,9 @@ function AnnualTurnover({ registers, turnoverByReg, year }: {
             <th className={th} title="Оборот за годината (20% + 9%)">КА</th>
             <th className={th} title="Сторно за годината (20% + 9%)">Сторно</th>
             <th className={th} title="КА − Сторно">КО</th>
+            <th className="px-3 py-1.5 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap w-[240px]">
+              Бележка
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -502,6 +534,13 @@ function AnnualTurnover({ registers, turnoverByReg, year }: {
               <CalcCell v={r.ka} />
               <CalcCell v={r.storno} />
               <CalcCell v={r.ko} />
+              <td className="px-1 py-1">
+                {/* Бележката е на АПАРАТА, не на годината — затова смяната на
+                    година не я изчиства. Записва се на blur, като другите
+                    свободни полета в страницата. */}
+                <NoteCell value={r.notes} disabled={!canEdit}
+                  onSave={v => onUpdate(r.id, { notes: v || null })} />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -512,6 +551,7 @@ function AnnualTurnover({ registers, turnoverByReg, year }: {
               <CalcCell v={total.ka} strong />
               <CalcCell v={total.storno} strong />
               <CalcCell v={total.ko} strong />
+              <td />
             </tr>
           </tfoot>
         )}
