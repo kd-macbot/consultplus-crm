@@ -3,13 +3,15 @@ import { toast } from 'sonner'
 import { Navigate } from 'react-router-dom'
 import {
   Landmark, Search, Plus, Trash2, X, Eye, EyeOff, Copy, CopyPlus, ExternalLink, ShieldCheck,
+  KeyRound, Users, AlertTriangle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import {
   useClients, useColumns, useCellValues, useStaff, useBankAccess, useInvalidateCrm,
 } from '../lib/queries'
-import { upsertBankAccess, deleteBankAccess } from '../lib/storage'
+import { upsertBankAccess, updateBankCredentials, deleteBankAccess } from '../lib/storage'
+import { groupSharedLogins, sameLoginOthers, type SharedLogin } from '../lib/bankAccess'
 import {
   BANK_ACCESS_TYPES, BANK_ACCESS_TYPE_LABELS, BANKS,
   type BankAccess, type BankAccessType,
@@ -137,6 +139,8 @@ export function BankAccessPage() {
   // отваряме модала автоматично, за да я възстановим.
   const [addOpen, setAddOpen] = useState(() => hasNonEmptyDraft())
   const [editFor, setEditFor] = useState<BankAccess | null>(null)
+  // Масова смяна на паролата за фирмите с ЕДИН И СЪЩ вход.
+  const [sharedOpen, setSharedOpen] = useState(false)
   // Кредите за пред-попълване при „дублирай" от съществуващ ред.
   const [prefill, setPrefill] = useState<BankAccess | null>(null)
 
@@ -154,6 +158,13 @@ export function BankAccessPage() {
     if (typeFilter) all = all.filter(r => r.access_type === typeFilter)
     return all.sort((a, b) => a.name.localeCompare(b.name, 'bg'))
   }, [bankRows, nameByClient, search, bankFilter, typeFilter])
+
+  // Входове, които стоят на ПОВЕЧЕ ОТ ЕДНА фирма (общ вход към банката).
+  const sharedLogins = useMemo(() => groupSharedLogins(bankRows), [bankRows])
+  const divergedCount = useMemo(
+    () => sharedLogins.filter(g => g.distinctPasswords > 1).length,
+    [sharedLogins],
+  )
 
   // Банките, реално ползвани (за филтъра).
   const usedBanks = useMemo(
@@ -208,12 +219,27 @@ export function BankAccessPage() {
               </p>
             </div>
           </div>
-          {canEdit && (
-            <Button size="sm" onClick={() => setAddOpen(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Добави клиент</span>
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {canEdit && sharedLogins.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setSharedOpen(true)}
+                title="Смени паролата наведнъж за фирмите с един и същ вход">
+                <KeyRound className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Общи входове</span>
+                <span className="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                  {sharedLogins.length}
+                </span>
+                {divergedCount > 0 && (
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                )}
+              </Button>
+            )}
+            {canEdit && (
+              <Button size="sm" onClick={() => setAddOpen(true)}>
+                <Plus className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Добави клиент</span>
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -332,6 +358,15 @@ export function BankAccessPage() {
           userId={user?.id}
         />
       )}
+      {sharedOpen && (
+        <SharedLoginsModal
+          groups={sharedLogins}
+          nameByClient={nameByClient}
+          onClose={() => setSharedOpen(false)}
+          onSaved={invalidateBankAccess}
+          userId={user?.id}
+        />
+      )}
       {editFor && (
         <BankAccessModal
           clients={clients}
@@ -343,6 +378,138 @@ export function BankAccessPage() {
           userId={user?.id}
         />
       )}
+    </div>
+  )
+}
+
+// ============================================================
+// Modal: Общи входове — масова смяна на паролата
+// ============================================================
+// Един и същ вход стои на N фирми. Смяната на едно място оставя другите
+// със стара парола и никой не разбира, докато не опита да влезе — затова
+// групата се сменя наведнъж, с ЕДНА заявка.
+function SharedLoginsModal({ groups, nameByClient, onClose, onSaved, userId }: {
+  groups: SharedLogin[]
+  nameByClient: Map<string, string>
+  onClose: () => void
+  onSaved: () => Promise<void> | void
+  userId?: string
+}) {
+  const [selected, setSelected] = useState<string | null>(groups.length === 1 ? groups[0].key : null)
+  const [password, setPassword] = useState('')
+  const [appCode, setAppCode] = useState('')
+  const [showPass, setShowPass] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const group = groups.find(g => g.key === selected) ?? null
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [onClose])
+
+  // Смяна на групата → полетата се чистят, за да не отиде паролата на
+  // един вход по погрешка на друг.
+  function pick(key: string) {
+    setSelected(key); setPassword(''); setAppCode(''); setShowPass(false)
+  }
+
+  const firmNames = group
+    ? group.clientIds.map(id => nameByClient.get(id) ?? '—').sort((a, b) => a.localeCompare(b, 'bg'))
+    : []
+  // Празно поле = „не пипай това" — иначе изчистването на 2FA кода би било
+  // страничен ефект от смяната на паролата.
+  const canSave = !!group && (password.trim() !== '' || appCode.trim() !== '') && !saving
+
+  async function save() {
+    if (!group) return
+    const patch: { password?: string; app_code?: string } = {}
+    if (password.trim() !== '') patch.password = password
+    if (appCode.trim() !== '') patch.app_code = appCode
+    const what = patch.password && patch.app_code ? 'паролата и 2FA кода' : patch.password ? 'паролата' : '2FA кода'
+    if (!confirm(`Да сменя ${what} на ${group.clientIds.length} фирми?\n\n${firmNames.join('\n')}`)) return
+    setSaving(true)
+    try {
+      await updateBankCredentials(group.clientIds, patch, userId)
+      await onSaved()
+      toast.success(`Сменено на ${group.clientIds.length} фирми`)
+      onClose()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при запис')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bg-card rounded-lg shadow-xl w-full max-w-lg max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div>
+            <h3 className="font-semibold text-foreground">Общи входове</h3>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Смяна на паролата наведнъж за всички фирми с един и същ вход.
+            </p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4 space-y-3">
+          <div className="border border-border rounded-md divide-y divide-border">
+            {groups.map(g => (
+              <button key={g.key} type="button" onClick={() => pick(g.key)}
+                className={`w-full text-left px-3 py-2 transition ${g.key === selected ? 'bg-accent/50' : 'hover:bg-muted/40'}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">{g.bank || '(без банка)'}</span>
+                  <span className="font-mono text-xs text-muted-foreground truncate">{g.username}</span>
+                  <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground shrink-0">
+                    <Users className="h-3 w-3" />{g.clientIds.length}
+                  </span>
+                </div>
+                {g.distinctPasswords > 1 && (
+                  <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    Паролите на тези фирми се различават — смяната ще ги изравни.
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {group && (
+            <>
+              <div className="text-[11px] text-muted-foreground">
+                Ще се промени на: <span className="text-foreground">{firmNames.join(', ')}</span>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-foreground block mb-1">Нова парола</label>
+                <div className="relative">
+                  <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                    placeholder="празно = не се променя" autoFocus
+                    className="w-full px-3 py-2 pr-8 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none" />
+                  <button type="button" onClick={() => setShowPass(s => !s)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    {showPass ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-foreground block mb-1">Нов 2FA / код за приложението</label>
+                <input type={showPass ? 'text' : 'password'} value={appCode} onChange={e => setAppCode(e.target.value)}
+                  placeholder="празно = не се променя"
+                  className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:border-primary focus:outline-none" />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
+          <Button variant="ghost" onClick={onClose} disabled={saving}>Отказ</Button>
+          <Button onClick={save} disabled={!canSave}>
+            {saving ? 'Записване...' : group ? `Смени на ${group.clientIds.length} фирми` : 'Избери вход'}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -381,6 +548,18 @@ function BankAccessModal({
   const [notes, setNotes] = useState(editExisting?.notes ?? draft?.notes ?? '')
   const [showPass, setShowPass] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Ако СЪЩИЯТ вход стои и на други фирми, смяната само тук ги оставя със
+  // стара парола. Търсенето е по ПЪРВОНАЧАЛНИТЕ банка/потребител: ако тук се
+  // сменя и потребителят, другите редове още стоят на стария вход.
+  const sharedOthers = useMemo(
+    () => editExisting
+      ? sameLoginOthers([...existingConfigs.values()], editExisting.client_id, editExisting.bank, editExisting.username)
+      : [],
+    [editExisting, existingConfigs],
+  )
+  const passChanged = !!editExisting && (password || null) !== (editExisting.password ?? null)
+  const codeChanged = !!editExisting && (appCode || null) !== (editExisting.app_code ?? null)
+  const [applyToShared, setApplyToShared] = useState(true)
 
   // Persist чернова при всяка промяна (само add mode).
   useEffect(() => {
@@ -421,8 +600,22 @@ function BankAccessModal({
         we_pay: wePay,
         notes: notes || null,
       }, userId)
+      // Общият вход се изравнява СЛЕД успешния запис на реда — ако първият
+      // се провали, чуждите редове остават непипнати.
+      let alsoChanged = 0
+      if (editExisting && applyToShared && sharedOthers.length > 0 && (passChanged || codeChanged)) {
+        const patch: { password?: string | null; app_code?: string | null } = {}
+        if (passChanged) patch.password = password || null
+        if (codeChanged) patch.app_code = appCode || null
+        await updateBankCredentials(sharedOthers, patch, userId)
+        alsoChanged = sharedOthers.length
+      }
       clearDraft()  // успешен запис → черновата вече не трябва
-      toast.success(editExisting ? 'Обновено' : 'Добавено')
+      toast.success(
+        alsoChanged > 0
+          ? `Обновено (и още ${alsoChanged} ${alsoChanged === 1 ? 'фирма' : 'фирми'} със същия вход)`
+          : editExisting ? 'Обновено' : 'Добавено',
+      )
       await onSaved()
     } catch (e: any) {
       // При грешка/висене НЕ чистим черновата — данните остават за след F5.
@@ -555,6 +748,26 @@ function BankAccessModal({
               </button>
             </div>
           </div>
+
+          {/* Общ вход: смяната тук важи и за другите фирми със същия вход. */}
+          {sharedOthers.length > 0 && (passChanged || codeChanged) && (
+            <div className="rounded-md border border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20 px-3 py-2">
+              <label className="flex items-start gap-2 text-xs cursor-pointer">
+                <input type="checkbox" checked={applyToShared} onChange={e => setApplyToShared(e.target.checked)} className="h-3.5 w-3.5 mt-0.5" />
+                <span>
+                  <span className="font-medium text-foreground">
+                    Същият вход стои и на още {sharedOthers.length} {sharedOthers.length === 1 ? 'фирма' : 'фирми'}
+                  </span>
+                  <span className="block text-muted-foreground mt-0.5">
+                    {sharedOthers.map(id => nameByClient.get(id) ?? '—').sort((a, b) => a.localeCompare(b, 'bg')).join(', ')}
+                  </span>
+                  <span className="block text-muted-foreground mt-0.5">
+                    Без отметка ще останат със старата парола.
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
 
           <div>
             <label className="text-xs font-medium text-foreground block mb-1.5">Тип достъп</label>

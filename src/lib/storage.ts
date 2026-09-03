@@ -1423,6 +1423,30 @@ export async function upsertBankAccess(
   })())
 }
 
+/**
+ * Масова смяна на паролата (и/или 2FA кода) за фирмите с ЕДИН И СЪЩ вход.
+ *
+ * ЕДНА заявка с `.in(...)`, а не цикъл от update-и: цикълът или сменя част от
+ * редовете при мрежов проблем, или (при Promise.all) преглъща провала мълчаливо —
+ * `supabase.update()` се RESOLVE-ва с `{ error }`, не reject-ва. Полуизпълнената
+ * смяна е по-лоша от нито една: част от фирмите остават със стара парола, а
+ * никой не знае кои.
+ */
+export async function updateBankCredentials(
+  clientIds: string[],
+  patch: { password?: string | null; app_code?: string | null },
+  updatedBy?: string | null,
+): Promise<void> {
+  if (clientIds.length === 0) return
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_bank_access')
+      .update({ ...patch, updated_at: new Date().toISOString(), updated_by: updatedBy ?? null })
+      .in('client_id', clientIds)
+    if (error) throw error
+  })())
+}
+
 export async function deleteBankAccess(clientId: string): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase.from('crm_bank_access').delete().eq('client_id', clientId)
