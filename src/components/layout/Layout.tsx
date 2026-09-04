@@ -6,18 +6,16 @@ import { usePaymentConfigs, usePaymentStatuses, useAbsences, useNews, useMyOpenT
 import { previousMonth } from '../../lib/utils'
 import { useMyStaff } from '../../lib/useMyStaff'
 import { useCrmMasterRealtime } from '../../lib/useCrmMasterRealtime'
-import {
-  LayoutDashboard, Users, UserCog, Wallet, CreditCard,
-  ClipboardList, Settings, LogOut, Menu, X, ChevronRight, BookUser, Target, ClipboardCheck, CalendarRange, Receipt, ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark, KanbanSquare, Coins, MessageSquare, Calculator, FileSignature, BellRing, KeyRound, Newspaper,
-} from 'lucide-react'
+// Иконите на менюто вече живеят при самото меню (lib/nav.ts) — тук стоят
+// само тези на самия Layout.
+import { LogOut, Menu, X, ChevronRight, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
-
-type BadgeKey = 'paymentsUnpaid' | 'absentToday' | 'absenceRequests' | 'recentNews' | 'myOpenTasks'
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; roles: string[]; hideForTrz?: boolean; badgeKeys?: BadgeKey[]; showOnlyForTrzOrAdmin?: boolean; showOnlyForBankDepts?: boolean; showOnlyForAccounting?: boolean; showOnlyForManagement?: boolean }
+import { CommandPalette, openCommandPalette } from '../CommandPalette'
+import { NAV_SECTIONS, canSeeNavItem, type BadgeKey } from '../../lib/nav'
 
 // Цвят + tooltip per бадж — един item може да носи няколко баджа
 // (напр. Календар: отсъстващи днес + нови новини).
@@ -28,59 +26,6 @@ const BADGE_META: Record<BadgeKey, { color: string; title: (n: number) => string
   recentNews: { color: 'bg-emerald-500', title: n => `${n} ${n === 1 ? 'нова новина' : 'нови новини'} в последните 24 ч.` },
   myOpenTasks: { color: 'bg-violet-500', title: n => `${n} ${n === 1 ? 'моя отворена задача' : 'мои отворени задачи'}` },
 }
-type NavSection = { title: string | null; items: NavItem[] }
-
-const NAV_SECTIONS: NavSection[] = [
-  {
-    title: null,  // Табло + Календар — без заглавие, най-отгоре в sidebar-а
-    items: [
-      { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
-      { to: '/calendar', label: 'Календар', icon: CalendarDays, roles: ['admin', 'manager', 'employee'], badgeKeys: ['absentToday', 'recentNews'] },
-      { to: '/tasks', label: 'Задачи', icon: KanbanSquare, roles: ['admin', 'manager', 'employee'], badgeKeys: ['myOpenTasks'] },
-    ],
-  },
-  {
-    title: 'Ежедневна работа',
-    items: [
-      { to: '/clients', label: 'Клиенти', icon: Users, roles: ['admin', 'manager', 'employee'] },
-      { to: '/worksheet', label: 'Работен лист', icon: ClipboardCheck, roles: ['admin', 'manager', 'employee'] },
-      { to: '/yearly', label: 'Годишен изглед', icon: CalendarRange, roles: ['admin', 'manager', 'employee'] },
-      { to: '/trz', label: 'ТРЗ Работен лист', icon: Receipt, roles: ['admin', 'manager', 'employee'] },
-      { to: '/cash-registers', label: 'Касови апарати', icon: Calculator, roles: ['admin', 'manager', 'employee'], showOnlyForAccounting: true },
-      { to: '/checklist', label: 'Личен чек лист', icon: ListChecks, roles: ['admin', 'manager', 'employee'], hideForTrz: true },
-      { to: '/cash-loans', label: 'Финансов мониторинг', icon: Coins, roles: ['admin', 'manager', 'employee'], hideForTrz: true },
-      { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
-      { to: '/profiles', label: 'Профили', icon: IdCard, roles: ['admin', 'manager', 'employee'] },
-      { to: '/payments', label: 'Плащания', icon: Banknote, roles: ['admin', 'manager'], badgeKeys: ['paymentsUnpaid'] },
-      { to: '/messages', label: 'Съобщения', icon: MessageSquare, roles: ['admin', 'manager', 'employee'] },
-    ],
-  },
-  {
-    title: 'Бизнес',
-    items: [
-      { to: '/contracts', label: 'Шаблони', icon: FileSignature, roles: ['admin', 'manager'], showOnlyForManagement: true },
-      { to: '/opportunities', label: 'Възможности', icon: Target, roles: ['admin'] },
-      { to: '/subscriptions', label: 'Абонаменти', icon: CreditCard, roles: ['admin'] },
-      { to: '/expenses', label: 'Разходи', icon: Wallet, roles: ['admin'] },
-    ],
-  },
-  {
-    title: 'Администрация',
-    items: [
-      { to: '/staff', label: 'Персонал', icon: UserCog, roles: ['admin'] },
-      { to: '/bank-access', label: 'Банков достъп', icon: Landmark, roles: ['admin', 'manager', 'employee'], showOnlyForBankDepts: true },
-      { to: '/absence-requests', label: 'Заявки за отпуска', icon: Inbox, roles: ['admin', 'manager'], badgeKeys: ['absenceRequests'], showOnlyForTrzOrAdmin: true },
-      { to: '/vacations', label: 'Справка отпуска', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
-      { to: '/form76', label: 'Форма 76', icon: FileSpreadsheet, roles: ['admin', 'manager', 'employee'], showOnlyForTrzOrAdmin: true },
-      { to: '/certificates', label: 'Електронни подписи', icon: KeyRound, roles: ['admin', 'manager'], showOnlyForManagement: true },
-      { to: '/news-sources', label: 'Новини от бранша', icon: Newspaper, roles: ['admin', 'manager'], showOnlyForManagement: true },
-      { to: '/notifications', label: 'Известия', icon: BellRing, roles: ['admin'] },
-      { to: '/audit', label: 'Дневник', icon: ClipboardList, roles: ['admin'] },
-      { to: '/admin', label: 'Настройки', icon: Settings, roles: ['admin'] },
-    ],
-  },
-]
-
 const roleLabel: Record<string, string> = {
   admin: 'Администратор',
   manager: 'Мениджър',
@@ -197,6 +142,9 @@ export function Layout() {
           Стои като header горе на цялата ширина. */}
       <EnvironmentBanner />
 
+      {/* Бързо търсене (Ctrl+K). Стои тук, защото Layout е на всяка страница. */}
+      <CommandPalette />
+
       <div className="flex-1 flex min-h-0">
 
       {/* Mobile top bar */}
@@ -234,17 +182,26 @@ export function Layout() {
           <img src={logoWhite} alt="Consult Plus" className="h-9 w-auto" />
         </div>
 
+        {/* Бързо търсене — ВИДИМ вход, не само шорткът. Комбинацията зависи
+            от клавиатурната подредба и от браузъра; бутонът работи винаги. */}
+        <div className="px-3 pt-3">
+          <button
+            type="button"
+            onClick={() => { setSidebarOpen(false); openCommandPalette() }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/70 hover:text-white text-sm transition"
+          >
+            <Search className="h-3.5 w-3.5 shrink-0" />
+            <span>Търси...</span>
+            <kbd className="ml-auto text-[10px] border border-white/20 rounded px-1 py-0.5 text-white/50">Ctrl K</kbd>
+          </button>
+        </div>
+
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {NAV_SECTIONS.map((section, secIdx) => {
-            const visibleItems = section.items.filter(item =>
-              user && item.roles.includes(user.role)
-                && !(item.hideForTrz && isTrz)
-                && !(item.showOnlyForTrzOrAdmin && user.role !== 'admin' && !isTrz)
-                && !(item.showOnlyForBankDepts && !canSeeBankAccess)
-                && !(item.showOnlyForAccounting && !canSeeSpo)
-                && !(item.showOnlyForManagement && !canSeeTemplates)
-            )
+            const visibleItems = section.items.filter(item => canSeeNavItem(item, {
+              role: user?.role, isTrz, canSeeBankAccess, canSeeSpo, canSeeTemplates,
+            }))
             if (visibleItems.length === 0) return null
             return (
               <div key={section.title ?? `s${secIdx}`} className={secIdx > 0 ? 'mt-2' : ''}>
