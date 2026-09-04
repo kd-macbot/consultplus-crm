@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   useReactTable,
   getCoreRowModel,
@@ -169,6 +170,20 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [editCell, setEditCell] = useState<{ clientId: string; columnId: string } | null>(null)
   const [tagFilter, setTagFilter] = usePersistentState<string[]>('clients-tags', [])
   const [columnOrder, setColumnOrder] = useState<string[]>([])
+
+  // Бързото търсене (Ctrl+K) праща фирмата като ?q=<име>. Стойността влиза
+  // в търсачката и параметърът се маха от адреса — иначе едно презареждане
+  // би върнало филтъра, който колегата вече е изчистил.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q == null) return
+    setGlobalFilter(q)
+    const next = new URLSearchParams(searchParams)
+    next.delete('q')
+    setSearchParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   // Saved views: на mount-а зареждаме default-а (или активния, ако е bookmark-нат)
   const [views, setViews] = useState<View[]>(() => getViews())
