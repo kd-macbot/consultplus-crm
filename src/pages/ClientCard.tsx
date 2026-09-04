@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Building2, Phone, Globe, MapPin, AlertTriangle, User,
-  ClipboardCheck, Banknote, KanbanSquare, MessageSquare, FileSignature, Coins, Loader2,
+  ClipboardCheck, Banknote, KanbanSquare, MessageSquare, Coins, Wallet, Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
@@ -10,7 +10,8 @@ import { useMyStaff } from '../lib/useMyStaff'
 import {
   useClients, useColumns, useCellValues, useDropdownOptions, useAllContacts,
   useClientProfiles, useMonthlyWork, useTrzWork, usePaymentConfigs, usePaymentStatuses,
-  useTasks, useClientMessages, useContracts, useFinancialClosings,
+  useTasks, useClientMessages, useFinancialClosings, useCashLoanEntries,
+  useTags, useClientTags,
 } from '../lib/queries'
 import {
   buildCellIndex, buildDropdownIndex, clientDisplayName, resolveDropdownText, resolveNumber,
@@ -24,12 +25,13 @@ import { lastWorkMonths, orDash, vatDisplay } from '../lib/clientCard'
 //
 // Нищо ново в базата: страницата само СЪБИРА данни, които вече стоят
 // пръснати по Клиенти, Контакти, Профили, Работен лист, ТРЗ, Плащания,
-// Задачи, Съобщения, Договори и Финансов мониторинг.
+// Задачи, Съобщения, Каси и заеми и Финансов мониторинг.
 //
 // ПРАВАТА се спазват както в отделните страници:
-//   Хонорар            → само admin
-//   Договори           → admin + мениджър от „Управление"
-//   Финансов мониторинг→ скрит за отдел ТРЗ
+//   Хонорар                  → само admin (в UI; в базата cell_values е
+//                              четимо за всички логнати — известен, приет риск)
+//   Финансов мониторинг,
+//   каси и заеми             → скрити за отдел ТРЗ
 // Банковият достъп НЕ влиза изобщо — паролите си остават на своя екран,
 // със своите права.
 // ============================================================
@@ -77,7 +79,6 @@ export function ClientCardPage() {
   const { inDept } = useMyStaff()
   const isAdmin = user?.role === 'admin'
   const isTrz = inDept('ТРЗ')
-  const canSeeContracts = isAdmin || (user?.role === 'manager' && inDept('Управление'))
 
   const clientsQ = useClients()
   const columnsQ = useColumns()
@@ -88,11 +89,19 @@ export function ClientCardPage() {
   const paymentConfigsQ = usePaymentConfigs()
   const tasksQ = useTasks()
   const messagesQ = useClientMessages()
-  const contractsQ = useContracts()
+  const tagsQ = useTags()
+  const clientTagsQ = useClientTags()
 
   const months = useMemo(() => lastWorkMonths(new Date(), 3), [])
   const paymentStatusesQ = usePaymentStatuses(months[0].year)
   const closingsQ = useFinancialClosings(months[0].year)
+  // Каси и заеми: записите са ДВИЖЕНИЕ за месеца, затова се тегли цялата
+  // година до работния месец и се сумира — същото, което прави страницата.
+  const cashMonths = useMemo(
+    () => Array.from({ length: months[0].month }, (_, i) => i + 1),
+    [months],
+  )
+  const cashLoanQ = useCashLoanEntries(months[0].year, cashMonths)
 
   // Три месеца = три заявки. Всяка е споделена с Работния лист, тоест при
   // идване оттам вече са в кеша.
@@ -147,10 +156,21 @@ export function ClientCardPage() {
       .slice(0, 5),
     [messagesQ.data, clientId],
   )
-  const contracts = useMemo(
-    () => canSeeContracts ? (contractsQ.data ?? []).filter(c => c.client_id === clientId) : [],
-    [canSeeContracts, contractsQ.data, clientId],
-  )
+  const tags = useMemo(() => {
+    const mine = new Set((clientTagsQ.data ?? []).filter(t => t.client_id === clientId).map(t => t.tag_id))
+    return (tagsQ.data ?? []).filter(t => mine.has(t.id))
+  }, [tagsQ.data, clientTagsQ.data, clientId])
+
+  // Натрупано от началото на годината до работния месец — по вид.
+  const cashLoan = useMemo(() => {
+    let cash = 0, loan = 0
+    for (const e of cashLoanQ.data ?? []) {
+      if (e.client_id !== clientId) continue
+      if (e.kind === 'cash') cash += e.amount
+      else loan += e.amount
+    }
+    return { cash, loan, has: (cashLoanQ.data ?? []).some(e => e.client_id === clientId) }
+  }, [cashLoanQ.data, clientId])
   const closings = useMemo(
     () => (closingsQ.data ?? []).filter(c => c.client_id === clientId).sort((a, b) => b.period_no - a.period_no),
     [closingsQ.data, clientId],
@@ -207,6 +227,13 @@ export function ClientCardPage() {
                   Оценка: {rating}
                 </span>
               )}
+              {tags.map(t => (
+                <span key={t.id}
+                  className="text-[11px] px-2 py-0.5 rounded-full font-medium border"
+                  style={{ backgroundColor: `${t.color}22`, borderColor: t.color, color: t.color }}>
+                  {t.name}
+                </span>
+              ))}
             </div>
             <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>ЕИК <span className="font-mono text-foreground">{orDash(contact?.eik)}</span></span>
@@ -463,24 +490,29 @@ export function ClientCardPage() {
           )}
         </div>
 
-        {/* Договори — admin + Управление */}
-        {canSeeContracts && (
-          <Section title="Документи по шаблон" icon={FileSignature}>
-            {contracts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Няма изготвени.</p>
-            ) : (
-              <ul className="space-y-1">
-                {contracts.map(c => (
-                  <li key={c.id} className="flex items-center gap-2 text-sm">
-                    <span className="text-foreground">{c.template_name}</span>
-                    <span className="text-[11px] text-muted-foreground ml-auto">{formatDate(c.contract_date)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Link to="/contracts" className="inline-block mt-2 text-[11px] text-primary hover:underline">Към Шаблони →</Link>
+        {/* Каси и заеми — натрупано от началото на годината. Скрито за ТРЗ,
+            както е и самата страница Финансов мониторинг. */}
+        {!isTrz && cashLoan.has && (
+          <Section title="Каси и заеми" icon={Wallet} hint={`натрупано към ${MONTH_NAMES[months[0].month - 1]} ${months[0].year}`}>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Каса" value={
+                <span className="tabular-nums font-semibold">
+                  {cashLoan.cash.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} лв.
+                </span>
+              } />
+              <Field label="Заеми" value={
+                <span className="tabular-nums font-semibold">
+                  {cashLoan.loan.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} лв.
+                </span>
+              } />
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Сборът на месечните движения от януари до работния месец.
+            </p>
+            <Link to="/cash-loans" className="inline-block mt-1 text-[11px] text-primary hover:underline">Към Финансов мониторинг →</Link>
           </Section>
         )}
+
       </div>
     </div>
   )
