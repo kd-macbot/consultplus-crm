@@ -47,3 +47,33 @@ export function vatDisplay(vatNumber: string | null, eik: string | null, registe
 export function doneCount(flags: Array<boolean | null | undefined>): { done: number; total: number } {
   return { done: flags.filter(Boolean).length, total: flags.length }
 }
+
+/**
+ * Последното ЗАВЪРШИЛО тримесечие спрямо работния месец, плюс месеците, които
+ * влизат в натрупването (от януари на СЪОТВЕТНАТА година).
+ *
+ * Касите и заемите се декларират по тримесечия, затова натрупаното има смисъл
+ * към края на тримесечие, а не към произволен месец: сума „към февруари" не
+ * отговаря на нищо, което се подава.
+ *
+ * В януари и февруари нито едно тримесечие от текущата година не е завършило —
+ * тогава меродавното е ЦЯЛАТА предходна година (краят на нейното IV тримесечие).
+ */
+export function lastClosedQuarter(work: { year: number; month: number }): {
+  year: number; quarter: number; months: number[]
+} {
+  const done = Math.floor(work.month / 3)
+  if (done === 0) {
+    return { year: work.year - 1, quarter: 4, months: Array.from({ length: 12 }, (_, i) => i + 1) }
+  }
+  return {
+    year: work.year,
+    quarter: done,
+    months: Array.from({ length: done * 3 }, (_, i) => i + 1),
+  }
+}
+
+/** „I“…„IV“ — за надписа на тримесечието. */
+export function romanQuarter(q: number): string {
+  return ['I', 'II', 'III', 'IV'][q - 1] ?? String(q)
+}

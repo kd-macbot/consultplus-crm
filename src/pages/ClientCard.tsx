@@ -18,7 +18,7 @@ import {
 } from '../lib/tableIndices'
 import { statusBadgeClass } from '../lib/statusBadge'
 import { MONTH_NAMES, formatDate } from '../lib/utils'
-import { lastWorkMonths, orDash, vatDisplay } from '../lib/clientCard'
+import { lastWorkMonths, orDash, vatDisplay, lastClosedQuarter, romanQuarter } from '../lib/clientCard'
 
 // ============================================================
 // Карта на клиента — всичко важно за една фирма на един екран.
@@ -95,13 +95,12 @@ export function ClientCardPage() {
   const months = useMemo(() => lastWorkMonths(new Date(), 3), [])
   const paymentStatusesQ = usePaymentStatuses(months[0].year)
   const closingsQ = useFinancialClosings(months[0].year)
-  // Каси и заеми: записите са ДВИЖЕНИЕ за месеца, затова се тегли цялата
-  // година до работния месец и се сумира — същото, което прави страницата.
-  const cashMonths = useMemo(
-    () => Array.from({ length: months[0].month }, (_, i) => i + 1),
-    [months],
-  )
-  const cashLoanQ = useCashLoanEntries(months[0].year, cashMonths)
+  // Каси и заеми: записите са ДВИЖЕНИЕ за месеца, затова се сумират. Периодът
+  // е до края на ПОСЛЕДНОТО ЗАВЪРШИЛО ТРИМЕСЕЧИЕ — те се декларират по
+  // тримесечия, тоест сума „към февруари" не отговаря на нищо, което се подава.
+  // В януари/февруари меродавна е цялата предходна година (виж lastClosedQuarter).
+  const quarter = useMemo(() => lastClosedQuarter(months[0]), [months])
+  const cashLoanQ = useCashLoanEntries(quarter.year, quarter.months)
 
   // Три месеца = три заявки. Всяка е споделена с Работния лист, тоест при
   // идване оттам вече са в кеша.
@@ -493,7 +492,7 @@ export function ClientCardPage() {
         {/* Каси и заеми — натрупано от началото на годината. Скрито за ТРЗ,
             както е и самата страница Финансов мониторинг. */}
         {!isTrz && cashLoan.has && (
-          <Section title="Каси и заеми" icon={Wallet} hint={`натрупано към ${MONTH_NAMES[months[0].month - 1]} ${months[0].year}`}>
+          <Section title="Каси и заеми" icon={Wallet} hint={`към края на ${romanQuarter(quarter.quarter)} тримесечие ${quarter.year}`}>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Каса" value={
                 <span className="tabular-nums font-semibold">
@@ -507,7 +506,8 @@ export function ClientCardPage() {
               } />
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
-              Сборът на месечните движения от януари до работния месец.
+              Сборът на месечните движения от януари {quarter.year} до края на
+              {' '}{romanQuarter(quarter.quarter)} тримесечие — периодът, по който се декларира.
             </p>
             <Link to="/cash-loans" className="inline-block mt-1 text-[11px] text-primary hover:underline">Към Финансов мониторинг →</Link>
           </Section>

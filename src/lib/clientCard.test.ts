@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { lastWorkMonths, orDash, vatDisplay, doneCount } from './clientCard'
+import { lastWorkMonths, orDash, vatDisplay, doneCount, lastClosedQuarter, romanQuarter } from './clientCard'
 
 describe('lastWorkMonths', () => {
   it('започва от РАБОТНИЯ месец (предходния), не от текущия', () => {
@@ -63,5 +63,45 @@ describe('doneCount', () => {
 
   it('празен списък е 0 от 0, не дели на нула', () => {
     expect(doneCount([])).toEqual({ done: 0, total: 0 })
+  })
+})
+
+describe('lastClosedQuarter', () => {
+  it('март → I тримесечие е завършило, месеци 1-3', () => {
+    expect(lastClosedQuarter({ year: 2026, month: 3 })).toEqual({
+      year: 2026, quarter: 1, months: [1, 2, 3],
+    })
+  })
+
+  it('май → още е I тримесечие (II свършва чак през юни)', () => {
+    const r = lastClosedQuarter({ year: 2026, month: 5 })
+    expect(r.quarter).toBe(1)
+    expect(r.months).toEqual([1, 2, 3])
+  })
+
+  it('декември → IV тримесечие, цялата година', () => {
+    const r = lastClosedQuarter({ year: 2026, month: 12 })
+    expect(r.quarter).toBe(4)
+    expect(r.months).toHaveLength(12)
+  })
+
+  it('януари и февруари → нищо не е завършило, взима се ЦЯЛАТА предходна година', () => {
+    for (const m of [1, 2]) {
+      const r = lastClosedQuarter({ year: 2026, month: m })
+      expect(r).toEqual({ year: 2025, quarter: 4, months: [1,2,3,4,5,6,7,8,9,10,11,12] })
+    }
+  })
+
+  it('юни → II тримесечие, месеци 1-6', () => {
+    const r = lastClosedQuarter({ year: 2026, month: 6 })
+    expect(r.quarter).toBe(2)
+    expect(r.months).toEqual([1, 2, 3, 4, 5, 6])
+  })
+})
+
+describe('romanQuarter', () => {
+  it('римски номера', () => {
+    expect(romanQuarter(1)).toBe('I')
+    expect(romanQuarter(4)).toBe('IV')
   })
 })
