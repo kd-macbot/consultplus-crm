@@ -23,6 +23,15 @@ const SECTION_OF = new Map<string, string>(
   NAV_SECTIONS.flatMap(s => s.items.map(i => [i.to, s.title ?? 'Начало'] as const)),
 )
 
+/**
+ * Отваряне отвън (бутонът в sidebar-а). Събитие, а не споделен state:
+ * Layout не трябва да пре-рендерира цялото меню, за да се отвори прозорче.
+ */
+export const OPEN_EVENT = 'cp:open'
+export function openCommandPalette() {
+  window.dispatchEvent(new CustomEvent(OPEN_EVENT))
+}
+
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -47,8 +56,13 @@ export function CommandPalette() {
       e.preventDefault()
       setOpen(o => !o)
     }
+    function onOpen() { setOpen(true) }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener(OPEN_EVENT, onOpen)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener(OPEN_EVENT, onOpen)
+    }
   }, [])
 
   // Всяко отваряне започва на чисто — иначе вчерашната заявка стои и

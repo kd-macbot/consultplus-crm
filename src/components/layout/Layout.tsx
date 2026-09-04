@@ -8,13 +8,13 @@ import { useMyStaff } from '../../lib/useMyStaff'
 import { useCrmMasterRealtime } from '../../lib/useCrmMasterRealtime'
 // Иконите на менюто вече живеят при самото меню (lib/nav.ts) — тук стоят
 // само тези на самия Layout.
-import { LogOut, Menu, X, ChevronRight } from 'lucide-react'
+import { LogOut, Menu, X, ChevronRight, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EnvironmentBanner } from './EnvironmentBanner'
-import { CommandPalette } from '../CommandPalette'
+import { CommandPalette, openCommandPalette } from '../CommandPalette'
 import { NAV_SECTIONS, canSeeNavItem, type BadgeKey } from '../../lib/nav'
 
 // Цвят + tooltip per бадж — един item може да носи няколко баджа
@@ -180,6 +180,20 @@ export function Layout() {
         {/* Logo — desktop only. Бялата версия за тъмния sidebar, центрирано. */}
         <div className="hidden md:flex items-center justify-center px-4 py-5 border-b border-white/10">
           <img src={logoWhite} alt="Consult Plus" className="h-9 w-auto" />
+        </div>
+
+        {/* Бързо търсене — ВИДИМ вход, не само шорткът. Комбинацията зависи
+            от клавиатурната подредба и от браузъра; бутонът работи винаги. */}
+        <div className="px-3 pt-3">
+          <button
+            type="button"
+            onClick={() => { setSidebarOpen(false); openCommandPalette() }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/70 hover:text-white text-sm transition"
+          >
+            <Search className="h-3.5 w-3.5 shrink-0" />
+            <span>Търси...</span>
+            <kbd className="ml-auto text-[10px] border border-white/20 rounded px-1 py-0.5 text-white/50">Ctrl K</kbd>
+          </button>
         </div>
 
         {/* Navigation */}
