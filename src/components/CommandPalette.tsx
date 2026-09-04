@@ -6,7 +6,7 @@ import { useMyStaff } from '../lib/useMyStaff'
 import { useClients, useColumns, useCellValues } from '../lib/queries'
 import { buildCellIndex, clientDisplayName } from '../lib/tableIndices'
 import { visibleNavItems, NAV_SECTIONS, type NavItem } from '../lib/nav'
-import { rankCommands, type CommandEntry } from '../lib/commandPalette'
+import { rankCommands, isPaletteHotkey, type CommandEntry } from '../lib/commandPalette'
 
 // ============================================================
 // Бързо търсене (Ctrl+K / ⌘K) — скачане на страница или фирма.
@@ -39,12 +39,13 @@ export function CommandPalette() {
 
   // Ctrl+K / ⌘K отваря, Escape затваря. Слуша се на прозореца, за да работи
   // и когато фокусът е в клетка на таблица.
+  // Разпознаването на комбинацията е в `isPaletteHotkey` (с тестове) —
+  // кирилската подредба праща друг `key` и това вече ни счупи шорткъта веднъж.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setOpen(o => !o)
-      }
+      if (!isPaletteHotkey(e)) return
+      e.preventDefault()
+      setOpen(o => !o)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

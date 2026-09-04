@@ -81,3 +81,22 @@ export function rankCommands(entries: CommandEntry[], query: string, opts: RankO
 function kindRank(k: CommandKind): number {
   return k === 'page' ? 0 : 1
 }
+
+/**
+ * Ctrl+K / ⌘K ли е това?
+ *
+ * КИРИЛИЦА: при българска подредба същият физически клавиш дава
+ * `key === 'к'` (кирилско ка), не 'k'. Проверка само по `key` не хващаше
+ * нищо и шорткътът отиваше при браузъра — в Chrome Ctrl+K е „търси в
+ * адресната лента". Затова водещо е `code` (физическият клавиш, независим
+ * от подредбата), а `key` е резерва за клавиатури без `code`.
+ *
+ * Alt се изключва: Ctrl+Alt+K е друга комбинация (на някои подредби е и
+ * начин за въвеждане на знак).
+ */
+export function isPaletteHotkey(e: { ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; key?: string; code?: string }): boolean {
+  if (!(e.ctrlKey || e.metaKey)) return false
+  if (e.altKey) return false
+  const k = (e.key ?? '').toLowerCase()
+  return e.code === 'KeyK' || k === 'k' || k === 'к'
+}

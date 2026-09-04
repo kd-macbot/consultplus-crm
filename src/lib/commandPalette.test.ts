@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalize, scoreMatch, rankCommands, type CommandEntry } from './commandPalette'
+import { normalize, scoreMatch, rankCommands, isPaletteHotkey, type CommandEntry } from './commandPalette'
 
 const page = (label: string): CommandEntry => ({ id: `p:${label}`, kind: 'page', label })
 const client = (label: string): CommandEntry => ({ id: `c:${label}`, kind: 'client', label })
@@ -65,5 +65,36 @@ describe('rankCommands', () => {
   it('при равен резултат подредбата е по азбука (българска)', () => {
     const r = rankCommands([client('Бета ООД'), client('Алфа ООД')], 'о')
     expect(r.map(e => e.label)).toEqual(['Алфа ООД', 'Бета ООД'])
+  })
+})
+
+describe('isPaletteHotkey', () => {
+  it('хваща Ctrl+K и ⌘K при латиница', () => {
+    expect(isPaletteHotkey({ ctrlKey: true, key: 'k', code: 'KeyK' })).toBe(true)
+    expect(isPaletteHotkey({ metaKey: true, key: 'k', code: 'KeyK' })).toBe(true)
+  })
+
+  it('хваща и при БЪЛГАРСКА подредба — key е кирилско „к"', () => {
+    expect(isPaletteHotkey({ ctrlKey: true, key: 'к', code: 'KeyK' })).toBe(true)
+  })
+
+  it('хваща по физическия клавиш дори при непозната подредба', () => {
+    expect(isPaletteHotkey({ ctrlKey: true, key: 'ك', code: 'KeyK' })).toBe(true)
+  })
+
+  it('хваща по key, ако клавиатурата не праща code', () => {
+    expect(isPaletteHotkey({ ctrlKey: true, key: 'К' })).toBe(true)
+  })
+
+  it('без Ctrl/Cmd не е шорткът — иначе всяко „к" би отваряло търсенето', () => {
+    expect(isPaletteHotkey({ key: 'k', code: 'KeyK' })).toBe(false)
+  })
+
+  it('Ctrl+Alt+K е друга комбинация', () => {
+    expect(isPaletteHotkey({ ctrlKey: true, altKey: true, key: 'k', code: 'KeyK' })).toBe(false)
+  })
+
+  it('друг клавиш с Ctrl не пипа', () => {
+    expect(isPaletteHotkey({ ctrlKey: true, key: 'p', code: 'KeyP' })).toBe(false)
   })
 })
