@@ -389,6 +389,31 @@ export function ClientCardPage() {
           </div>
         </Section>
 
+        {/* Каси и заеми — веднага след месечната таблица, а не в дъното:
+            гледат се заедно с работата по месеците. Скрито за ТРЗ, както е и
+            самата страница Финансов мониторинг. */}
+        {!isTrz && cashLoan.has && (
+          <Section title="Каси и заеми" icon={Wallet} hint={`към края на ${romanQuarter(quarter.quarter)} тримесечие ${quarter.year}`}>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Каса" value={
+                <span className="tabular-nums font-semibold">
+                  {cashLoan.cash.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} лв.
+                </span>
+              } />
+              <Field label="Заеми" value={
+                <span className="tabular-nums font-semibold">
+                  {cashLoan.loan.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} лв.
+                </span>
+              } />
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Сборът на месечните движения от януари {quarter.year} до края на
+              {' '}{romanQuarter(quarter.quarter)} тримесечие — периодът, по който се декларира.
+            </p>
+            <Link to="/cash-loans" className="inline-block mt-1 text-[11px] text-primary hover:underline">Към Финансов мониторинг →</Link>
+          </Section>
+        )}
+
         <div className="grid gap-3 lg:grid-cols-2">
           {/* Плащания */}
           <Section title="Плащания" icon={Banknote} hint={`${MONTH_NAMES[months[0].month - 1]} ${months[0].year}`}>
@@ -488,30 +513,6 @@ export function ClientCardPage() {
             </Section>
           )}
         </div>
-
-        {/* Каси и заеми — натрупано от началото на годината. Скрито за ТРЗ,
-            както е и самата страница Финансов мониторинг. */}
-        {!isTrz && cashLoan.has && (
-          <Section title="Каси и заеми" icon={Wallet} hint={`към края на ${romanQuarter(quarter.quarter)} тримесечие ${quarter.year}`}>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Каса" value={
-                <span className="tabular-nums font-semibold">
-                  {cashLoan.cash.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} лв.
-                </span>
-              } />
-              <Field label="Заеми" value={
-                <span className="tabular-nums font-semibold">
-                  {cashLoan.loan.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} лв.
-                </span>
-              } />
-            </div>
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              Сборът на месечните движения от януари {quarter.year} до края на
-              {' '}{romanQuarter(quarter.quarter)} тримесечие — периодът, по който се декларира.
-            </p>
-            <Link to="/cash-loans" className="inline-block mt-1 text-[11px] text-primary hover:underline">Към Финансов мониторинг →</Link>
-          </Section>
-        )}
 
       </div>
     </div>
