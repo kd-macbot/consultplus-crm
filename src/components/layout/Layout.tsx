@@ -157,8 +157,10 @@ export function Layout() {
         >
           {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </Button>
-        <img src={logoWhite} alt="Consult Plus" className="h-7 w-auto" />
-        <span className="ml-2 text-white/40 text-sm font-light">360</span>
+        <NavLink to="/" end onClick={() => setSidebarOpen(false)} title="Към Таблото" className="flex items-center transition hover:opacity-80">
+          <img src={logoWhite} alt="Consult Plus" className="h-7 w-auto" />
+          <span className="ml-2 text-white/40 text-sm font-light">360</span>
+        </NavLink>
       </div>
 
       {/* Mobile overlay */}
@@ -177,9 +179,14 @@ export function Layout() {
         'transform transition-transform duration-200 ease-in-out',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       )}>
-        {/* Logo — desktop only. Бялата версия за тъмния sidebar, центрирано. */}
+        {/* Logo — desktop only. Бялата версия за тъмния sidebar, центрирано.
+            Води към Таблото: логото е обичайният път „към началото" и
+            колегите го търсят инстинктивно. НЕ чисти филтри — това би било
+            изненада зад жест, който навсякъде значи просто „начало". */}
         <div className="hidden md:flex items-center justify-center px-4 py-5 border-b border-white/10">
-          <img src={logoWhite} alt="Consult Plus" className="h-9 w-auto" />
+          <NavLink to="/" end title="Към Таблото" className="transition hover:opacity-80">
+            <img src={logoWhite} alt="Consult Plus" className="h-9 w-auto" />
+          </NavLink>
         </div>
 
         {/* Бързо търсене — ВИДИМ вход, не само шорткът. Комбинацията зависи
