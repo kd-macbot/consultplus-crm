@@ -171,9 +171,10 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [tagFilter, setTagFilter] = usePersistentState<string[]>('clients-tags', [])
   const [columnOrder, setColumnOrder] = useState<string[]>([])
 
-  // Бързото търсене (Ctrl+K) праща фирмата като ?q=<име>. Стойността влиза
-  // в търсачката и параметърът се маха от адреса — иначе едно презареждане
-  // би върнало филтъра, който колегата вече е изчистил.
+  // Дълбок линк ?q=<име> — пълни търсачката и после параметърът се маха от
+  // адреса, за да не върне презареждането филтър, който колегата е изчистил.
+  // Бързото търсене (Ctrl+K) вече води към картата на клиента, но линкът
+  // остава — ползва се, когато трябва да се посочи ред В таблицата.
   const [searchParams, setSearchParams] = useSearchParams()
   useEffect(() => {
     const q = searchParams.get('q')
