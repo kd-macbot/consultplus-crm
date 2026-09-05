@@ -14,7 +14,7 @@ import {
   useTags, useClientTags,
 } from '../lib/queries'
 import {
-  buildCellIndex, buildDropdownIndex, clientDisplayName, resolveDropdownText, resolveNumber,
+  buildCellIndex, buildDropdownIndex, clientDisplayName, resolveCellText, resolveNumber,
 } from '../lib/tableIndices'
 import { statusBadgeClass } from '../lib/statusBadge'
 import { MONTH_NAMES, formatDate } from '../lib/utils'
@@ -121,11 +121,15 @@ export function ClientCardPage() {
   const client = (clientsQ.data ?? []).find(c => c.id === clientId)
   const name = ready && client ? clientDisplayName(clientId, columns, cellIdx) : ''
 
+  // resolveCellText, а НЕ resolveDropdownText: „Счетоводител" и „Отговорник"
+  // са dropdown-и, свързани със служител, и стойността им живее във
+  // `value_text`, не в `value_dropdown`. С другата функция излизаха празни,
+  // макар в таблицата Клиенти да се виждат. Същото чете и Личният чек лист.
   const master = useMemo(() => {
     const m = new Map<string, string>()
     for (const cname of MASTER_COLS) {
       const col = columns.find(c => c.name === cname)
-      m.set(cname, col ? resolveDropdownText(clientId, col, cellIdx, dropdownIdx).trim() : '')
+      m.set(cname, col ? resolveCellText(clientId, col, cellIdx, dropdownIdx).trim() : '')
     }
     return m
   }, [columns, cellIdx, dropdownIdx, clientId])
@@ -138,7 +142,7 @@ export function ClientCardPage() {
 
   const rating = useMemo(() => {
     const col = columns.find(c => c.name === 'Оценка на клиент' && c.type === 'dropdown')
-    return col ? resolveDropdownText(clientId, col, cellIdx, dropdownIdx).trim() : ''
+    return col ? resolveCellText(clientId, col, cellIdx, dropdownIdx).trim() : ''
   }, [columns, cellIdx, dropdownIdx, clientId])
 
   const contact = (contactsQ.data ?? []).find(c => c.client_id === clientId)
