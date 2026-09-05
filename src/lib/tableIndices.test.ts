@@ -57,6 +57,18 @@ describe('resolveCellText', () => {
   it('липсваща клетка → празно', () => {
     expect(resolveCellText('c1', textCol, buildCellIndex([]), dropdownIdx)).toBe('')
   })
+
+  // КАПАН: „Счетоводител" и „Отговорник" са dropdown-и, СВЪРЗАНИ СЪС СЛУЖИТЕЛ —
+  // стойността им стои във value_text, не във value_dropdown. Затова
+  // resolveDropdownText връща ПРАЗНО за тях и всяка страница, която го ползва
+  // за такава колона, показва тире, макар в Клиенти името да се вижда.
+  // (Точно това счупи Картата на клиента.) За тези колони се ползва
+  // resolveCellText.
+  it('resolveDropdownText НЕ вижда staff-свързаните колони, resolveCellText — да', () => {
+    const idx = buildCellIndex([cell('c1', 'st', { value_text: 'Иван Иванов' })])
+    expect(resolveDropdownText('c1', staffCol, idx, dropdownIdx)).toBe('')
+    expect(resolveCellText('c1', staffCol, idx, dropdownIdx)).toBe('Иван Иванов')
+  })
 })
 
 describe('resolveNumber', () => {
