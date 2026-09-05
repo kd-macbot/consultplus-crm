@@ -926,13 +926,29 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   return (
     <div className="flex flex-col h-full">
       <div className="p-3 md:p-4 border-b border-border flex items-center gap-3 flex-wrap bg-card">
-        <input
-          type="text"
-          value={globalFilter}
-          onChange={e => setGlobalFilter(e.target.value)}
-          placeholder="🔍 Търсене..."
-          className="px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-navy w-full sm:w-64 bg-background text-foreground"
-        />
+        {/* Търсенето се помни в sessionStorage (usePersistentState) — оцелява
+            навигация и защитния auto-reload. Затова има ВИДИМ бутон за
+            изчистване: иначе колега се връща на страницата, вижда пет реда и
+            не разбира, че стои филтър отпреди. */}
+        <div className="relative w-full sm:w-64">
+          <input
+            type="text"
+            value={globalFilter}
+            onChange={e => setGlobalFilter(e.target.value)}
+            placeholder="🔍 Търсене..."
+            className="px-3 py-2 pr-8 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-navy w-full bg-background text-foreground"
+          />
+          {globalFilter && (
+            <button
+              type="button"
+              onClick={() => setGlobalFilter('')}
+              title="Изчисти търсенето"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
 
         {allTags.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap">
