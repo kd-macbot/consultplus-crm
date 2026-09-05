@@ -243,7 +243,7 @@ export function ClientCardPage() {
               <span>ДДС <span className="font-mono text-foreground">{vatDisplay(contact?.vat_number ?? null, contact?.eik ?? null, contact?.vat_registered_at ?? null)}</span></span>
               {contact?.vat_registered_at && <span>по ДДС от {formatDate(contact.vat_registered_at)}</span>}
               {isAdmin && honorar != null && (
-                <span>Хонорар <span className="font-semibold text-foreground">{honorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} лв.</span></span>
+                <span>Хонорар <span className="font-semibold text-foreground">{honorar.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €</span></span>
               )}
             </div>
           </div>
@@ -401,12 +401,12 @@ export function ClientCardPage() {
             <div className="grid grid-cols-2 gap-3">
               <Field label="Каса" value={
                 <span className="tabular-nums font-semibold">
-                  {cashLoan.cash.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} лв.
+                  {cashLoan.cash.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
                 </span>
               } />
               <Field label="Заеми" value={
                 <span className="tabular-nums font-semibold">
-                  {cashLoan.loan.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} лв.
+                  {cashLoan.loan.toLocaleString('bg-BG', { minimumFractionDigits: 2 })} €
                 </span>
               } />
             </div>
