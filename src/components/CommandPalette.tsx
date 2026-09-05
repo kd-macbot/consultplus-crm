@@ -119,9 +119,9 @@ export function CommandPalette() {
       navigate(entry.id.slice('page:'.length))
       return
     }
-    // Фирмите нямат собствена страница — отваря се таблицата Клиенти с
-    // името в търсачката. `q` се чете от DataTable и се маха от адреса.
-    navigate(`/clients?q=${encodeURIComponent(entry.label)}`)
+    // Фирмата отваря собствената си карта — същото място, до което води и
+    // иконката при името в таблицата Клиенти.
+    navigate(`/client/${entry.id.slice('client:'.length)}`)
   }
 
   function onKeyDown(e: React.KeyboardEvent) {

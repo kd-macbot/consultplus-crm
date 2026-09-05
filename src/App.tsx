@@ -40,6 +40,7 @@ const Form76Page = lazy(() => import('./pages/Form76').then(m => ({ default: m.F
 const BankAccessPage = lazy(() => import('./pages/BankAccess').then(m => ({ default: m.BankAccessPage })))
 const TasksPage = lazy(() => import('./pages/Tasks').then(m => ({ default: m.TasksPage })))
 const ImportPage = lazy(() => import('./pages/Import').then(m => ({ default: m.ImportPage })))
+const ClientCardPage = lazy(() => import('./pages/ClientCard').then(m => ({ default: m.ClientCardPage })))
 
 function PageFallback() {
   return (
@@ -71,6 +72,9 @@ export default function App() {
               >
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/clients" element={<ClientsPage />} />
+                {/* Карта на клиента — събира данните от другите страници.
+                    Гейтовете са ВЪТРЕ (хонорар, договори, мониторинг). */}
+                <Route path="/client/:id" element={<ClientCardPage />} />
                 <Route path="/worksheet" element={<WorkSheetPage />} />
                 <Route path="/yearly" element={<YearlyViewPage />} />
                 <Route path="/trz" element={<TrzPage />} />

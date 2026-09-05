@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import {
   useReactTable,
   getCoreRowModel,
@@ -26,7 +26,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, SlidersHorizontal, X, RefreshCw, Copy } from 'lucide-react'
+import { GripVertical, SlidersHorizontal, X, RefreshCw, Copy, ExternalLink } from 'lucide-react'
 import type { Column, CellValue, DropdownOption, Client, Contact } from '../../lib/types'
 import {
   softDeleteClient, updateColumnPositions,
@@ -171,9 +171,10 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   const [tagFilter, setTagFilter] = usePersistentState<string[]>('clients-tags', [])
   const [columnOrder, setColumnOrder] = useState<string[]>([])
 
-  // Бързото търсене (Ctrl+K) праща фирмата като ?q=<име>. Стойността влиза
-  // в търсачката и параметърът се маха от адреса — иначе едно презареждане
-  // би върнало филтъра, който колегата вече е изчистил.
+  // Дълбок линк ?q=<име> — пълни търсачката и после параметърът се маха от
+  // адреса, за да не върне презареждането филтър, който колегата е изчистил.
+  // Бързото търсене (Ctrl+K) вече води към картата на клиента, но линкът
+  // остава — ползва се, когато трябва да се посочи ред В таблицата.
   const [searchParams, setSearchParams] = useSearchParams()
   useEffect(() => {
     const q = searchParams.get('q')
@@ -626,9 +627,14 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           const valUpper = val.trim().toUpperCase()
           const isNegation = valUpper === 'НЕ' || valUpper.startsWith('НЕ ')
           const isPositive = !isNegation && (colorOptionCols.has(col.id) || valUpper === 'ДА' || valUpper === 'АКТИВНА')
+          // В колоната с ИМЕТО стои и вход към картата на клиента. Отделна
+          // иконка, а не клик върху името: самото име се редактира с клик и
+          // едното поведение не бива да изяде другото.
+          const nameCell = col.id === nameColId
           return (
+            <div className={`group/name flex items-center gap-1 ${nameCell ? 'font-semibold text-foreground text-[15px]' : ''}`}>
             <div
-              className={`truncate ${col.id === nameColId ? 'font-semibold text-foreground text-[15px]' : ''} ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
+              className={`truncate flex-1 min-w-0 ${canEdit ? 'cursor-pointer hover:bg-navy/5 px-1 rounded' : ''}`}
               onClick={() => canEdit && setEditCell({ clientId, columnId: col.id })}
               title={val}
             >
@@ -649,6 +655,17 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
               ) : (
                 <Highlight text={val} query={globalFilter} />
               )}
+            </div>
+            {nameCell && (
+              <Link
+                to={`/client/${clientId}`}
+                onClick={e => e.stopPropagation()}
+                title="Отвори картата на клиента"
+                className="shrink-0 opacity-0 group-hover/name:opacity-100 focus:opacity-100 transition text-muted-foreground hover:text-primary"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
+            )}
             </div>
           )
         },
