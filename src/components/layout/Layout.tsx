@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { queryClient } from '../../lib/queryClient'
 import logoWhite from '../../assets/brand/logo-white.png'
 import { useAuth } from '../../lib/auth'
 import { usePaymentConfigs, usePaymentStatuses, useAbsences, useNews, useMyOpenTaskCount } from '../../lib/queries'
@@ -128,6 +130,16 @@ export function Layout() {
     navigate('/login')
   }
 
+  // Клик на логото: пресни данни + към Таблото.
+  //
+  // `invalidateQueries()` без филтър маркира ВСИЧКИ заявки за остарели, тоест
+  // видимите се теглят наново. Филтрите и подредбата НЕ се пипат — рефрешът
+  // сменя само данните, а не изгледа, който колегата си е нагласил.
+  const handleLogoClick = () => {
+    void queryClient.invalidateQueries()
+    toast.success('Данните са обновени')
+  }
+
   const initials = user?.full_name
     ?.split(' ')
     .map(n => n[0])
@@ -157,8 +169,10 @@ export function Layout() {
         >
           {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </Button>
-        <img src={logoWhite} alt="Consult Plus" className="h-7 w-auto" />
-        <span className="ml-2 text-white/40 text-sm font-light">360</span>
+        <NavLink to="/" end onClick={() => { setSidebarOpen(false); handleLogoClick() }} title="Към Таблото (и обновява данните)" className="flex items-center transition hover:opacity-80">
+          <img src={logoWhite} alt="Consult Plus" className="h-7 w-auto" />
+          <span className="ml-2 text-white/40 text-sm font-light">360</span>
+        </NavLink>
       </div>
 
       {/* Mobile overlay */}
@@ -177,9 +191,14 @@ export function Layout() {
         'transform transition-transform duration-200 ease-in-out',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       )}>
-        {/* Logo — desktop only. Бялата версия за тъмния sidebar, центрирано. */}
+        {/* Logo — desktop only. Бялата версия за тъмния sidebar, центрирано.
+            Води към Таблото И обновява данните (по искане на потребителя).
+            НЕ чисти филтри и подредба — рефрешът сменя данните, не изгледа,
+            който колегата си е нагласил. */}
         <div className="hidden md:flex items-center justify-center px-4 py-5 border-b border-white/10">
-          <img src={logoWhite} alt="Consult Plus" className="h-9 w-auto" />
+          <NavLink to="/" end onClick={handleLogoClick} title="Към Таблото (и обновява данните)" className="transition hover:opacity-80">
+            <img src={logoWhite} alt="Consult Plus" className="h-9 w-auto" />
+          </NavLink>
         </div>
 
         {/* Бързо търсене — ВИДИМ вход, не само шорткът. Комбинацията зависи
