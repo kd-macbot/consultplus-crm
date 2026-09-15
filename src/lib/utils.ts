@@ -176,3 +176,21 @@ export function previousMonth(d: Date = new Date()): { year: number; month: numb
   if (m === 0) return { year: d.getFullYear() - 1, month: 12 }
   return { year: d.getFullYear(), month: m }
 }
+
+/**
+ * Срокът за ДДС на един РАБОТЕН месец: 14-то число на месеца СЛЕД него,
+ * краят на деня. За февруари срокът е 14 март; за декември — 14 януари
+ * следващата година (`new Date(year, 12, …)` превърта сам).
+ *
+ * Беше преписана на две места (Личен чек лист и Проверяващи на месеца) с
+ * леко различен запис. Едно определение, защото 14-ти е конвенция, върху
+ * която стъпват чек листът, баджовете и заключването на Работния лист.
+ */
+export function ddsDeadline(year: number, month: number): Date {
+  return new Date(year, month, 14, 23, 59, 59, 999)
+}
+
+/** Минал ли е срокът за ДДС на този работен месец? */
+export function isAfterDdsDeadline(year: number, month: number, now: Date = new Date()): boolean {
+  return now.getTime() > ddsDeadline(year, month).getTime()
+}
