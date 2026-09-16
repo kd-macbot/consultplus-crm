@@ -5,7 +5,7 @@ import { useStaff, useMonthReviewers, useInvalidateCrm } from '../../lib/queries
 import { seedMonthReviewers, setMonthReviewers } from '../../lib/storage'
 import { useMyStaff } from '../../lib/useMyStaff'
 import { useAuth } from '../../lib/auth'
-import { formatDate } from '../../lib/utils'
+import { formatDate, ddsDeadline } from '../../lib/utils'
 import { useRealtime } from '../../lib/useRealtime'
 
 // ============================================================
@@ -19,11 +19,7 @@ import { useRealtime } from '../../lib/useRealtime'
 // - След това: само admin, с допълнително confirm.
 // ============================================================
 
-function deadlineFor(year: number, month: number): Date {
-  // 14-ти на месеца СЛЕД работния, край на деня.
-  // month е 1-базиран → new Date(year, month, 14) е следващият месец.
-  return new Date(year, month, 14, 23, 59, 59, 999)
-}
+
 
 export function MonthReviewersWidget({ year, month }: { year: number; month: number }) {
   const { user } = useAuth()
@@ -47,7 +43,7 @@ export function MonthReviewersWidget({ year, month }: { year: number; month: num
     onChange: () => invalidateMonthReviewers(year, month),
   })
 
-  const deadline = useMemo(() => deadlineFor(year, month), [year, month])
+  const deadline = useMemo(() => ddsDeadline(year, month), [year, month])
   const locked = Date.now() > deadline.getTime()
   const canEdit = !locked || isAdmin
 

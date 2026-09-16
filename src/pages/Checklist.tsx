@@ -15,7 +15,7 @@ import {
   buildCellIndex, buildDropdownIndex, clientDisplayName, resolveDropdownText, cellKey,
 } from '../lib/tableIndices'
 import { isHiddenStatus } from '../lib/statusBadge'
-import { MONTH_NAMES, previousMonth } from '../lib/utils'
+import { MONTH_NAMES, previousMonth, ddsDeadline } from '../lib/utils'
 import { useMyStaff } from '../lib/useMyStaff'
 import { useRealtime } from '../lib/useRealtime'
 import { useRefreshGuard } from '../lib/useCrmMasterRealtime'
@@ -29,13 +29,6 @@ import { usePersistentState } from '../lib/usePersistentState'
 
 const SALES_FIELDS = CHECKLIST_FIELDS.filter(f => f.group === 'sales')
 const PURCHASE_FIELDS = CHECKLIST_FIELDS.filter(f => f.group === 'purchases')
-
-// Срок за ДДС е 14-ти на месеца СЛЕД работния месец (декларира се за изминалия).
-function ddsDeadline(year: number, month: number): Date {
-  const dy = month === 12 ? year + 1 : year
-  const dm = month === 12 ? 1 : month + 1
-  return new Date(dy, dm - 1, 14, 23, 59, 59)
-}
 
 type ResultStatus = 'done' | 'progress' | 'overdue' | 'none'
 
