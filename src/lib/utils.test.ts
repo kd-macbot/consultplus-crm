@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatDate, MONTH_NAMES, previousMonth } from './utils'
+import { formatDate, MONTH_NAMES, previousMonth, ddsDeadline, isAfterDdsDeadline } from './utils'
 
 describe('formatDate', () => {
   it('ISO → DD.MM.YYYY', () => {
@@ -33,5 +33,34 @@ describe('previousMonth', () => {
   })
   it('декември → ноември', () => {
     expect(previousMonth(new Date(2026, 11, 31))).toEqual({ year: 2026, month: 11 })
+  })
+})
+
+describe('ddsDeadline / isAfterDdsDeadline', () => {
+  it('срокът е 14-то на месеца СЛЕД работния, краят на деня', () => {
+    const d = ddsDeadline(2026, 2) // февруари → 14 март
+    expect(d.getFullYear()).toBe(2026)
+    expect(d.getMonth()).toBe(2)   // 0-базиран → март
+    expect(d.getDate()).toBe(14)
+    expect(d.getHours()).toBe(23)
+  })
+
+  it('декември превърта в януари на СЛЕДВАЩАТА година', () => {
+    const d = ddsDeadline(2026, 12)
+    expect(d.getFullYear()).toBe(2027)
+    expect(d.getMonth()).toBe(0)
+    expect(d.getDate()).toBe(14)
+  })
+
+  it('14-ти до 23:59 НЕ е минал срок — денят е включен', () => {
+    expect(isAfterDdsDeadline(2026, 2, new Date(2026, 2, 14, 23, 59, 0))).toBe(false)
+  })
+
+  it('15-ти вече е минал срок', () => {
+    expect(isAfterDdsDeadline(2026, 2, new Date(2026, 2, 15, 0, 0, 1))).toBe(true)
+  })
+
+  it('минал месец си остава заключен', () => {
+    expect(isAfterDdsDeadline(2025, 11, new Date(2026, 2, 1))).toBe(true)
   })
 })

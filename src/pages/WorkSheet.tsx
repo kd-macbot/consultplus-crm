@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, Search, Loader2, X, Plus, Download } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, Loader2, X, Plus, Download, Lock, Unlock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '../lib/auth'
@@ -23,7 +23,7 @@ import {
 import { statusBadgeClass, isNoActivityStatus, isNoVatStatus } from '../lib/statusBadge'
 import { findTrzColumns, TRZ_ACTIVE } from '../lib/trz'
 import { exportRowsToExcel } from '../lib/export'
-import { MONTH_NAMES, previousMonth } from '../lib/utils'
+import { MONTH_NAMES, previousMonth, ddsDeadline, isAfterDdsDeadline, formatDate } from '../lib/utils'
 import { useRealtime } from '../lib/useRealtime'
 import { useRefreshGuard } from '../lib/useCrmMasterRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
@@ -186,6 +186,36 @@ export function WorkSheetPage() {
   const [cashLoanModalFor, setCashLoanModalFor] = useState<{ client: Client; name: string } | null>(null)
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'employee'
+
+  // ============================================================
+  // ЗАКЛЮЧВАНЕ СЛЕД 14-ТИ — Резултат, Подадено на, Уведомени.
+  //
+  // След срока за ДДС тези три полета описват ПОДАДЕНА декларация. Промяна
+  // със задна дата разминава системата с това, което е в НАП, и никой не
+  // разбира — затова за колегите са само за четене.
+  //
+  // Админът не пише направо: отключва изрично за месеца (бутонът в лентата),
+  // за да не поправи минал месец по невнимание. Отключването е САМО за
+  // неговия екран и се губи при смяна на месеца — не е споделено състояние,
+  // защото решението беше „само аз мога да пиша", не „отварям на колегата".
+  // ============================================================
+  const isAdmin = user?.role === 'admin'
+  const deadlineLocked = isAfterDdsDeadline(year, month)
+  const [unlockedMonth, setUnlockedMonth] = useState<string | null>(null)
+  const monthKey = `${year}-${month}`
+  const unlocked = unlockedMonth === monthKey
+  // Кой може да пише в трите полета СЕГА.
+  const canEditVat = canEdit && (!deadlineLocked || (isAdmin && unlocked))
+
+  function toggleUnlock() {
+    if (unlocked) { setUnlockedMonth(null); return }
+    const ok = window.confirm(
+      `Срокът за ДДС на ${MONTH_NAMES[month - 1]} ${year} изтече на `
+      + `${formatDate(ddsDeadline(year, month).toISOString().slice(0, 10))}.\n\n`
+      + 'Да отключа Резултат, Подадено на и Уведомени за поправка със задна дата?',
+    )
+    if (ok) setUnlockedMonth(monthKey)
+  }
 
   // Пълен page loading = чакаме master или месечните данни (само ако НЕ са кеширани).
   const loading = !masterReady || (monthlyWorkQ.isLoading && !monthlyWorkQ.data) || (art55Q.isLoading && !art55Q.data)
@@ -503,6 +533,27 @@ export function WorkSheetPage() {
             </Button>
             {/* Проверяващи на месеца — отличаващ се amber блок до month picker-а. */}
             <MonthReviewersWidget year={year} month={month} />
+            {/* Състояние на заключването. Видимо и за колегите — иначе
+                неактивното поле изглежда като счупено. */}
+            {deadlineLocked && (
+              <span
+                className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] ${
+                  unlocked
+                    ? 'border-amber-400 bg-amber-100 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200'
+                    : 'border-border bg-muted/40 text-muted-foreground'
+                }`}
+                title={`Срокът за ДДС изтече на ${formatDate(ddsDeadline(year, month).toISOString().slice(0, 10))}.`
+                  + ' Резултат, Подадено на и Уведомени са заключени.'}
+              >
+                {unlocked ? <Unlock className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                {unlocked ? 'Отключено' : 'Заключено след 14-ти'}
+                {isAdmin && (
+                  <button type="button" onClick={toggleUnlock} className="ml-1 underline hover:no-underline">
+                    {unlocked ? 'заключи' : 'отключи'}
+                  </button>
+                )}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -707,14 +758,14 @@ export function WorkSheetPage() {
                       {noVat ? <span className="text-muted-foreground/40 text-xs pr-1">без ДДС</span> : (
                         <NumberCell
                           value={w?.result_amount ?? null}
-                          disabled={!canEdit}
+                          disabled={!canEditVat}
                           onSave={v => patchRow(row.client.id, { result_amount: v })}
                         />
                       )}
                     </td>
                     <td className={`px-2 py-0.5 ${noVat ? 'bg-muted/40' : ''}`} title={noVat ? 'Фирмата е без ДДС' : undefined}>
                       {noVat ? null : (
-                        <input type="date" disabled={!canEdit}
+                        <input type="date" disabled={!canEditVat}
                           value={w?.submitted_at ?? ''}
                           onChange={e => patchRow(row.client.id, { submitted_at: e.target.value || null })}
                           // Когато няма стойност — скриваме „дд.мм.гггг г." (text-transparent),
@@ -724,7 +775,7 @@ export function WorkSheetPage() {
                     </td>
                     <td className={`px-2 py-0.5 ${noVat ? 'bg-muted/40' : ''}`} title={noVat ? 'Фирмата е без ДДС' : undefined}>
                       {noVat ? null : (
-                        <select disabled={!canEdit}
+                        <select disabled={!canEditVat}
                           value={w?.notification_method ?? ''}
                           onChange={e => patchRow(row.client.id, { notification_method: e.target.value || null })}
                           className="h-7 px-1 text-xs border border-transparent hover:border-border focus:border-primary rounded bg-transparent">
