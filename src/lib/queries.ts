@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getClients, getColumns, getCellValues, getDropdownOptions,
@@ -14,7 +15,9 @@ import {
   getNotifications, getNotificationSettings, getNotifyStaff,
   getCertificates,
   getIndustryNews, getNewsSources, getNewsSettings,
+  getHolidays,
 } from './storage'
+import { buildWorkCalendar, type WorkCalendar } from './holidays'
 import { timed } from './perf'
 import { useRealtimeHealthy } from './realtimeHealth'
 
@@ -43,6 +46,7 @@ export const qk = {
   industryNews: ['industryNews'] as const,
   newsSources: ['newsSources'] as const,
   newsSettings: ['newsSettings'] as const,
+  holidays: ['holidays'] as const,
 }
 
 /**
@@ -302,6 +306,7 @@ export function useInvalidateCrm() {
   const qc = useQueryClient()
   return {
     invalidateClients: () => qc.invalidateQueries({ queryKey: qk.clients }),
+    invalidateHolidays: () => qc.invalidateQueries({ queryKey: qk.holidays }),
     invalidateColumns: () => qc.invalidateQueries({ queryKey: qk.columns }),
     invalidateCells: () => qc.invalidateQueries({ queryKey: qk.cells }),
     invalidateDropdowns: () => qc.invalidateQueries({ queryKey: qk.dropdowns }),
@@ -366,4 +371,22 @@ export function useInvalidateCrm() {
       qc.invalidateQueries({ queryKey: ['checklist', year, month] }),
     invalidateAll: () => qc.invalidateQueries(),
   }
+}
+
+// Производствен календар — практически неизменен, докато колегата
+// работи: празниците за годината се обявяват веднъж. Дълъг кеш,
+// за да не се тегли на всеки екран с работни дни.
+export function useHolidays() {
+  return useQuery({
+    queryKey: qk.holidays,
+    queryFn: getHolidays,
+    staleTime: 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+  })
+}
+
+/** Готовият календар за смятане — вече като Map-ове. */
+export function useWorkCalendar(): WorkCalendar {
+  const { data } = useHolidays()
+  return useMemo(() => buildWorkCalendar(data), [data])
 }

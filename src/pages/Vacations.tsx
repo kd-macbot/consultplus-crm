@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import {
-  useStaff, useAbsences, useVacationQuotas, useInvalidateCrm,
+  useStaff, useAbsences, useVacationQuotas, useInvalidateCrm, useWorkCalendar,
 } from '../lib/queries'
 import { upsertVacationQuota } from '../lib/storage'
 import type { Absence, VacationQuota } from '../lib/types'
@@ -51,6 +51,7 @@ export function VacationsPage() {
   const absencesQ = useAbsences(year)
   const quotasQ = useVacationQuotas(year)
   const { invalidateVacationQuotas } = useInvalidateCrm()
+  const cal = useWorkCalendar()
 
   // Виж бележката във Form76: отметнатите за изключване не влизат в
   // ТРЗ справките, макар да са в Календара.
@@ -79,12 +80,12 @@ export function VacationsPage() {
       let inner = m.get(a.staff_id)
       if (!inner) { inner = new Map(); m.set(a.staff_id, inner) }
       for (let mo = 1; mo <= 12; mo++) {
-        const days = workingDaysInMonth(a.start_date, a.end_date, year, mo)
+        const days = workingDaysInMonth(a.start_date, a.end_date, year, mo, cal)
         if (days > 0) inner.set(mo, (inner.get(mo) ?? 0) + days)
       }
     })
     return m
-  }, [absences, year])
+  }, [absences, year, cal])
 
   // Σ използвани за годината — сборува сумата по месеците (равно на
   // workingDaysInYear, но дава консистентност с виждащото се в редовете).
