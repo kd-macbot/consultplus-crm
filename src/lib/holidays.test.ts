@@ -139,3 +139,100 @@ describe('клипване по месец и година', () => {
     expect(workingDaysInYear('2026-12-28', '2027-01-06', 2026, cal2026)).toBe(3)
   })
 })
+
+// ============================================================
+// Законовите празници по изчисление (бутонът „Попълни по закон").
+// ============================================================
+
+import { statutoryHolidays, orthodoxEaster } from './holidays'
+
+describe('orthodoxEaster', () => {
+  it('известните дати съвпадат', () => {
+    const f = (d: Date) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
+    expect(f(orthodoxEaster(2024))).toBe('05.05.2024')
+    expect(f(orthodoxEaster(2025))).toBe('20.04.2025')
+    expect(f(orthodoxEaster(2026))).toBe('12.04.2026')
+    expect(f(orthodoxEaster(2027))).toBe('02.05.2027')
+    expect(f(orthodoxEaster(2028))).toBe('16.04.2028')
+  })
+
+  it('винаги е неделя — иначе сметката е сбъркана', () => {
+    for (let y = 2020; y <= 2099; y++) {
+      expect(orthodoxEaster(y).getDay()).toBe(0)
+    }
+  })
+})
+
+describe('statutoryHolidays', () => {
+  it('2026 дава точно дните от seed-а — без моста на 02.01', () => {
+    // Мостът се обявява с решение на МС и НЕ следва от закона.
+    // Ако някога се появи тук, значи функцията си измисля.
+    expect(statutoryHolidays(2026).map(h => h.date)).toEqual([
+      '2026-01-01', '2026-03-03', '2026-04-10', '2026-04-13',
+      '2026-05-01', '2026-05-06', '2026-05-25',
+      '2026-09-07', '2026-09-22',
+      '2026-12-24', '2026-12-25', '2026-12-28',
+    ])
+  })
+
+  it('2027: 1 май пада в събота И съвпада с Велика събота', () => {
+    const dates = statutoryHolidays(2027).map(h => h.date)
+    // Светли понеделник заема 03.05, затова заместващият за 1 май
+    // отива на първия СВОБОДЕН работен ден — вторник 04.05.
+    expect(dates).toContain('2027-05-03')  // Светли понеделник
+    expect(dates).toContain('2027-05-04')  // заместващият за 1 май
+    const subst = statutoryHolidays(2027).find(h => h.date === '2027-05-04')
+    expect(subst?.name).toContain('Ден на труда')
+  })
+
+  it('два празника в почивни дни изместват ДВА отделни дни', () => {
+    // 2027: 25.12 е събота, 26.12 е неделя → 27 и 28 декември.
+    const dates = statutoryHolidays(2027).map(h => h.date)
+    expect(dates).toContain('2027-12-27')
+    expect(dates).toContain('2027-12-28')
+  })
+
+  it('Великденските дни в почивен ден НЕ получават заместващ', () => {
+    // Велика събота и Великден винаги падат в почивни дни — изрично
+    // изключение в чл. 154, ал. 2. От Великден влизат точно два дни:
+    // Разпети петък и Светли понеделник.
+    for (const y of [2026, 2027, 2028, 2029, 2030]) {
+      const e = orthodoxEaster(y)
+      const iso = (d: Date, off: number) => {
+        const x = new Date(d); x.setDate(x.getDate() + off)
+        return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+      }
+      const dates = statutoryHolidays(y).map(h => h.date)
+      expect(dates).toContain(iso(e, -2))   // Разпети петък
+      expect(dates).toContain(iso(e, 1))    // Светли понеделник
+      expect(dates).not.toContain(iso(e, -1))  // Велика събота — почивен
+      expect(dates).not.toContain(iso(e, 0))   // Великден — почивен
+    }
+  })
+
+  it('в списъка НЯМА съботи и недели — те не се вписват', () => {
+    for (let y = 2026; y <= 2040; y++) {
+      for (const h of statutoryHolidays(y)) {
+        const dow = new Date(h.date + 'T00:00:00').getDay()
+        expect(dow).not.toBe(0)
+        expect(dow).not.toBe(6)
+      }
+    }
+  })
+
+  it('няма повтарящи се дати и всичко е неработно', () => {
+    for (let y = 2026; y <= 2040; y++) {
+      const rows = statutoryHolidays(y)
+      expect(new Set(rows.map(r => r.date)).size).toBe(rows.length)
+      expect(rows.every(r => r.is_working === false)).toBe(true)
+    }
+  })
+
+  it('броят е между 10 и 14 дни — колкото и да мърда календарът', () => {
+    for (let y = 2026; y <= 2060; y++) {
+      const n = statutoryHolidays(y).length
+      expect(n).toBeGreaterThanOrEqual(10)
+      expect(n).toBeLessThanOrEqual(14)
+    }
+  })
+})
