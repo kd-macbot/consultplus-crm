@@ -26,7 +26,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, SlidersHorizontal, X, RefreshCw, Copy, ExternalLink } from 'lucide-react'
+import { GripVertical, SlidersHorizontal, X, RefreshCw, Copy, ExternalLink, FilterX } from 'lucide-react'
 import type { Column, CellValue, DropdownOption, Client, Contact } from '../../lib/types'
 import {
   softDeleteClient, updateColumnPositions,
@@ -52,6 +52,7 @@ import {
   saveView, deleteView, setDefaultView, syncViewsFromDb, type View,
 } from '../../lib/views'
 import { usePersistentState } from '../../lib/usePersistentState'
+import { computePinLayout, lastPinnedId, countActiveFilters } from '../../lib/tablePinning'
 import { statusBadgeClass } from '../../lib/statusBadge'
 
 interface ClientRow {
@@ -126,8 +127,12 @@ function Highlight({ text, query }: { text: string; query: string }) {
   )
 }
 
-function DraggableHeader({ header }: { header: Header<ClientRow, unknown> }) {
+function DraggableHeader({ header, pin }: {
+  header: Header<ClientRow, unknown>
+  pin?: { className: string; style: React.CSSProperties }
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: header.id })
+  const isPinned = !!pin?.className
   return (
     <th
       ref={setNodeRef}
@@ -136,10 +141,16 @@ function DraggableHeader({ header }: { header: Header<ClientRow, unknown> }) {
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.4 : 1,
-        position: 'relative',
-        zIndex: isDragging ? 1 : 'auto',
+        // Замразената колона иска `sticky`, а влаченето — `relative`.
+        // Докато се влачи, замразяването отстъпва: иначе колоната
+        // „бяга" под пръста.
+        ...(isPinned && !isDragging ? pin!.style : {}),
+        ...(isPinned && !isDragging ? {} : { position: 'relative' as const }),
+        zIndex: isDragging ? 1 : isPinned ? 3 : 'auto',
       }}
-      className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap select-none"
+      className={`px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap select-none ${
+        isPinned && !isDragging ? `${pin!.className} bg-navy` : ''
+      }`}
     >
       <div className="flex items-center gap-1">
         <span
@@ -530,6 +541,59 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
   }, [data, tagFilter])
 
   const canEdit = user?.role === 'admin' || user?.role === 'manager'
+
+  // ============================================================
+  // „Изчисти филтрите" — ЕДИН бутон вместо връщане на дропдаунитe
+  // един по един.
+  //
+  // Броячът е важен: филтрите се помнят в sessionStorage и оцеляват
+  // навигация, тоест колега се връща на страницата, вижда пет реда и
+  // не разбира защо. Числото до бутона казва колко неща стесняват
+  // списъка В МОМЕНТА.
+  //
+  // НЕ пипа скритите колони и запазените изгледи — те са нагласа на
+  // екрана, не филтър. Едно „изчисти" не бива да събаря подредбата,
+  // която колегата си е правил.
+  // ============================================================
+  const activeFilterCount = countActiveFilters({ columnFilters, globalFilter, tagFilter })
+
+  // ============================================================
+  // ЗАМРАЗЕНИ КОЛОНИ — #, отметката и името остават на място при
+  // хоризонтален скрол. Без тях, десет колони надясно, редът е само
+  // числа и не се разбира за коя фирма са.
+  //
+  // Само от `md` нагоре (`relative md:sticky`): 270 px замразени от
+  // 360 px екран не оставят какво да се гледа.
+  //
+  // Ширините са ФИКСИРАНИ на тези колони, не по преценка на браузъра:
+  // отместването `left` трябва да съвпада с реално заетото място, иначе
+  // замразените колони се застъпват. Сметката е в `tablePinning.ts`
+  // (тествана) — тук само се рисува.
+  // ============================================================
+  const pinned = useMemo(() => computePinLayout({
+    canEdit,
+    nameColId,
+    firstVisibleId: visibleColumns[0]?.id ?? null,
+  }), [canEdit, nameColId, visibleColumns])
+
+  const lastPinned = useMemo(() => lastPinnedId(pinned), [pinned])
+
+  /** Стил + клас за замразена клетка ('' и {} за незамразена). */
+  function pinProps(id: string): { className: string; style: React.CSSProperties } {
+    const left = pinned.left[id]
+    if (left === undefined) return { className: '', style: {} }
+    const width = pinned.width[id]
+    return {
+      className: 'relative md:sticky',
+      style: { left, width, minWidth: width, maxWidth: width },
+    }
+  }
+
+  function clearAllFilters() {
+    setColumnFilters([])
+    setGlobalFilter('')
+    setTagFilter([])
+  }
   const canDelete = user?.role === 'admin' || user?.role === 'manager'
 
   const tableColumns: ColumnDef<ClientRow>[] = useMemo(() => {
@@ -976,6 +1040,20 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
           </div>
         )}
 
+        {activeFilterCount > 0 && (
+          <button
+            onClick={clearAllFilters}
+            title="Връща търсенето, филтрите по колони и таговете в изходно положение. Скритите колони и запазените изгледи НЕ се пипат."
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100 transition dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-700 dark:hover:bg-amber-900/50"
+          >
+            <FilterX className="h-3.5 w-3.5" />
+            <span>Изчисти филтрите</span>
+            <span className="bg-amber-500 text-white rounded-full px-1.5 text-[10px] font-bold">
+              {activeFilterCount}
+            </span>
+          </button>
+        )}
+
         <div className="relative ml-auto" ref={colPanelRef}>
           <button
             onClick={() => setShowColPanel(v => !v)}
@@ -1103,13 +1181,14 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                 <SortableContext items={visibleColumns.map(c => c.id)} strategy={horizontalListSortingStrategy}>
                   {table.getHeaderGroups()[0]?.headers.map(header => {
                     if (visibleColumns.some(c => c.id === header.id)) {
-                      return <DraggableHeader key={header.id} header={header} />
+                      return <DraggableHeader key={header.id} header={header} pin={pinProps(header.id)} />
                     }
+                    const p = pinProps(header.id)
                     return (
                       <th
                         key={header.id}
-                        style={{ width: header.getSize() }}
-                        className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap"
+                        style={{ width: header.getSize(), ...p.style, zIndex: p.className ? 3 : undefined }}
+                        className={`px-3 py-2 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap ${p.className} ${p.className ? 'bg-navy' : ''}`}
                         onClick={header.column.getToggleSortingHandler()}
                       >
                         <div className="flex items-center gap-1 cursor-pointer select-none">
@@ -1129,8 +1208,13 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
                   const dropdownVals = isDropdown
                     ? [...new Set(filteredByTags.map(row => row[header.id] as string).filter(Boolean))].sort()
                     : []
+                  const p = pinProps(header.id)
                   return (
-                    <th key={header.id + '_f'} className="px-2 py-1">
+                    <th
+                      key={header.id + '_f'}
+                      style={{ ...p.style, zIndex: p.className ? 3 : undefined }}
+                      className={`px-2 py-1 ${p.className} ${p.className ? 'bg-navy-light' : ''}`}
+                    >
                       {header.column.getCanFilter() ? (
                         isDropdown ? (
                           <select
@@ -1188,22 +1272,55 @@ export function DataTable({ refreshKey, onRefresh }: Props) {
               </tr>
             </thead>
             <tbody>
-              {table.getRowModel().rows.map((row, i) => (
+              {table.getRowModel().rows.map((row, i) => {
+                // Нюансът на реда се ползва ДВА пъти: на самия ред и като слой
+                // в замразените клетки. Затова е променлива, а не преписан низ.
+                const rowTint = selected.has(row.original.clientId)
+                  ? 'bg-blue-50'
+                  : i % 2 === 0 ? '' : 'bg-muted/20'
+                return (
                 <tr
                   key={row.id}
-                  className={`border-b border-border transition-colors hover:bg-gold/5 ${
+                  className={`group/row border-b border-border transition-colors hover:bg-gold/5 ${
                     selected.has(row.original.clientId)
                       ? 'bg-blue-50'
                       : i % 2 === 0 ? 'bg-card' : 'bg-muted/20'
                   }`}
                 >
-                  {row.getVisibleCells().map(cell => (
-                    <td key={cell.id} className="px-3 py-1.5 text-sm" style={{ maxWidth: cell.column.getSize() }}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
+                  {row.getVisibleCells().map(cell => {
+                    const p = pinProps(cell.column.id)
+                    if (!p.className) {
+                      return (
+                        <td key={cell.id} className="px-3 py-1.5 text-sm" style={{ maxWidth: cell.column.getSize() }}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      )
+                    }
+                    // Замразената клетка минава НАД останалите при скрол, затова
+                    // ѝ трябва СОБСТВЕН непрозрачен фон — прозрачният пропуска
+                    // съдържанието отдолу. Райето/маркирането/hover-ът идват като
+                    // слой ОТГОРЕ: те са полупрозрачни нюанси и няма как да се
+                    // сложат като фон, без да загубят непрозрачността.
+                    return (
+                      <td
+                        key={cell.id}
+                        style={p.style}
+                        className={`${p.className} px-3 py-1.5 text-sm bg-card md:z-[2] ${
+                          cell.column.id === lastPinned
+                            ? 'md:shadow-[2px_0_4px_-2px_rgba(0,0,0,0.25)]'
+                            : ''
+                        }`}
+                      >
+                        <span aria-hidden className={`pointer-events-none absolute inset-0 group-hover/row:bg-gold/5 ${rowTint}`} />
+                        <div className="relative">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </div>
+                      </td>
+                    )
+                  })}
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </DndContext>
