@@ -4,7 +4,7 @@ import { Inbox, Check, X, Clock } from 'lucide-react'
 import { Navigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
-import { useStaff, useAbsences, useInvalidateCrm } from '../lib/queries'
+import { useStaff, useAbsences, useInvalidateCrm, useWorkCalendar } from '../lib/queries'
 import { approveAbsence, rejectAbsence } from '../lib/storage'
 import { ABSENCE_TYPE_LABELS, ABSENCE_TYPE_COLORS, type AbsenceType } from '../lib/types'
 import { workingDaysBetween } from '../lib/utils'
@@ -24,6 +24,7 @@ export function AbsenceRequestsPage() {
   const staffQ = useStaff()
   const absencesQ = useAbsences(year)
   const { invalidateAbsences } = useInvalidateCrm()
+  const cal = useWorkCalendar()
 
   const staffById = useMemo(() => {
     const m = new Map<string, { name: string; dept: string | null }>()
@@ -132,7 +133,7 @@ export function AbsenceRequestsPage() {
           <div className="space-y-2 max-w-3xl">
             {requests.map(r => {
               const s = staffById.get(r.staff_id)
-              const days = workingDaysBetween(r.start_date, r.end_date)
+              const days = workingDaysBetween(r.start_date, r.end_date, cal)
               const typeColor = ABSENCE_TYPE_COLORS[r.type as AbsenceType] ?? 'bg-gray-400 text-white'
               const statusColor =
                 r.status === 'approved' ? 'text-emerald-700 dark:text-emerald-400'

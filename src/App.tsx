@@ -20,6 +20,7 @@ const ContactsPage = lazy(() => import('./pages/Contacts').then(m => ({ default:
 const AdminPage = lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminPage })))
 const StaffPage = lazy(() => import('./pages/Staff').then(m => ({ default: m.StaffPage })))
 const AuditLogPage = lazy(() => import('./pages/AuditLog').then(m => ({ default: m.AuditLogPage })))
+const HolidaysPage = lazy(() => import('./pages/Holidays').then(m => ({ default: m.HolidaysPage })))
 const ExpensesPage = lazy(() => import('./pages/Expenses').then(m => ({ default: m.ExpensesPage })))
 const SubscriptionsPage = lazy(() => import('./pages/Subscriptions').then(m => ({ default: m.SubscriptionsPage })))
 const TrzPage = lazy(() => import('./pages/Trz').then(m => ({ default: m.TrzPage })))
@@ -104,6 +105,9 @@ export default function App() {
                 <Route path="/contacts" element={<ContactsPage />} />
                 <Route path="/staff" element={
                   <ProtectedRoute allowedRoles={['admin']}><StaffPage /></ProtectedRoute>
+                } />
+                <Route path="/holidays" element={
+                  <ProtectedRoute allowedRoles={['admin']}><HolidaysPage /></ProtectedRoute>
                 } />
                 <Route path="/audit" element={
                   <ProtectedRoute allowedRoles={['admin']}><AuditLogPage /></ProtectedRoute>

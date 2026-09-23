@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import type { Holiday } from './holidays'
 import { attemptAutoReload } from './recovery'
 import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem, NewsSource, NewsSettings, FeedCheck, NotificationEntry, NotificationSettings, NotificationResult, NotificationDryRun, NotifyStaff, Certificate, CertificatePatch } from './types'
 
@@ -3021,4 +3022,46 @@ export async function runNewsFetch(dryRun = false): Promise<{
   drafts?: Array<{ title: string; body: string | null; source_name: string; source_url: string }>
 }> {
   return invokeNewsFetch({ action: 'run', dry_run: dryRun })
+}
+
+// ==================== ПРОИЗВОДСТВЕН КАЛЕНДАР ====================
+// Празници и разместени дни (мигр. 064). Малка таблица — чете се
+// наведнъж за всички години и се пази дълго в кеша: няма как да се
+// промени, докато колегата работи.
+
+export async function getHolidays(): Promise<Holiday[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_holidays')
+      .select('date,name,is_working')
+      .order('date', { ascending: true })
+    if (error) throw error
+    return (data ?? []) as Holiday[]
+  })
+}
+
+export async function upsertHoliday(h: Holiday, audit?: { userId?: string; userName?: string }) {
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_holidays')
+      .upsert([{ date: h.date, name: h.name, is_working: h.is_working }], { onConflict: 'date' })
+    if (error) throw error
+  })())
+  if (audit) {
+    await logAudit(audit.userId, audit.userName ?? '', 'upsert_holiday', 'holiday', h.date, {
+      new_value: `${h.date} — ${h.name}${h.is_working ? ' (работен)' : ''}`,
+    })
+  }
+}
+
+export async function deleteHoliday(date: string, audit?: { userId?: string; userName?: string; name?: string }) {
+  await trackSave((async () => {
+    const { error } = await supabase.from('crm_holidays').delete().eq('date', date)
+    if (error) throw error
+  })())
+  if (audit) {
+    await logAudit(audit.userId, audit.userName ?? '', 'delete_holiday', 'holiday', date, {
+      old_value: `${date} — ${audit.name ?? ''}`,
+    })
+  }
 }

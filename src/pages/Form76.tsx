@@ -5,9 +5,10 @@ import { ChevronLeft, ChevronRight, Download, FileSpreadsheet, RotateCcw } from 
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import {
-  useStaff, useAbsences, useForm76Overrides, useInvalidateCrm,
+  useStaff, useAbsences, useForm76Overrides, useInvalidateCrm, useWorkCalendar,
 } from '../lib/queries'
 import { setForm76Override } from '../lib/storage'
+import { workingDaysInMonthTotal } from '../lib/utils'
 import { exportRowsToExcel } from '../lib/export'
 import { useMyStaff } from '../lib/useMyStaff'
 import {
@@ -73,6 +74,7 @@ export function Form76Page() {
   const absencesQ = useAbsences(year)
   const overridesQ = useForm76Overrides(year, month)
   const { invalidateForm76Overrides } = useInvalidateCrm()
+  const cal = useWorkCalendar()
 
   // Достъп — admin или ТРЗ.
   const allStaff = useMemo(() => (staffQ.data ?? []), [staffQ.data])
@@ -97,15 +99,14 @@ export function Form76Page() {
   const dCount = daysInMonth(year, month)
   const days = useMemo(() => Array.from({ length: dCount }, (_, i) => i + 1), [dCount])
 
-  // Общи дни в месеца — работни дни.
-  const workingDaysTotal = useMemo(() => {
-    let c = 0
-    for (let d = 1; d <= dCount; d++) {
-      const dow = new Date(year, month - 1, d).getDay()
-      if (dow !== 0 && dow !== 6) c++
-    }
-    return c
-  }, [year, month, dCount])
+  // Общи дни в месеца — работни дни по ПРОИЗВОДСТВЕНИЯ календар.
+  // Тук стоеше собствено копие на правилото „Пн-Пт", написано на ръка.
+  // Заради него Форма 76 броеше празниците за работни дни, докато
+  // останалите екрани минаваха през общата функция.
+  const workingDaysTotal = useMemo(
+    () => workingDaysInMonthTotal(year, month, cal),
+    [year, month, cal],
+  )
 
   // Активна клетка за редакция: показваме popover до нея.
   const [editingCell, setEditingCell] = useState<{ staffId: string; day: number } | null>(null)

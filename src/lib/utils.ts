@@ -1,3 +1,4 @@
+import { isWorkingDay, type WorkCalendar } from './holidays'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -95,54 +96,60 @@ export function timeAgo(iso: string | null | undefined, now: Date = new Date()):
 }
 
 // ============================================================
-// Работни дни (Пн-Пт, без официални празници) — ЕДИНСТВЕНАТА
+// Работни дни (Пн-Пт + производствен календар) — ЕДИНСТВЕНАТА
 // имплементация. Ползва се от Календар, Справка отпуска, Заявки и
-// Форма 76. Ако някога добавим официални празници, пипаме само тук.
+// Форма 76.
+//
+// Календарът (`WorkCalendar`) е ЗАДЪЛЖИТЕЛЕН параметър, не по
+// подразбиране. Ако беше по избор, страница, която забрави да го
+// подаде, щеше тихо да връща СТАРИТЕ (сгрешени) числа и никой
+// нямаше да разбере. Така tsc е пазачът: нов екран с работни дни
+// не се компилира, докато не каже с кой календар смята.
+// За места без календар има изричен `EMPTY_CALENDAR`.
 // ============================================================
 
 function parseIsoDate(iso: string): Date {
   return new Date(iso + 'T00:00:00')
 }
 
-/** Брой работни дни (Пн-Пт) в затворен интервал [from..to]. */
-function countWorkdays(from: Date, to: Date): number {
+/** Брой работни дни в затворен интервал [from..to] по календара. */
+function countWorkdays(from: Date, to: Date, cal: WorkCalendar): number {
   if (from > to) return 0
   let count = 0
   const cur = new Date(from)
   while (cur <= to) {
-    const dow = cur.getDay()
-    if (dow !== 0 && dow !== 6) count++
+    if (isWorkingDay(cur, cal)) count++
     cur.setDate(cur.getDate() + 1)
   }
   return count
 }
 
 /** Работни дни между две ISO дати (вкл. двете граници). */
-export function workingDaysBetween(startIso: string, endIso: string): number {
-  return countWorkdays(parseIsoDate(startIso), parseIsoDate(endIso))
+export function workingDaysBetween(startIso: string, endIso: string, cal: WorkCalendar): number {
+  return countWorkdays(parseIsoDate(startIso), parseIsoDate(endIso), cal)
 }
 
 /** Работни дни от диапазона [start..end], попадащи в дадената година. */
-export function workingDaysInYear(startIso: string, endIso: string, year: number): number {
+export function workingDaysInYear(startIso: string, endIso: string, year: number, cal: WorkCalendar): number {
   const yearStart = new Date(year, 0, 1)
   const yearEnd = new Date(year, 11, 31)
   const a = parseIsoDate(startIso)
   const b = parseIsoDate(endIso)
-  return countWorkdays(a < yearStart ? yearStart : a, b > yearEnd ? yearEnd : b)
+  return countWorkdays(a < yearStart ? yearStart : a, b > yearEnd ? yearEnd : b, cal)
 }
 
 /** Работни дни от диапазона [start..end], попадащи в дадения месец (1-12). */
-export function workingDaysInMonth(startIso: string, endIso: string, year: number, month: number): number {
+export function workingDaysInMonth(startIso: string, endIso: string, year: number, month: number, cal: WorkCalendar): number {
   const monthStart = new Date(year, month - 1, 1)
   const monthEnd = new Date(year, month, 0)
   const a = parseIsoDate(startIso)
   const b = parseIsoDate(endIso)
-  return countWorkdays(a < monthStart ? monthStart : a, b > monthEnd ? monthEnd : b)
+  return countWorkdays(a < monthStart ? monthStart : a, b > monthEnd ? monthEnd : b, cal)
 }
 
 /** Общ брой работни дни в целия месец (1-12). */
-export function workingDaysInMonthTotal(year: number, month: number): number {
-  return countWorkdays(new Date(year, month - 1, 1), new Date(year, month, 0))
+export function workingDaysInMonthTotal(year: number, month: number, cal: WorkCalendar): number {
+  return countWorkdays(new Date(year, month - 1, 1), new Date(year, month, 0), cal)
 }
 
 /** ISO timestamp → „DD.MM.YYYY HH:MM". Празно → ''. */
