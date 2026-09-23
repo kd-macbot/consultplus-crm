@@ -3054,6 +3054,31 @@ export async function upsertHoliday(h: Holiday, audit?: { userId?: string; userN
   }
 }
 
+/**
+ * Добавя РЕДОВЕТЕ, КОИТО ЛИПСВАТ — съществуващите не се пипат.
+ *
+ * Нарочно `ignoreDuplicates`, а не upsert: ако колегата е преименувал
+ * ден или е сложил свой, генераторът не бива да го презапише.
+ */
+export async function insertHolidaysIfMissing(
+  rows: Holiday[],
+  audit?: { userId?: string; userName?: string; label?: string },
+): Promise<void> {
+  if (rows.length === 0) return
+  await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_holidays')
+      .upsert(rows.map(r => ({ date: r.date, name: r.name, is_working: r.is_working })),
+        { onConflict: 'date', ignoreDuplicates: true })
+    if (error) throw error
+  })())
+  if (audit) {
+    await logAudit(audit.userId, audit.userName ?? '', 'generate_holidays', 'holiday', undefined, {
+      new_value: audit.label ?? `${rows.length} дни`,
+    })
+  }
+}
+
 export async function deleteHoliday(date: string, audit?: { userId?: string; userName?: string; name?: string }) {
   await trackSave((async () => {
     const { error } = await supabase.from('crm_holidays').delete().eq('date', date)

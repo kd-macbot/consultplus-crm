@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ChevronLeft, ChevronRight, Plus, Trash2, CalendarDays } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Trash2, CalendarDays, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import { useHolidays, useInvalidateCrm } from '../lib/queries'
-import { upsertHoliday, deleteHoliday } from '../lib/storage'
-import { holidaysOfYear, buildWorkCalendar, type Holiday } from '../lib/holidays'
+import { upsertHoliday, deleteHoliday, insertHolidaysIfMissing } from '../lib/storage'
+import { holidaysOfYear, buildWorkCalendar, statutoryHolidays, type Holiday } from '../lib/holidays'
 import { workingDaysInMonthTotal } from '../lib/utils'
 import { formatDate } from '../lib/utils'
 
@@ -46,7 +46,40 @@ export function HolidaysPage() {
     return { perMonth, days, hours: days * 8 }
   }, [year, cal])
 
+  // Какво липсва спрямо закона за избраната година.
+  // Показва се само това, което би се ДОБАВИЛО — вече въведените
+  // не се броят, за да не пише „12 дни", а да добави нула.
+  const missing = useMemo(() => {
+    const have = new Set(rows.map(r => r.date))
+    return statutoryHolidays(year).filter(h => !have.has(h.date))
+  }, [rows, year])
+
   if (user?.role !== 'admin') return <Navigate to="/" replace />
+
+  async function fillStatutory() {
+    if (missing.length === 0) {
+      toast.info(`Законовите дни за ${year} вече са въведени`)
+      return
+    }
+    const list = missing.map(h => `  ${formatDate(h.date)}  ${h.name}`).join('\n')
+    const ok = confirm(
+      `Да се добавят ли ${missing.length} законови дни за ${year}?\n\n${list}\n\n` +
+      'Разместванията („мостовете") се обявяват с решение на МС и НЕ следват от закона — ' +
+      'тях добави на ръка. Провери годишния сбор срещу производствения календар.',
+    )
+    if (!ok) return
+    setSaving(true)
+    try {
+      await insertHolidaysIfMissing(missing, {
+        userId: user?.id, userName: user?.full_name ?? '',
+        label: `${missing.length} законови дни за ${year}`,
+      })
+      await invalidateHolidays()
+      toast.success(`Добавени ${missing.length} дни. Сега сверѝ годишния сбор.`)
+    } catch (e) {
+      toast.error('Неуспешно добавяне: ' + (e as Error).message)
+    } finally { setSaving(false) }
+  }
 
   async function add() {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { toast.error('Избери дата'); return }
@@ -90,12 +123,32 @@ export function HolidaysPage() {
             <Button variant="ghost" size="sm" onClick={() => setYear(y => y + 1)} aria-label="Следваща година">
               <ChevronRight className="h-4 w-4" />
             </Button>
+            <Button
+              variant="outline" size="sm" onClick={fillStatutory} disabled={saving}
+              title={missing.length === 0
+                ? `Законовите дни за ${year} вече са въведени`
+                : `Добавя ${missing.length} законови дни за ${year}`}
+            >
+              <Wand2 className="h-4 w-4 mr-1" />
+              Попълни по закон
+              {missing.length > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold">
+                  {missing.length}
+                </span>
+              )}
+            </Button>
           </div>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
           Тези дни се вадят от работните при Справка отпуска, Форма 76, заявките и лимита за
           дистанционна работа. Съботите и неделите НЕ се вписват — те и без това не се броят.
           Вписва се само обявена <strong>работна</strong> събота (отработване на мост).
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          <strong>„Попълни по закон"</strong> смята дните от Кодекса на труда — фиксираните дати,
+          Великден и заместващите, когато празникът падне в събота или неделя. Вече въведените
+          не се пипат. <strong>Разместванията („мостовете") НЕ следват от закона</strong> — обявяват се
+          с решение на МС и се добавят на ръка; годишният сбор отдолу ги хваща.
         </p>
       </div>
 
