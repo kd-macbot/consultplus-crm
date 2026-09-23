@@ -5,9 +5,11 @@ import { ChevronLeft, ChevronRight, Download, FileSpreadsheet, RotateCcw } from 
 import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import {
-  useStaff, useAbsences, useForm76Overrides, useInvalidateCrm,
+  useStaff, useAbsences, useForm76Overrides, useInvalidateCrm, useWorkCalendar,
 } from '../lib/queries'
 import { setForm76Override } from '../lib/storage'
+import { workingDaysInMonthTotal } from '../lib/utils'
+import { isWorkingDay, holidayName, type WorkCalendar } from '../lib/holidays'
 import { exportRowsToExcel } from '../lib/export'
 import { useMyStaff } from '../lib/useMyStaff'
 import {
@@ -37,7 +39,8 @@ function findAbsenceForDay(absences: Absence[], staffId: string, year: number, m
 }
 
 // Изчислява каква СТОЙНОСТ да покажем в клетка (default или override).
-// default: уикенд = '', работен ден + няма абсенс = '8', има абсенс = код по тип
+// default: почивен ден (уикенд ИЛИ празник) = '', работен ден + няма
+// абсенс = '8', има абсенс = код по тип
 //
 // Termination propagation: ако в по-ранен ден от месеца има override '-'
 // (прекратен договор), всички следващи дни default-ват към '-' — освен ако
@@ -47,6 +50,7 @@ function computeCellValue(
   overridesIdx: Map<string, string>,
   staffId: string,
   year: number, month: number, day: number,
+  cal: WorkCalendar,
 ): string {
   const key = `${staffId}|${day}`
   const override = overridesIdx.get(key)
@@ -55,9 +59,10 @@ function computeCellValue(
   for (let d = 1; d < day; d++) {
     if (overridesIdx.get(`${staffId}|${d}`) === '-') return '-'
   }
-  const dow = new Date(year, month - 1, day).getDay()
-  const isWeekend = dow === 0 || dow === 6
-  if (isWeekend) return ''
+  // Непочивен ден = по ПРОИЗВОДСТВЕНИЯ календар, не просто Пн-Пт.
+  // Празникът се показва празен като уикенд; обявената работна събота
+  // получава '8'.
+  if (!isWorkingDay(new Date(year, month - 1, day), cal)) return ''
   const abs = findAbsenceForDay(absences, staffId, year, month, day)
   if (abs) return ABSENCE_TYPE_TO_FORM76_CODE[abs.type as string] ?? 'Н'
   return '8'
@@ -73,6 +78,7 @@ export function Form76Page() {
   const absencesQ = useAbsences(year)
   const overridesQ = useForm76Overrides(year, month)
   const { invalidateForm76Overrides } = useInvalidateCrm()
+  const cal = useWorkCalendar()
 
   // Достъп — admin или ТРЗ.
   const allStaff = useMemo(() => (staffQ.data ?? []), [staffQ.data])
@@ -97,15 +103,14 @@ export function Form76Page() {
   const dCount = daysInMonth(year, month)
   const days = useMemo(() => Array.from({ length: dCount }, (_, i) => i + 1), [dCount])
 
-  // Общи дни в месеца — работни дни.
-  const workingDaysTotal = useMemo(() => {
-    let c = 0
-    for (let d = 1; d <= dCount; d++) {
-      const dow = new Date(year, month - 1, d).getDay()
-      if (dow !== 0 && dow !== 6) c++
-    }
-    return c
-  }, [year, month, dCount])
+  // Общи дни в месеца — работни дни по ПРОИЗВОДСТВЕНИЯ календар.
+  // Тук стоеше собствено копие на правилото „Пн-Пт", написано на ръка.
+  // Заради него Форма 76 броеше празниците за работни дни, докато
+  // останалите екрани минаваха през общата функция.
+  const workingDaysTotal = useMemo(
+    () => workingDaysInMonthTotal(year, month, cal),
+    [year, month, cal],
+  )
 
   // Активна клетка за редакция: показваме popover до нея.
   const [editingCell, setEditingCell] = useState<{ staffId: string; day: number } | null>(null)
@@ -160,9 +165,8 @@ export function Form76Page() {
     staff.forEach(s => {
       const sum: Summary = { hours: 0, daysWorked: 0, vacation: 0, sick: 0, maternity: 0, business: 0, study: 0, unpaid: 0, weekendDays: 0 }
       for (let d = 1; d <= dCount; d++) {
-        const v = computeCellValue(absences, overridesIdx, s.id, year, month, d)
-        const dow = new Date(year, month - 1, d).getDay()
-        const isWeekend = dow === 0 || dow === 6
+        const v = computeCellValue(absences, overridesIdx, s.id, year, month, d, cal)
+        const isWeekend = !isWorkingDay(new Date(year, month - 1, d), cal)
         if (v === '8') { sum.hours += 8; sum.daysWorked += 1 }
         else if (v === '4') { sum.hours += 4; sum.daysWorked += 0.5 }
         else if (v === 'О') sum.vacation += 1
@@ -176,7 +180,7 @@ export function Form76Page() {
       m.set(s.id, sum)
     })
     return m
-  }, [staff, absences, overridesIdx, year, month, dCount])
+  }, [staff, absences, overridesIdx, year, month, dCount, cal])
 
   // ============================================================
   // Експорт към Excel — точно това, което се вижда + summary колоните.
@@ -192,7 +196,7 @@ export function Form76Page() {
     const rows = staff.map(s => {
       const cells: string[] = []
       for (let d = 1; d <= dCount; d++) {
-        cells.push(computeCellValue(absences, overridesIdx, s.id, year, month, d))
+        cells.push(computeCellValue(absences, overridesIdx, s.id, year, month, d, cal))
       }
       const sum = summaryByStaff.get(s.id)!
       return [
@@ -212,7 +216,7 @@ export function Form76Page() {
       fileName: `Форма76_${monthLabel}_${year}.xlsx`,
     })
     toast.success(`Форма 76 за ${monthLabel} ${year} е готова`)
-  }, [staff, days, dCount, absences, overridesIdx, summaryByStaff, year, month])
+  }, [staff, days, dCount, absences, overridesIdx, summaryByStaff, year, month, cal])
 
   if (!canSee) return <Navigate to="/" replace />
 
@@ -279,11 +283,20 @@ export function Form76Page() {
               <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[180px] sticky left-0 z-30 bg-navy border-r border-navy-light">Име</th>
               <th className="text-left px-2 py-2 font-semibold uppercase tracking-wider min-w-[120px] border-r border-navy-light">Длъжност</th>
               {days.map(d => {
-                const dow = new Date(year, month - 1, d).getDay()
-                const isWeekend = dow === 0 || dow === 6
+                const headDate = new Date(year, month - 1, d)
+                const isWeekend = !isWorkingDay(headDate, cal)
+                const hName = holidayName(headDate, cal)
                 const isToday = isViewingThisMonth && d === todayDay
                 return (
-                  <th key={d} className={`text-center font-medium border-r border-navy-light/50 ${isToday ? 'bg-amber-500 text-navy dark:text-foreground font-bold' : isWeekend ? 'bg-sky-700' : ''}`} style={{ minWidth: 28 }}>
+                  <th
+                    key={d}
+                    title={hName || undefined}
+                    className={`text-center font-medium border-r border-navy-light/50 ${
+                      isToday ? 'bg-amber-500 text-navy dark:text-foreground font-bold'
+                      : hName && isWeekend ? 'bg-rose-900/70'
+                      : isWeekend ? 'bg-sky-700' : ''}`}
+                    style={{ minWidth: 28 }}
+                  >
                     {d}
                   </th>
                 )
@@ -310,10 +323,9 @@ export function Form76Page() {
                   <td className={`px-3 py-1 font-medium sticky left-0 z-10 ${evenBg} border-r border-border whitespace-nowrap`}>{s.full_name}</td>
                   <td className="px-2 py-1 text-muted-foreground border-r border-border whitespace-nowrap text-[11px]">{s.position ?? s.department ?? '—'}</td>
                   {days.map(d => {
-                    const dow = new Date(year, month - 1, d).getDay()
-                    const isWeekend = dow === 0 || dow === 6
+                    const isWeekend = !isWorkingDay(new Date(year, month - 1, d), cal)
                     const isToday = isViewingThisMonth && d === todayDay
-                    const value = computeCellValue(absences, overridesIdx, s.id, year, month, d)
+                    const value = computeCellValue(absences, overridesIdx, s.id, year, month, d, cal)
                     const hasOverride = overridesIdx.has(`${s.id}|${d}`)
                     const colorClass = FORM76_CODE_COLORS[value] ?? ''
                     const isEditing = editingCell?.staffId === s.id && editingCell?.day === d

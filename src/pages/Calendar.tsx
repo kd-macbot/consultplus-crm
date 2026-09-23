@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '../lib/auth'
 import {
   useStaff, useAbsences, useVacationQuotas, useEvents, useNews, useIndustryNews, useInvalidateCrm,
+  useWorkCalendar,
 } from '../lib/queries'
 import { addAbsence, updateAbsence, deleteAbsence, approveAbsence, rejectAbsence, addEvent, updateEvent, deleteEvent, addNews, updateNews, deleteNews } from '../lib/storage'
 import {
@@ -19,6 +20,7 @@ import {
   workingDaysInYear, workingDaysInMonth, workingDaysInMonthTotal,
 } from '../lib/utils'
 import { useMyStaff } from '../lib/useMyStaff'
+import { holidayName, isWorkingDay } from '../lib/holidays'
 import { exportRowsToExcel } from '../lib/export'
 
 const MONTH_NAMES = [
@@ -58,6 +60,15 @@ export function CalendarPage() {
   const industryQ = useIndustryNews()
   const quotasQ = useVacationQuotas(year)
   const { invalidateAbsences, invalidateEvents, invalidateNews } = useInvalidateCrm()
+  const cal = useWorkCalendar()
+  // Празниците на ТЕКУЩИЯ месец — за реда под легендата.
+  const monthHolidays = useMemo(() => {
+    const prefix = `${year}-${String(month).padStart(2, '0')}-`
+    return [...cal.nonWorking.entries()]
+      .filter(([d]) => d.startsWith(prefix))
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, name]) => ({ date, name }))
+  }, [cal, year, month])
 
   const allStaff: StaffMemberType[] = useMemo(() => (staffQ.data ?? []), [staffQ.data])
   const staff: StaffMemberType[] = useMemo(() => allStaff.filter(s => s.is_active), [allStaff])
@@ -111,12 +122,12 @@ export function CalendarPage() {
     let pendingDays = 0
     absences.forEach(a => {
       if (a.staff_id !== myStaff.id || a.type !== 'vacation') return
-      const days = workingDaysInYear(a.start_date, a.end_date, year)
+      const days = workingDaysInYear(a.start_date, a.end_date, year, cal)
       if (a.status === 'approved') used += days
       else if (a.status === 'pending') pendingDays += days
     })
     return { remaining: entitlement - used, pendingDays }
-  }, [myStaff, quotas, absences, year])
+  }, [myStaff, quotas, absences, year, cal])
 
   // Брой чакащи заявки (всички служители) — admin вижда в горната лента.
   const pendingTotal = useMemo(
@@ -132,7 +143,7 @@ export function CalendarPage() {
   //         Σ Отсъствия | Присъствие | Дати на отсъствия
   // ============================================================
   const exportMonthly = useCallback(async () => {
-    const totalWorkDays = workingDaysInMonthTotal(year, month)
+    const totalWorkDays = workingDaysInMonthTotal(year, month, cal)
     const headers = [
       'Име', 'Длъжност', 'Отдел', 'Раб. дни',
       'Отпуска', 'Болничен', 'Служебно', 'Дистанционно', 'Майчинство', 'Учебен', 'Неплатен',
@@ -150,7 +161,7 @@ export function CalendarPage() {
       }
       absences.forEach(a => {
         if (a.staff_id !== s.id || a.status !== 'approved') return
-        const days = workingDaysInMonth(a.start_date, a.end_date, year, month)
+        const days = workingDaysInMonth(a.start_date, a.end_date, year, month, cal)
         if (days <= 0 || perType[a.type as string] === undefined) return
         perType[a.type as string] += days
         // Клипваме диапазона до границите на месеца, за да не „изтичаме" в съседен месец.
@@ -205,7 +216,7 @@ export function CalendarPage() {
       fileName: `Отпуски_${monthLabel}_${year}.xlsx`,
     })
     toast.success(`Експортът на ${monthLabel} ${year} е готов`)
-  }, [staff, absences, year, month])
+  }, [staff, absences, year, month, cal])
 
   const canExport = isAdmin || myStaff?.department === 'ТРЗ'
 
@@ -389,7 +400,23 @@ export function CalendarPage() {
               {ABSENCE_TYPE_LABELS[t]}
             </span>
           ))}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded bg-rose-900/70" />
+            Официален празник
+          </span>
         </div>
+
+        {/* Празниците на месеца — изписани, а не само оцветени. Числото
+            „раб. дни" е това, с което се смята отпуската. */}
+        {monthHolidays.length > 0 && (
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {workingDaysInMonthTotal(year, month, cal)} раб. дни
+            </span>
+            {' · '}
+            {monthHolidays.map(h => `${Number(h.date.slice(8, 10))}.${h.date.slice(5, 7)} ${h.name}`).join(' · ')}
+          </div>
+        )}
       </div>
 
       {/* Съдържание: календарът вляво като карта, новините вдясно като
@@ -415,14 +442,30 @@ export function CalendarPage() {
             <tr>
               <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider min-w-[200px] sticky left-0 z-30 bg-navy border-r border-navy-light">Служител</th>
               {days.map(d => {
-                const dow = new Date(year, month - 1, d).getDay()
+                const dt = new Date(year, month - 1, d)
+                const dow = dt.getDay()
                 const isWeekend = dow === 0 || dow === 6
                 const isToday = isViewingThisMonth && d === todayDay
+                // Производствен календар: празник/мост в делник, или
+                // обявена РАБОТНА събота. И двете се виждат в главата —
+                // иначе колегата брои дните си наум и греши.
+                const hName = holidayName(dt, cal)
+                const isHoliday = !!hName && !isWeekend
+                const isWorkingWeekend = !!hName && isWeekend
                 return (
-                  <th key={d} className={`text-center px-0 py-1 font-medium border-r border-navy-light/50 ${isToday ? 'bg-amber-500 text-navy dark:text-foreground' : isWeekend ? 'bg-navy/80' : ''}`} style={{ minWidth: 28 }}>
+                  <th
+                    key={d}
+                    title={hName || undefined}
+                    className={`text-center px-0 py-1 font-medium border-r border-navy-light/50 ${
+                      isToday ? 'bg-amber-500 text-navy dark:text-foreground'
+                      : isHoliday ? 'bg-rose-900/70'
+                      : isWorkingWeekend ? 'bg-emerald-900/60'
+                      : isWeekend ? 'bg-navy/80' : ''}`}
+                    style={{ minWidth: 28 }}
+                  >
                     <div className="leading-tight">
                       <div className="text-[10px] opacity-60">{WEEKDAY_SHORT[dow]}</div>
-                      <div className={`text-[11px] ${isToday ? 'font-bold' : ''}`}>{d}</div>
+                      <div className={`text-[11px] ${isToday || isHoliday ? 'font-bold' : ''}`}>{d}</div>
                     </div>
                   </th>
                 )
@@ -505,8 +548,10 @@ export function CalendarPage() {
                   </td>
                   {days.map(d => {
                     const dateIso = iso(year, month, d)
-                    const dow = new Date(year, month - 1, d).getDay()
-                    const isWeekend = dow === 0 || dow === 6
+                    const cellDate = new Date(year, month - 1, d)
+                    // „Почивен" за оцветяването = уикенд ИЛИ празник,
+                    // минус обявените работни съботи.
+                    const isWeekend = !isWorkingDay(cellDate, cal)
                     const isToday = dateIso === todayIso
                     const abs = findAbsenceForDay(visibleAbsences, s.id, dateIso)
                     const color = abs ? ABSENCE_TYPE_COLORS[abs.type as AbsenceType] ?? 'bg-gray-400 text-white' : ''
@@ -624,6 +669,7 @@ function AbsenceModal({
   onSaved: () => Promise<void>
   userId?: string
 }) {
+  const cal = useWorkCalendar()
   const [start, setStart] = useState(existing?.start_date ?? defaultDate ?? '')
   const [end, setEnd] = useState(existing?.end_date ?? defaultDate ?? '')
   const [type, setType] = useState<AbsenceType>((existing?.type as AbsenceType) ?? 'vacation')
@@ -660,14 +706,14 @@ function AbsenceModal({
       cur.setMonth(cur.getMonth() + 1)
     }
     for (const { year, month } of months) {
-      const newDays = workingDaysInMonth(start, end, year, month)
+      const newDays = workingDaysInMonth(start, end, year, month, cal)
       let existingDays = 0
       allAbsences.forEach(abs => {
         if (abs.staff_id !== staffId) return
         if (abs.type !== 'remote') return
         if (abs.status === 'rejected') return
         if (existing && abs.id === existing.id) return  // не брой собствения запис
-        existingDays += workingDaysInMonth(abs.start_date, abs.end_date, year, month)
+        existingDays += workingDaysInMonth(abs.start_date, abs.end_date, year, month, cal)
       })
       if (newDays + existingDays > REMOTE_LIMIT_PER_MONTH) {
         const monthName = ['Януари','Февруари','Март','Април','Май','Юни','Юли','Август','Септември','Октомври','Ноември','Декември'][month - 1]
