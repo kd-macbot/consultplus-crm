@@ -408,15 +408,23 @@ export function CalendarPage() {
 
         {/* Празниците на месеца — изписани, а не само оцветени. Числото
             „раб. дни" е това, с което се смята отпуската. */}
-        {monthHolidays.length > 0 && (
-          <div className="mt-2 text-[11px] text-muted-foreground">
-            <span className="font-medium text-foreground">
-              {workingDaysInMonthTotal(year, month, cal)} раб. дни
-            </span>
-            {' · '}
-            {monthHolidays.map(h => `${Number(h.date.slice(8, 10))}.${h.date.slice(5, 7)} ${h.name}`).join(' · ')}
-          </div>
-        )}
+        {/* Броят работни дни излиза ВИНАГИ, не само в месец с празник:
+            числото се ползва всеки месец (отпуска, Форма 76), а да се
+            появява през месец кара човек да го търси. Празниците се
+            изреждат само когато ги има. */}
+        <div className="mt-2 text-[11px] text-muted-foreground">
+          <span className="font-medium text-foreground">
+            {workingDaysInMonthTotal(year, month, cal)} раб. дни
+          </span>
+          {' · '}
+          <span>{workingDaysInMonthTotal(year, month, cal) * 8} часа</span>
+          {monthHolidays.length > 0 && (
+            <>
+              {' · '}
+              {monthHolidays.map(h => `${Number(h.date.slice(8, 10))}.${h.date.slice(5, 7)} ${h.name}`).join(' · ')}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Съдържание: календарът вляво като карта, новините вдясно като
