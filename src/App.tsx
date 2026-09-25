@@ -21,6 +21,7 @@ const AdminPage = lazy(() => import('./pages/Admin').then(m => ({ default: m.Adm
 const StaffPage = lazy(() => import('./pages/Staff').then(m => ({ default: m.StaffPage })))
 const AuditLogPage = lazy(() => import('./pages/AuditLog').then(m => ({ default: m.AuditLogPage })))
 const HolidaysPage = lazy(() => import('./pages/Holidays').then(m => ({ default: m.HolidaysPage })))
+const MyDayPage = lazy(() => import('./pages/MyDay').then(m => ({ default: m.MyDayPage })))
 const ExpensesPage = lazy(() => import('./pages/Expenses').then(m => ({ default: m.ExpensesPage })))
 const SubscriptionsPage = lazy(() => import('./pages/Subscriptions').then(m => ({ default: m.SubscriptionsPage })))
 const TrzPage = lazy(() => import('./pages/Trz').then(m => ({ default: m.TrzPage })))
@@ -102,6 +103,7 @@ export default function App() {
                 <Route path="/opportunities" element={
                   <ProtectedRoute allowedRoles={['admin']}><OpportunitiesPage /></ProtectedRoute>
                 } />
+                <Route path="/my-day" element={<MyDayPage />} />
                 <Route path="/contacts" element={<ContactsPage />} />
                 <Route path="/staff" element={
                   <ProtectedRoute allowedRoles={['admin']}><StaffPage /></ProtectedRoute>

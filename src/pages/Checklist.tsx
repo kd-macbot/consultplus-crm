@@ -21,6 +21,7 @@ import { useRealtime } from '../lib/useRealtime'
 import { useRefreshGuard } from '../lib/useCrmMasterRealtime'
 import { usePendingPatches } from '../lib/usePendingPatches'
 import { usePersistentState } from '../lib/usePersistentState'
+import { isMyFirm } from '../lib/myDay'
 
 // Pending слоят е споделеният usePendingPatches (моделът от Trz/WorkSheet):
 // отметка се пази в localStorage до потвърден запис, наслагва се над
@@ -163,8 +164,13 @@ export function ChecklistPage() {
       // „НУЛЕВО" също отпада (по искане на колегите) — САМО тук, в
       // Работния лист нулевите фирми си остават видими.
       .filter(r => !r.status.toLowerCase().includes('нулево'))
-      // Само зачислените на текущия потребител (admin вижда всички)
-      .filter(r => isAdmin || r.accountant === myName || r.responsible === myName)
+      // Само зачислените на текущия потребител (admin вижда всички).
+      // Сравнението е през `isMyFirm` → `namesMatch`, не с `===`:
+      // стойността на „Счетоводител"/„Отговорник" е свободен текст и
+      // един излишен интервал правеше фирмата чужда. `mail-send` винаги
+      // е ползвал namesMatch, тоест писмото сутрин сочеше фирми, които
+      // екранът не показваше.
+      .filter(r => isAdmin || isMyFirm(r, myName))
       .sort((a, b) => a.name.localeCompare(b.name, 'bg'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clients, columns, cellIdx, dropdownIdx, statusCol, accountantCol, respCol, isAdmin, myName])
