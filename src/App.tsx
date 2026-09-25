@@ -5,6 +5,7 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { queryClient, persistOptions } from './lib/queryClient'
 import { AuthProvider } from './components/auth/AuthProvider'
 import { ProtectedRoute } from './components/auth/ProtectedRoute'
+import { useAuth } from './lib/auth'
 import { LoginPage } from './components/auth/LoginPage'
 import { Layout } from './components/layout/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -21,6 +22,7 @@ const AdminPage = lazy(() => import('./pages/Admin').then(m => ({ default: m.Adm
 const StaffPage = lazy(() => import('./pages/Staff').then(m => ({ default: m.StaffPage })))
 const AuditLogPage = lazy(() => import('./pages/AuditLog').then(m => ({ default: m.AuditLogPage })))
 const HolidaysPage = lazy(() => import('./pages/Holidays').then(m => ({ default: m.HolidaysPage })))
+const MyDayPage = lazy(() => import('./pages/MyDay').then(m => ({ default: m.MyDayPage })))
 const ExpensesPage = lazy(() => import('./pages/Expenses').then(m => ({ default: m.ExpensesPage })))
 const SubscriptionsPage = lazy(() => import('./pages/Subscriptions').then(m => ({ default: m.SubscriptionsPage })))
 const TrzPage = lazy(() => import('./pages/Trz').then(m => ({ default: m.TrzPage })))
@@ -54,6 +56,26 @@ function PageFallback() {
   )
 }
 
+/**
+ * Къде влиза човек на „/" — зависи от ролята.
+ *
+ * Колегите тръгват от „Моят ден": той казва какво чака ЛИЧНО тях днес.
+ * Админът си остава на Таблото — там са числата на кантората.
+ *
+ * Таблото НЕ се маха от менюто на колегите: то им дава задачите,
+ * работните листове и общата статистика. Затова има СОБСТВЕН адрес
+ * (`/dashboard`), а „/" е само стрелка накъде. Така и връщането
+ * „към началото" от забранена страница води всеки където трябва:
+ * колега от ТРЗ, отпратен от Форма 76, попада в своя ден, а не в
+ * екран с чужди числа.
+ */
+function HomeRoute() {
+  const { user } = useAuth()
+  // Тук `user` вече е зареден — маршрутът е вътре в ProtectedRoute.
+  if (user && user.role !== 'admin') return <Navigate to="/my-day" replace />
+  return <Navigate to="/dashboard" replace />
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -71,7 +93,9 @@ export default function App() {
                   </ProtectedRoute>
                 }
               >
-                <Route path="/" element={<Dashboard />} />
+                {/* Началната страница зависи от ролята — виж HomeRoute. */}
+                <Route path="/" element={<HomeRoute />} />
+                <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/clients" element={<ClientsPage />} />
                 {/* Карта на клиента — събира данните от другите страници.
                     Гейтовете са ВЪТРЕ (хонорар, договори, мониторинг). */}
@@ -102,6 +126,7 @@ export default function App() {
                 <Route path="/opportunities" element={
                   <ProtectedRoute allowedRoles={['admin']}><OpportunitiesPage /></ProtectedRoute>
                 } />
+                <Route path="/my-day" element={<MyDayPage />} />
                 <Route path="/contacts" element={<ContactsPage />} />
                 <Route path="/staff" element={
                   <ProtectedRoute allowedRoles={['admin']}><StaffPage /></ProtectedRoute>

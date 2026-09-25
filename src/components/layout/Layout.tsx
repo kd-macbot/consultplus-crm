@@ -169,7 +169,7 @@ export function Layout() {
         >
           {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </Button>
-        <NavLink to="/" end onClick={() => { setSidebarOpen(false); handleLogoClick() }} title="Към Таблото (и обновява данните)" className="flex items-center transition hover:opacity-80">
+        <NavLink to="/" end onClick={() => { setSidebarOpen(false); handleLogoClick() }} title="Към началната страница (и обновява данните)" className="flex items-center transition hover:opacity-80">
           <img src={logoWhite} alt="Consult Plus" className="h-7 w-auto" />
           <span className="ml-2 text-white/40 text-sm font-light">360</span>
         </NavLink>
@@ -196,7 +196,7 @@ export function Layout() {
             НЕ чисти филтри и подредба — рефрешът сменя данните, не изгледа,
             който колегата си е нагласил. */}
         <div className="hidden md:flex items-center justify-center px-4 py-5 border-b border-white/10">
-          <NavLink to="/" end onClick={handleLogoClick} title="Към Таблото (и обновява данните)" className="transition hover:opacity-80">
+          <NavLink to="/" end onClick={handleLogoClick} title="Към началната страница (и обновява данните)" className="transition hover:opacity-80">
             <img src={logoWhite} alt="Consult Plus" className="h-9 w-auto" />
           </NavLink>
         </div>
