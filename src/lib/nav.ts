@@ -2,7 +2,7 @@ import {
   LayoutDashboard, Users, UserCog, Wallet, CreditCard,
   ClipboardList, Settings, BookUser, Target, ClipboardCheck, CalendarRange, Receipt,
   ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark,
-  KanbanSquare, Coins, MessageSquare, Calculator, FileSignature, BellRing, KeyRound, Newspaper, CalendarCheck,
+  KanbanSquare, Coins, MessageSquare, Calculator, FileSignature, BellRing, KeyRound, Newspaper, CalendarCheck, Sunrise,
 } from 'lucide-react'
 
 // ============================================================
@@ -36,6 +36,7 @@ export const NAV_SECTIONS: NavSection[] = [
     title: null,  // Табло + Календар — без заглавие, най-отгоре в sidebar-а
     items: [
       { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
+      { to: '/my-day', label: 'Моят ден', icon: Sunrise, roles: ['admin', 'manager', 'employee'] },
       { to: '/calendar', label: 'Календар', icon: CalendarDays, roles: ['admin', 'manager', 'employee'], badgeKeys: ['absentToday', 'recentNews'] },
       { to: '/tasks', label: 'Задачи', icon: KanbanSquare, roles: ['admin', 'manager', 'employee'], badgeKeys: ['myOpenTasks'] },
     ],
