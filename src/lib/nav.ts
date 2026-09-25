@@ -35,7 +35,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: null,  // Табло + Календар — без заглавие, най-отгоре в sidebar-а
     items: [
-      { to: '/', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
+      { to: '/dashboard', label: 'Табло', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
       { to: '/my-day', label: 'Моят ден', icon: Sunrise, roles: ['admin', 'manager', 'employee'] },
       { to: '/calendar', label: 'Календар', icon: CalendarDays, roles: ['admin', 'manager', 'employee'], badgeKeys: ['absentToday', 'recentNews'] },
       { to: '/tasks', label: 'Задачи', icon: KanbanSquare, roles: ['admin', 'manager', 'employee'], badgeKeys: ['myOpenTasks'] },
