@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { createStaffMember, updateStaffMember, setStaffActive, getAllProfiles, withRetry } from '../lib/storage'
-import { useAuth, adminCreateUser } from '../lib/auth'
+import { useAuth, adminCreateUser, adminResetPassword } from '../lib/auth'
+import { generatePassword, isAcceptablePassword } from '../lib/password'
 import type { Profile, Role } from '../lib/types'
-import { Users, UserCheck, UserX, Pencil, Mail, Phone, Building2, Plus, KeyRound, ShieldCheck, CalendarDays } from 'lucide-react'
+import { Users, UserCheck, UserX, Pencil, Mail, Phone, Building2, Plus, KeyRound, ShieldCheck, CalendarDays, RotateCcw, Copy, Check, Wand2 } from 'lucide-react'
 import { calcTenure, formatDate } from '../lib/utils'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -53,6 +54,8 @@ export function StaffPage() {
   const [editing, setEditing] = useState<StaffMember | null>(null)
   const [filterDept, setFilterDept] = useState('all')
   const [accountFor, setAccountFor] = useState<StaffMember | null>(null)
+  const [resetFor, setResetFor] = useState<StaffMember | null>(null)
+  const [resetLoading, setResetLoading] = useState(false)
   const [accountLoading, setAccountLoading] = useState(false)
 
   const isAdmin = user?.role === 'admin'
@@ -106,6 +109,22 @@ export function StaffPage() {
       await loadProfiles()
     } finally {
       setAccountLoading(false)
+    }
+  }
+
+  // Нулиране на парола. Връща успех/грешка на диалога, за да може той
+  // да ОСТАВИ паролата на екрана — админът трябва да я каже на колегата,
+  // а повече никъде няма да се види.
+  async function resetPassword(password: string): Promise<boolean> {
+    if (!resetFor?.email) return false
+    setResetLoading(true)
+    try {
+      const { error } = await adminResetPassword(resetFor.email.trim(), password)
+      if (error) { toast.error(error); return false }
+      toast.success(`Паролата на „${resetFor.full_name}" е сменена`)
+      return true
+    } finally {
+      setResetLoading(false)
     }
   }
 
@@ -223,6 +242,7 @@ export function StaffPage() {
             onEdit={() => { setEditing(member); setShowForm(true) }}
             onToggle={() => toggleActive(member.id, member.is_active)}
             onCreateAccount={() => setAccountFor(member)}
+            onResetPassword={() => setResetFor(member)}
           />
         ))}
       </div>
@@ -237,6 +257,7 @@ export function StaffPage() {
                 onEdit={() => { setEditing(member); setShowForm(true) }}
                 onToggle={() => toggleActive(member.id, member.is_active)}
                 onCreateAccount={() => setAccountFor(member)}
+                onResetPassword={() => setResetFor(member)}
               />
             ))}
           </div>
@@ -256,13 +277,21 @@ export function StaffPage() {
         onSubmit={createAccount}
         onClose={() => setAccountFor(null)}
       />
+
+      <ResetPasswordForm
+        member={resetFor}
+        loading={resetLoading}
+        onSubmit={resetPassword}
+        onClose={() => setResetFor(null)}
+      />
     </div>
   )
 }
 
-function StaffCard({ member, isAdmin, profile, onEdit, onToggle, onCreateAccount }: {
+function StaffCard({ member, isAdmin, profile, onEdit, onToggle, onCreateAccount, onResetPassword }: {
   member: StaffMember; isAdmin: boolean; profile?: Profile
   onEdit: () => void; onToggle: () => void; onCreateAccount: () => void
+  onResetPassword: () => void
 }) {
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -344,6 +373,13 @@ function StaffCard({ member, isAdmin, profile, onEdit, onToggle, onCreateAccount
             {!profile && member.email && (
               <Button variant="ghost" size="sm" onClick={onCreateAccount} className="h-7 text-xs gap-1 px-2 text-primary">
                 <KeyRound className="h-3 w-3" /> Създай акаунт
+              </Button>
+            )}
+            {/* Нулиране — само когато акаунт ВЕЧЕ има. Двата бутона са
+                взаимно изключващи се: или се създава, или се нулира. */}
+            {profile && member.email && (
+              <Button variant="ghost" size="sm" onClick={onResetPassword} className="h-7 text-xs gap-1 px-2 text-amber-700 dark:text-amber-400">
+                <RotateCcw className="h-3 w-3" /> Нулирай парола
               </Button>
             )}
           </div>
@@ -497,6 +533,107 @@ function StaffForm({ open, member, onSave, onClose }: {
           <Button onClick={handleSave} disabled={!name.trim()}>
             {member ? 'Запази' : 'Добави'}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================================
+// Нулиране на парола.
+//
+// КЛЮЧОВОТО: след успех паролата ОСТАВА на екрана, с бутон за копиране.
+// Админът трябва да я каже на колегата, а никъде другаде няма да се
+// види — нито в дневника, нито в базата. Диалогът не се затваря сам.
+// ============================================================
+function ResetPasswordForm({ member, loading, onSubmit, onClose }: {
+  member: StaffMember | null; loading: boolean
+  onSubmit: (password: string) => Promise<boolean>; onClose: () => void
+}) {
+  const [password, setPassword] = useState('')
+  const [done, setDone] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (member) { setPassword(generatePassword()); setDone(false); setCopied(false) }
+  }, [member])
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(password)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error('Копирането не стана — маркирай я и копирай на ръка')
+    }
+  }
+
+  return (
+    <Dialog open={!!member} onOpenChange={open => { if (!open) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{done ? 'Паролата е сменена' : 'Нулирай парола'}</DialogTitle>
+        </DialogHeader>
+
+        {member && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-muted/40 p-3 text-sm space-y-0.5">
+              <p><span className="text-muted-foreground">Служител:</span> <span className="font-medium">{member.full_name}</span></p>
+              <p><span className="text-muted-foreground">Имейл (логин):</span> <span className="font-medium">{member.email}</span></p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="rp-pass">Нова парола *</Label>
+              <div className="flex gap-2">
+                {/* Паролата е ВИДИМА, не скрита с точки — целта е да се
+                    прочете и предаде, не да се пази от рамото. */}
+                <Input
+                  id="rp-pass" type="text" value={password}
+                  onChange={e => { setPassword(e.target.value); setDone(false) }}
+                  readOnly={done}
+                  className="font-mono"
+                  autoFocus
+                />
+                <Button type="button" variant="outline" size="icon" onClick={copy} title="Копирай">
+                  {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                </Button>
+                {!done && (
+                  <Button type="button" variant="outline" size="icon"
+                    onClick={() => setPassword(generatePassword())} title="Генерирай нова">
+                    <Wand2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {done ? (
+              <div className="rounded-lg border border-emerald-300 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20 p-3 text-sm text-emerald-900 dark:text-emerald-200">
+                <p className="font-medium">Запиши си паролата СЕГА.</p>
+                <p className="mt-1 text-[13px]">
+                  Няма да се види повече — не се пази нито в базата, нито в дневника.
+                  Предай я на {member.full_name.split(' ')[0]} и ѝ кажи да я смени след влизане.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Генерираната парола е без знаци, които се бъркат при четене
+                (нула и О, единица и малко л). В Дневника влиза кой на кого е
+                нулирал — самата парола НЕ се записва никъде.
+              </p>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{done ? 'Затвори' : 'Отказ'}</Button>
+          {!done && (
+            <Button
+              onClick={async () => { if (await onSubmit(password)) setDone(true) }}
+              disabled={loading || !isAcceptablePassword(password)}
+            >
+              {loading ? 'Нулиране...' : 'Нулирай'}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

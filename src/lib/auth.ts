@@ -53,6 +53,37 @@ export async function adminCreateUser(
   }
 }
 
+/**
+ * Нулира паролата на СЪЩЕСТВУВАЩ потребител (само admin).
+ *
+ * Същата edge функция като създаването, с `action: 'reset_password'` —
+ * нова функция би значела още един ръчен деплой и още secrets.
+ *
+ * ⚠️ РЕД НА ПУСКАНЕ: функцията се предеплойва ПРЕДИ този код да стигне
+ * до live. Удари ли старата функция, тя ще пренебрегне `action`, ще се
+ * опита да СЪЗДАДЕ потребител със зает имейл и ще върне „User already
+ * registered". Объркващо, но безвредно — нищо не се променя.
+ */
+export async function adminResetPassword(
+  email: string,
+  password: string,
+): Promise<{ error?: string; userId?: string }> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) return { error: 'Не сте логнат' }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('admin-create-user', {
+      body: { action: 'reset_password', email, password },
+    })
+    if (error) return { error: error.message }
+    if (data?.error) return { error: data.error }
+    if (!data?.userId) return { error: 'Неочакван отговор от сървъра' }
+    return { userId: data.userId }
+  } catch (err) {
+    return { error: (err as Error).message ?? 'Грешка при нулиране на паролата' }
+  }
+}
+
 export async function signOut() {
   await supabase.auth.signOut()
 }
