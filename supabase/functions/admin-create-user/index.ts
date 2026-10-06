@@ -20,7 +20,10 @@
 //   POST /functions/v1/admin-create-user
 //   headers: Authorization: Bearer <session_access_token>
 //   създаване: { email, password, full_name, role: 'admin'|'manager'|'employee' }
-//              → { userId } или { error }
+//              → { userId, adopted } или { error }
+//              `adopted: true` значи, че имейлът е бил зает от потребител
+//              БЕЗ профил (колегата е пробвал „Вход с Microsoft", преди
+//              админът да му направи акаунт) и функцията го е поела.
 //   нулиране:  { action: 'reset_password', email, password }
 //              → { userId } или { error }
 
@@ -40,6 +43,32 @@ function json(body: unknown, status = 200) {
 }
 
 const VALID_ROLES = new Set(["admin", "manager", "employee"])
+
+/** Supabase формулира „имейлът е зает" по няколко начина според версията. */
+function isAlreadyRegistered(message?: string): boolean {
+  if (!message) return false
+  return /already (been )?registered|already exists|email_exists|duplicate key/i.test(message)
+}
+
+/**
+ * Admin API-то няма „вземи потребител по имейл", затова се върти по
+ * страници. Пътят е РЯДЪК — стига се дотук само при зает имейл — а
+ * кантората е под 50 потребителя, тоест една страница.
+ */
+// deno-lint-ignore no-explicit-any
+async function findUserByEmail(client: any, email: string): Promise<{ id: string } | null> {
+  const target = email.trim().toLowerCase()
+  const perPage = 200
+  for (let page = 1; page <= 10; page++) {
+    const { data, error } = await client.auth.admin.listUsers({ page, perPage })
+    if (error || !data?.users?.length) return null
+    // deno-lint-ignore no-explicit-any
+    const hit = data.users.find((u: any) => (u.email ?? "").toLowerCase() === target)
+    if (hit) return hit
+    if (data.users.length < perPage) return null
+  }
+  return null
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
@@ -133,11 +162,50 @@ Deno.serve(async (req) => {
       email_confirm: true,
       user_metadata: { full_name },
     })
-    if (createErr || !created.user) {
-      return json({ error: createErr?.message ?? "Неуспешно създаване на потребител" }, 400)
-    }
 
-    const newUserId = created.user.id
+    let newUserId: string
+    let adopted = false
+
+    if (createErr || !created?.user) {
+      if (!isAlreadyRegistered(createErr?.message)) {
+        return json({ error: createErr?.message ?? "Неуспешно създаване на потребител" }, 400)
+      }
+
+      // ЗАВАРЕН ПОТРЕБИТЕЛ. Случва се, когато колегата е натиснал „Вход с
+      // Microsoft", преди админът да му направи акаунт: Supabase създава
+      // реда в auth.users, но профил няма и той не влиза. Отказът тук
+      // щеше да остави админа вързан — няма екран, от който да изчисти
+      // такъв потребител. Затова го ПОЕМАМЕ: дописваме профила и слагаме
+      // паролата като резервен вход.
+      const existing = await findUserByEmail(adminClient, email)
+      if (!existing) {
+        return json({ error: "Имейлът е зает, но потребителят не беше намерен" }, 409)
+      }
+
+      // Има ли вече профил — това е обикновено двойно създаване и НЕ го
+      // пипаме: иначе бутонът щеше тихо да сменя чужда парола и роля.
+      const { data: existingProfile } = await adminClient
+        .from("profiles")
+        .select("id")
+        .eq("id", existing.id)
+        .maybeSingle()
+      if (existingProfile) {
+        return json({ error: "Вече има акаунт с този имейл" }, 409)
+      }
+
+      const { error: updErr } = await adminClient.auth.admin.updateUserById(existing.id, {
+        password,
+        email_confirm: true,
+        user_metadata: { full_name },
+      })
+      if (updErr) {
+        return json({ error: updErr.message ?? "Неуспешно поемане на заварения потребител" }, 400)
+      }
+      newUserId = existing.id
+      adopted = true
+    } else {
+      newUserId = created.user.id
+    }
 
     // 4) Upsert на profile с правилната роля + име
     const { error: profileErr } = await adminClient
@@ -150,12 +218,13 @@ Deno.serve(async (req) => {
         is_active: true,
       })
     if (profileErr) {
-      // Профилът се проваля → rollback на user-а да не остане сирак
-      await adminClient.auth.admin.deleteUser(newUserId)
+      // Rollback САМО ако сами сме създали потребителя. Заварен НЕ се трие —
+      // към него виси самоличността от 365 и триенето я отнася.
+      if (!adopted) await adminClient.auth.admin.deleteUser(newUserId)
       return json({ error: `Грешка при запис на профил: ${profileErr.message}` }, 500)
     }
 
-    return json({ userId: newUserId })
+    return json({ userId: newUserId, adopted })
   } catch (err) {
     return json({ error: (err as Error).message ?? "Неочаквана грешка" }, 500)
   }

@@ -88,7 +88,15 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    // Остава ИЗКЛЮЧЕНО нарочно: не искаме supabase-js да рови в адреса при
+    // ВСЯКО зареждане на страница. Кодът след Microsoft вход се обменя
+    // изрично, веднъж, в completeOAuthRedirect() (`src/lib/auth.ts`).
     detectSessionInUrl: false,
+    // PKCE, НЕ implicit (подразбиращият се). При implicit токените идват във
+    // ФРАГМЕНТА (`#access_token=...`), а фрагментът при нас е зает от
+    // HashRouter-а (`#/login`) — двете се застъпват. PKCE слага `?code=...`
+    // в query-то, преди фрагмента, и не се бие с рутирането.
+    flowType: 'pkce',
     lock: timeoutLock,
   },
   global: { fetch: timeoutFetch },

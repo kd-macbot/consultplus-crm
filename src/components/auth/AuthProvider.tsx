@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
-import { AuthContext, signIn, signOut, getCurrentProfile, getCachedProfile, setCachedProfile } from '../../lib/auth'
+import {
+  AuthContext, signIn, signOut, resolveSession, completeOAuthRedirect,
+  signInWithMicrosoft, getCachedProfile, setCachedProfile,
+} from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
 import { queryClient } from '../../lib/queryClient'
 import { clearViewsCache } from '../../lib/views'
@@ -9,12 +12,15 @@ import type { Profile, Role } from '../../lib/types'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   // Хидратираме от кеша → ако имаме профил, рисуваме веднага без да чакаме
-  // мрежата; getCurrentProfile() по-долу го проверява/опреснява фоново.
+  // мрежата; resolveSession() по-долу го проверява/опреснява фоново.
   const [user, setUser] = useState<Profile | null>(getCachedProfile)
   const [loading, setLoading] = useState(() => getCachedProfile() === null)
   // login() сам сетва профила — този флаг казва на SIGNED_IN handler-а да не
   // дърпа профила втори път при ръчен вход.
   const loggingInRef = useRef(false)
+  // Защо не се влиза — пише се и от връщането от Microsoft, и от
+  // проверката на профила. Показва се на екрана за вход.
+  const [authError, setAuthError] = useState<string | null>(null)
 
   function applyProfile(profile: Profile | null) {
     setUser(profile)
@@ -25,7 +31,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for auth changes (skip during initial load)
     let initialized = false
 
-    timed('auth (профил)', getCurrentProfile).then(profile => {
+    // РЕДЪТ Е ВАЖЕН: първо се обменя кодът от Microsoft (ако адресът го
+    // носи), после се чете профилът. Обратното би прочело профила още без
+    // сесия и колегата щеше да види екрана за вход въпреки успешния вход.
+    const boot = async () => {
+      const redirect = await completeOAuthRedirect()
+      if (redirect.error) setAuthError(redirect.error)
+      const { profile, error } = await resolveSession()
+      if (error) setAuthError(error)
+      return profile
+    }
+
+    timed('auth (профил)', boot).then(profile => {
       applyProfile(profile)
       setLoading(false)
       initialized = true
@@ -39,7 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!initialized) return
       if (event === 'SIGNED_IN') {
         if (loggingInRef.current) return
-        const profile = await getCurrentProfile()
+        const { profile, error } = await resolveSession()
+        if (error) setAuthError(error)
         applyProfile(profile)
       } else if (event === 'SIGNED_OUT') {
         applyProfile(null)
@@ -123,6 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     loggingInRef.current = true
+    setAuthError(null)
     try {
       const result = await signIn(email, password)
       if (result.error) return { error: result.error }
@@ -135,7 +154,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Връща {} при успех само защото ПРЕНАСОЧВА — кодът след него не се
+  // изпълнява. Грешка идва единствено ако самото пренасочване не стане.
+  const loginWithMicrosoft = async () => {
+    setAuthError(null)
+    const result = await signInWithMicrosoft()
+    if (result.error) setAuthError(result.error)
+    return result
+  }
+
   const logout = async () => {
+    setAuthError(null)
     await signOut()
     applyProfile(null)
     // Чистим локалния кеш на изгледите — на споделен компютър следващият
@@ -154,7 +183,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, isRole }}>
+    <AuthContext.Provider value={{
+      user, loading, login, loginWithMicrosoft, logout, isRole,
+      authError, clearAuthError: () => setAuthError(null),
+    }}>
       {children}
     </AuthContext.Provider>
   )
