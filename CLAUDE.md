@@ -14,8 +14,17 @@ CRM за българска счетоводна фирма (Консулт Пл
 - React Query (TanStack) с persistent localStorage кеш
 - Cloudflare Pages: branch `dev` → dev preview (dev Supabase), branch `main` → live (prod Supabase).
   CF билдва през собствената си Git интеграция (НЕ през GitHub Action). vite base = `/`.
-- **Live домейн: cplus360.com** (custom domain в CF, + www; добавен в Supabase
-  Redirect URLs) — ЕДИНСТВЕНИЯТ вход. Име на приложението: **Consult Plus 360**.
+- **Live домейн: cplus360.com** (custom domain в CF, + www) — ЕДИНСТВЕНИЯТ вход.
+  Име на приложението: **Consult Plus 360**.
+  ⚠️ Тук дълго пишеше, че домейнът е добавен в Supabase Redirect URLs. НЕ БЕШЕ
+  (открито 10.2026 при пускането на SSO-то). В списъка стояха само старият
+  GitHub Pages адрес и `consultplus-crm.pages.dev`, а Site URL беше `cplus360.com`
+  БЕЗ схема. Дотогава нямаше значение — нищо не подаваше `redirectTo`. Сега в
+  prod Supabase → Authentication → URL Configuration трябва да стои:
+  Site URL `https://cplus360.com`, а в Redirect URLs `https://cplus360.com/**`
+  (двете звездички покриват и пътя, и хеша на рутера).
+  КАПАНЪТ: непознат `redirectTo` НЕ дава грешка — Supabase тихо пренасочва към
+  Site URL. Тоест сбъркан списък се вижда само като „входът ме праща другаде".
   Логата са в `src/assets/brand/` (bundled imports — НЕ в public/, заради base path-а).
   Старият GitHub Pages деплой (deploy.yml + gh-pages) е ПРЕМАХНАТ (08.2026) —
   не връщай втора публикация
@@ -344,6 +353,9 @@ main, тоест PR-ите към dev минаваха без нито една 
 Без последното Supabase връща `Error getting user email from external provider`.
 Site URL в Supabase да е стабилният alias на клона (`dev.consultplus-crm.pages.dev`),
 НЕ адресът с хеша на деплоя — той се сменя при всяко качване.
+И на двете среди `redirectTo` (коренът на приложението) ТРЯБВА да е в Redirect
+URLs — иначе Supabase мълчаливо праща към Site URL. Виж бележката за домейна
+в „Стек и среди".
 
 ## Мониторинг на грешките
 
@@ -670,15 +682,20 @@ GitHub — без нея бекъпите са безполезни).
   писмо стигна до Inbox (не в спам).
   КАПАН: „Run workflow" се появява в Actions чак когато файлът е на **main** —
   GitHub чете ръчно пускаемите workflow-и само от главния клон.
-- ⬜ **Azure app registration за PROD** — приложението е едно, но Redirect URI
-  е различен за всяка среда. Трябва да се добави и адресът на prod проекта
-  (`<prod-ref>.supabase.co/auth/v1/callback`) и Azure провайдърът да се включи
-  в prod Supabase със същите Client ID / Secret / Tenant URL. Дотогава
-  „Вход с Microsoft" работи само на dev.
-- ⬜ **`admin-create-user` на PROD с поемането на заварен потребител** —
-  функцията е променена (адоптира потребител от 365 без профил). Деплой през
-  Dashboard. Докато не е качена, създаването на акаунт за колега, който вече
-  е влизал с Microsoft, връща „вече е регистриран".
+- ✅ **Azure + вход с Microsoft на PROD** (10.2026) — ПРОВЕРЕНО от край до край:
+  вход с акаунт от 365 на cplus360.com работи. Приложението в Azure е ЕДНО за
+  двете среди, с ДВА Redirect URI (`<dev-ref>` и `<prod-ref>`
+  `.supabase.co/auth/v1/callback`); Azure провайдърът е включен и в двата
+  Supabase проекта със същите Client ID / Secret Value / Tenant URL.
+  ⚠️ **CLIENT SECRET-ЪТ ИЗТИЧА 05.10.2027.** Около септември 2027 се прави нов
+  (Azure → Certificates & secrets → New client secret) и се слага в ДВАТА
+  Supabase проекта. Стойността се вижда САМО при създаването — после Azure
+  показва единствено Secret ID. Срокът се чете в колоната „Expires".
+  Като изтече, входът с Microsoft спира и на двете среди едновременно; паролите
+  продължават да работят, тоест никой не остава навън, но бутонът дава грешка.
+- ✅ **`admin-create-user` на PROD с поемането на заварен потребител** (10.2026) —
+  деплойната през Dashboard. Адоптира потребител от 365 без профил, вместо да
+  връща „вече е регистриран".
 - ⬜ **Имейлите в Персонал** — колега без попълнен имейл не получава нищо.
   Страницата Известия ги маркира с жълто в „Кой получава".
 - ✅ **`BACKUP_PASSPHRASE` записана ИЗВЪН GitHub** — потвърдено от потребителя.
