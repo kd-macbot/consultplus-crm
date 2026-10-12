@@ -102,9 +102,12 @@ export function StaffPage() {
     if (!accountFor?.email) return
     setAccountLoading(true)
     try {
-      const { error } = await adminCreateUser(accountFor.email.trim(), password, accountFor.full_name, role)
+      const { error, adopted } = await adminCreateUser(accountFor.email.trim(), password, accountFor.full_name, role)
       if (error) { toast.error(error); return }
-      toast.success(`Акаунт за „${accountFor.full_name}" е създаден`)
+      toast.success(adopted
+        // Колегата вече беше влизал с Microsoft и е чакал профил.
+        ? `„${accountFor.full_name}" получи достъп — акаунтът от Microsoft е свързан`
+        : `Акаунт за „${accountFor.full_name}" е създаден`)
       setAccountFor(null)
       await loadProfiles()
     } finally {
@@ -646,10 +649,24 @@ function CreateAccountForm({ member, loading, onSubmit, onClose }: {
 }) {
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<Role>('employee')
+  const [copied, setCopied] = useState(false)
 
+  // Паролата се генерира ПРЕДВАРИТЕЛНО: при вход с Microsoft никой няма да
+  // я ползва, но акаунтът трябва да съществува, за да има към какво да се
+  // закачи самоличността от 365. Остава като резервен вход.
   useEffect(() => {
-    if (member) { setPassword(''); setRole('employee') }
+    if (member) { setPassword(generatePassword()); setRole('employee'); setCopied(false) }
   }, [member])
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(password)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error('Копирането не стана — маркирай я и копирай на ръка')
+    }
+  }
 
   return (
     <Dialog open={!!member} onOpenChange={open => { if (!open) onClose() }}>
@@ -666,9 +683,19 @@ function CreateAccountForm({ member, loading, onSubmit, onClose }: {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ca-pass">Временна парола *</Label>
-              <Input id="ca-pass" type="password" value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="поне 6 символа" autoFocus />
+              <div className="flex gap-2">
+                {/* Видима, не с точки — трябва да се прочете и предаде. */}
+                <Input id="ca-pass" type="text" value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="поне 6 символа" className="font-mono" autoFocus />
+                <Button type="button" variant="outline" size="icon" onClick={copy} title="Копирай">
+                  {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                </Button>
+                <Button type="button" variant="outline" size="icon"
+                  onClick={() => setPassword(generatePassword())} title="Генерирай нова">
+                  <Wand2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ca-role">Роля *</Label>
@@ -683,8 +710,18 @@ function CreateAccountForm({ member, loading, onSubmit, onClose }: {
                 ))}
               </select>
             </div>
+            <div className="rounded-lg border border-sky-300 bg-sky-50/60 dark:border-sky-900 dark:bg-sky-950/20 p-3 text-[13px] text-sky-900 dark:text-sky-200 space-y-1">
+              <p className="font-medium">Имейлът трябва да е същият като в Office 365.</p>
+              <p>
+                По него се разпознава колегата при „Вход с Microsoft". Различен
+                имейл прави ОТДЕЛЕН потребител без достъп и акаунтът трябва да
+                се прави наново.
+              </p>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Потребителят влиза с имейла си и тази парола (препоръчай да я смени след първото влизане). Имейл за потвърждение не се праща.
+              Ако колегата ще влиза с Microsoft, паролата не му трябва — остава
+              като резервен вход. Иначе му я предай (препоръчай да я смени).
+              Имейл за потвърждение не се праща.
             </p>
           </div>
         )}
