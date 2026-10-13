@@ -241,6 +241,7 @@ interface StaffRow {
   full_name: string
   email: string | null
   department: string | null
+  additional_departments: string[] | null
   notify_email: boolean
 }
 
@@ -250,6 +251,8 @@ interface Settings {
   tasks_days_before: number
   checklist_enabled: boolean
   checklist_days: number[]
+  client_certs_enabled: boolean
+  client_certs_days: number[]
   test_email: string | null
 }
 
@@ -353,6 +356,96 @@ async function buildTaskDrafts(db: Db, settings: Settings, staff: StaffRow[], to
     })
   }
   return drafts
+}
+
+// ---------- Изтичащи подписи на КЛИЕНТИ ----------
+// ⚠️ ОГЛЕДАЛО на `src/lib/clientCertificates.ts`. Функцията е ЕДИН файл
+// нарочно (деплойва се ръчно през Dashboard), затова правилото „кога пада
+// напомняне" е повторено тук. Пипнеш ли го от едната страна, пипни го и
+// от другата — иначе писмото и екранът ще казват различни неща.
+//
+// ПОЛУЧАТЕЛИ: admin + отдел „Управление" (решение на потребителя). Те
+// поръчват подновяването; счетоводителят вижда датата на екрана.
+//
+// Фирмата НЕ се вади от EAV-а нарочно: това иска цялата crm_cell_values
+// (~1 MB) заради един ред в писмото, а `holder` вече съдържа името така,
+// както го поддържа потребителят („Росица Диева (Флорета фешън)").
+
+interface ClientCertRow {
+  id: string
+  holder: string
+  valid_to: string | null
+}
+
+/** Получателите: отдел „Управление" (основен или допълнителен) + админите. */
+function certRecipients(staff: StaffRow[], adminNames: string[]): StaffRow[] {
+  return notifiable(staff).filter(p => {
+    const depts = [p.department ?? "", ...(p.additional_departments ?? [])]
+    if (depts.some(d => normalizeName(d) === normalizeName("Управление"))) return true
+    return adminNames.some(n => namesMatch(n, p.full_name))
+  })
+}
+
+async function buildClientCertDrafts(
+  db: Db, settings: Settings, staff: StaffRow[], today: string,
+): Promise<{ drafts: Draft[]; note: string | null }> {
+  const thresholds = (settings.client_certs_days ?? []).filter(n => Number.isFinite(n))
+  if (thresholds.length === 0) return { drafts: [], note: "няма зададени прагове за подписите" }
+
+  const { data: certData, error: certErr } = await db
+    .from("crm_client_certificates")
+    .select("id,holder,valid_to")
+    .not("valid_to", "is", null)
+  if (certErr) throw new Error(`подписи на клиенти: ${certErr.message}`)
+
+  // ТОЧНО съвпадение с прага, не „по-малко или равно": при „<=" подпис на
+  // 25 дни щеше да праща писмо всеки ден от 30-ия до 21-ия и напомнянето
+  // щеше да стане шум. Цената е, че напълно пропуснат ден губи ЕДНО
+  // напомняне — остават другите две, а екранът го показва през цялото време.
+  const due = ((certData ?? []) as ClientCertRow[])
+    .map(c => ({ ...c, left: daysBetween(today, c.valid_to!) }))
+    .filter(c => !isNaN(c.left) && thresholds.includes(c.left))
+    .sort((a, b) => a.left - b.left)
+
+  if (due.length === 0) return { drafts: [], note: "днес никой подпис не удря праг" }
+
+  const { data: profData, error: profErr } = await db
+    .from("profiles").select("full_name,role,is_active").eq("role", "admin")
+  if (profErr) throw new Error(`профили: ${profErr.message}`)
+  const adminNames = ((profData ?? []) as Array<{ full_name: string | null; is_active: boolean | null }>)
+    .filter(p => p.is_active !== false)
+    .map(p => p.full_name ?? "")
+
+  const recipients = certRecipients(staff, adminNames)
+  if (recipients.length === 0) return { drafts: [], note: "няма получатели (admin/Управление) с имейл" }
+
+  const lines = due.map(c => {
+    const when = c.left === 0 ? "изтича ДНЕС" : c.left === 1 ? "изтича УТРЕ" : `след ${c.left} дни`
+    return `${c.holder} — валиден до ${fmtDate(c.valid_to!)}, ${when}`
+  })
+
+  const subject = due.length === 1
+    ? `Изтичащ електронен подпис: ${due[0].holder}`
+    : `Изтичащи електронни подписи: ${due.length}`
+  const intro = "Тези подписи на клиенти наближават края на валидността си:"
+  const url = `${APP_URL}/#/client-certificates`
+
+  return {
+    drafts: recipients.map(person => ({
+      kind: "client_cert_expiry",
+      staff_id: person.id,
+      to_email: person.email!.trim(),
+      to_name: person.full_name,
+      subject,
+      text: buildText(`Здравей, ${firstName(person.full_name)},`, intro,
+        [{ title: "Подписи", lines }], "Отвори Подписи на клиенти", url),
+      html: buildHtml(`Здравей, ${firstName(person.full_name)},`, intro,
+        [{ title: "Подписи", lines }], "Отвори Подписи на клиенти", url),
+      // Едно писмо на човек на ден — независимо колко пъти се пусне cron-ът.
+      dedupe_key: `client_cert_expiry:${person.id}:${today}`,
+    })),
+    note: null,
+  }
 }
 
 // ---------- ДДС чек лист ----------
@@ -636,7 +729,7 @@ Deno.serve(async (req) => {
     }
 
     const { data: staffData, error: staffErr } = await db
-      .from("crm_staff").select("id,full_name,email,department,notify_email").eq("is_active", true)
+      .from("crm_staff").select("id,full_name,email,department,additional_departments,notify_email").eq("is_active", true)
     if (staffErr) return json({ error: `персонал: ${staffErr.message}` }, 500)
     const staff = (staffData ?? []) as StaffRow[]
 
@@ -658,6 +751,14 @@ Deno.serve(async (req) => {
       }
     } else {
       reasons.push("напомнянето за чек листа е изключено")
+    }
+
+    if (settings.client_certs_enabled) {
+      const { drafts: certDrafts, note } = await buildClientCertDrafts(db, settings, staff, today.iso)
+      drafts.push(...certDrafts)
+      if (note) reasons.push(note)
+    } else {
+      reasons.push("напомнянето за подписите на клиенти е изключено")
     }
 
     if (dryRun) {
