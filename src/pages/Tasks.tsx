@@ -10,6 +10,7 @@ import {
   useClients, useColumns, useCellValues, useDropdownOptions, useStaff, useTasks, useInvalidateCrm,
 } from '../lib/queries'
 import { addTask, updateTask, deleteTask } from '../lib/storage'
+import { makeDraftStore } from '../lib/formDraft'
 import { queryClient } from '../lib/queryClient'
 import {
   TASK_STATUSES, TASK_STATUS_LABELS, TASK_STATUS_COLORS,
@@ -139,7 +140,12 @@ export function TasksPage() {
   const [assigneeFilter, setAssigneeFilter] = usePersistentState('tasks-assignee', '')
   const [onlyMine, setOnlyMine] = usePersistentState('tasks-mine', false)
   const [showArchive, setShowArchive] = useState(false)
-  const [modal, setModal] = useState<null | { existing?: Task }>(null)
+  // Ако е останала незапазена чернова (страницата се е презаредила при висящ
+  // запис), отваряме модала сами — иначе написаното е невидимо. Само за
+  // СЪЩИЯ вид: чернова от проверка не се отваря в екрана „Задачи".
+  const [modal, setModal] = useState<null | { existing?: Task }>(
+    () => (taskDraft.hasContent() && taskDraft.read()?.kind === kind ? {} : null),
+  )
 
   // ============================================================
   // Видими задачи: Done по-стари от DONE_HIDE_AFTER_DAYS дни се скриват
@@ -402,7 +408,7 @@ export function TasksPage() {
           nameByClient={nameByClient}
           respByClient={respByClient}
           canDelete={!!modal.existing && (isAdmin || modal.existing.created_by === user?.id)}
-          onClose={() => setModal(null)}
+          onClose={() => { taskDraft.clear(); setModal(null) }}
           onSaved={async () => { await invalidateTasks(); setModal(null) }}
           userId={user?.id}
         />
@@ -662,6 +668,27 @@ function TaskList({
 // ============================================================
 // Modal: Нова / редактирай задача
 // ============================================================
+// Чернова на НОВА задача/проверка, преживяваща презареждане. Записът минава
+// през trackSave, който при застояла връзка презарежда страницата — без това
+// написаното се губи и колегата пише всичко наново.
+// `kind` влиза в черновата, защото задача и проверка са един модал с различни
+// полета: върната чернова от проверка в екрана за задача би изгубила
+// инспектора и фирмата.
+type TaskDraft = {
+  kind: TaskKind; title: string; description: string; status: TaskStatus
+  assignee: string; inspectionType: InspectionType; inspectorName: string
+  inspectorPhone: string; inspectorEmail: string; documentsUrl: string
+  clientId: string | null; dueDate: string
+}
+const taskDraft = makeDraftStore<TaskDraft>(
+  'taskAddDraft',
+  d => !!(
+    d.title?.trim() || d.description?.trim() || d.clientId ||
+    d.inspectorName?.trim() || d.inspectorPhone?.trim() ||
+    d.inspectorEmail?.trim() || d.documentsUrl?.trim()
+  ),
+)
+
 function TaskModal({
   existing, kind, staff, clients, nameByClient, respByClient, canDelete, onClose, onSaved, userId,
 }: {
@@ -677,19 +704,41 @@ function TaskModal({
   userId?: string
 }) {
   const isInspection = kind === 'inspection'
-  const [title, setTitle] = useState(existing?.title ?? '')
-  const [description, setDescription] = useState(existing?.description ?? '')
-  const [status, setStatus] = useState<TaskStatus>((existing?.status as TaskStatus) ?? 'todo')
-  const [assignee, setAssignee] = useState(existing?.assignee_staff_id ?? '')
-  const [inspectionType, setInspectionType] = useState<InspectionType>((existing?.inspection_type as InspectionType) ?? 'проверка')
-  const [inspectorName, setInspectorName] = useState(existing?.inspector_name ?? '')
-  const [inspectorPhone, setInspectorPhone] = useState(existing?.inspector_phone ?? '')
-  const [inspectorEmail, setInspectorEmail] = useState(existing?.inspector_email ?? '')
-  const [documentsUrl, setDocumentsUrl] = useState(existing?.documents_url ?? '')
-  const [clientId, setClientId] = useState<string | null>(existing?.client_id ?? null)
+  // Черновата важи САМО за нов запис, и само ако е от СЪЩИЯ вид (задача или
+  // проверка) — чужда чернова в другия екран е по-объркваща от липсваща.
+  const saved = existing ? null : taskDraft.read()
+  const draft = saved && saved.kind === kind ? saved : null
+  const [title, setTitle] = useState(existing?.title ?? draft?.title ?? '')
+  const [description, setDescription] = useState(existing?.description ?? draft?.description ?? '')
+  const [status, setStatus] = useState<TaskStatus>((existing?.status as TaskStatus) ?? draft?.status ?? 'todo')
+  const [assignee, setAssignee] = useState(existing?.assignee_staff_id ?? draft?.assignee ?? '')
+  const [inspectionType, setInspectionType] = useState<InspectionType>((existing?.inspection_type as InspectionType) ?? draft?.inspectionType ?? 'проверка')
+  const [inspectorName, setInspectorName] = useState(existing?.inspector_name ?? draft?.inspectorName ?? '')
+  const [inspectorPhone, setInspectorPhone] = useState(existing?.inspector_phone ?? draft?.inspectorPhone ?? '')
+  const [inspectorEmail, setInspectorEmail] = useState(existing?.inspector_email ?? draft?.inspectorEmail ?? '')
+  const [documentsUrl, setDocumentsUrl] = useState(existing?.documents_url ?? draft?.documentsUrl ?? '')
+  const [clientId, setClientId] = useState<string | null>(existing?.client_id ?? draft?.clientId ?? null)
   const [clientSearch, setClientSearch] = useState('')
-  const [dueDate, setDueDate] = useState(existing?.due_date ?? '')
+  const [dueDate, setDueDate] = useState(existing?.due_date ?? draft?.dueDate ?? '')
   const [saving, setSaving] = useState(false)
+
+  // Пази написаното при всяка промяна. Нарочно без debounce: сесийният
+  // storage е евтин, а презареждането идва без предупреждение.
+  useEffect(() => {
+    if (existing) return
+    taskDraft.write({
+      kind, title, description, status, assignee, inspectionType,
+      inspectorName, inspectorPhone, inspectorEmail, documentsUrl, clientId, dueDate,
+    })
+  }, [existing, kind, title, description, status, assignee, inspectionType,
+      inspectorName, inspectorPhone, inspectorEmail, documentsUrl, clientId, dueDate])
+
+  // Еднократно, при отваряне: казваме, че написаното е върнато. Иначе
+  // попълненият модал изглежда като бъг.
+  useEffect(() => {
+    if (draft) toast.info('Възстановена е незапазена чернова от предишен опит.')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -731,6 +780,7 @@ function TaskModal({
       // kind се задава само при създаване — не се сменя после.
       if (existing) await updateTask(existing.id, payload)
       else await addTask({ ...payload, kind }, userId)
+      taskDraft.clear()
       toast.success(existing
         ? (isInspection ? 'Проверката е обновена' : 'Задачата е обновена')
         : (isInspection ? 'Проверката е създадена' : 'Задачата е създадена'))
