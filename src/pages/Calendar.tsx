@@ -8,6 +8,7 @@ import {
   useWorkCalendar,
 } from '../lib/queries'
 import { addAbsence, updateAbsence, deleteAbsence, approveAbsence, rejectAbsence, addEvent, updateEvent, deleteEvent, addNews, updateNews, deleteNews } from '../lib/storage'
+import { makeDraftStore } from '../lib/formDraft'
 import {
   ABSENCE_TYPES, ABSENCE_TYPE_LABELS, ABSENCE_TYPE_COLORS,
   EVENT_TYPES, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS,
@@ -229,7 +230,11 @@ export function CalendarPage() {
   // Modal state (само ако canEdit).
   const [modal, setModal] = useState<null | { staffId: string; staffName: string; existing?: Absence; defaultDate?: string }>(null)
   const [eventModal, setEventModal] = useState<null | { existing?: CompanyEvent; defaultDate?: string }>(null)
-  const [newsModal, setNewsModal] = useState<null | { existing?: NewsItem }>(null)
+  // Ако е останала незапазена чернова (страницата се е презаредила при
+  // висящ запис), отваряме модала сами — иначе написаното е невидимо.
+  const [newsModal, setNewsModal] = useState<null | { existing?: NewsItem }>(
+    () => (newsDraft.hasContent() ? {} : null),
+  )
   const [selectedDay, setSelectedDay] = useState<string>(() => {
     const t = new Date()
     return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
@@ -646,7 +651,7 @@ export function CalendarPage() {
       {newsModal && (
         <NewsModal
           existing={newsModal.existing}
-          onClose={() => setNewsModal(null)}
+          onClose={() => { newsDraft.clear(); setNewsModal(null) }}
           onSaved={async () => { await invalidateNews(); setNewsModal(null) }}
           userId={user?.id}
           authorName={user?.full_name ?? null}
@@ -1211,6 +1216,15 @@ function IndustryNewsSection({ news }: { news: NewsItem[] }) {
 // ============================================================
 // Modal: Нова / редактирай новина
 // ============================================================
+// Чернова на НОВА новина, преживяваща презареждане. Записът минава през
+// trackSave, който при застояла връзка презарежда страницата — без това
+// написаното се губи и колегата пише всичко наново.
+type NewsDraft = { title: string; body: string; type: NewsType; pinned: boolean }
+const newsDraft = makeDraftStore<NewsDraft>(
+  'newsAddDraft',
+  d => !!(d.title?.trim() || d.body?.trim()),
+)
+
 function NewsModal({
   existing, onClose, onSaved, userId, authorName,
 }: {
@@ -1220,11 +1234,27 @@ function NewsModal({
   userId?: string
   authorName: string | null
 }) {
-  const [title, setTitle] = useState(existing?.title ?? '')
-  const [body, setBody] = useState(existing?.body ?? '')
-  const [type, setType] = useState<NewsType>((existing?.type as NewsType) ?? 'general')
-  const [pinned, setPinned] = useState(existing?.pinned ?? false)
+  // Черновата важи САМО за нова новина — при редакция източникът е записът.
+  const draft = existing ? null : newsDraft.read()
+  const [title, setTitle] = useState(existing?.title ?? draft?.title ?? '')
+  const [body, setBody] = useState(existing?.body ?? draft?.body ?? '')
+  const [type, setType] = useState<NewsType>((existing?.type as NewsType) ?? draft?.type ?? 'general')
+  const [pinned, setPinned] = useState(existing?.pinned ?? draft?.pinned ?? false)
   const [saving, setSaving] = useState(false)
+
+  // Пази написаното при всяка промяна. Нарочно без debounce: сесийният
+  // storage е евтин, а презареждането идва без предупреждение.
+  useEffect(() => {
+    if (existing) return
+    newsDraft.write({ title, body, type, pinned })
+  }, [existing, title, body, type, pinned])
+
+  // Еднократно, при отваряне: казваме, че написаното е върнато. Иначе
+  // попълненият модал изглежда като бъг.
+  useEffect(() => {
+    if (draft) toast.info('Възстановена е незапазена чернова от предишен опит.')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -1242,6 +1272,7 @@ function NewsModal({
       } else {
         await addNews({ title: title.trim(), body: body.trim() || null, type, pinned, author_name: authorName }, userId)
       }
+      newsDraft.clear()
       toast.success(existing ? 'Новината е обновена' : 'Публикувано')
       await onSaved()
     } catch (e: any) {
