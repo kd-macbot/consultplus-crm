@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { ShieldCheck, Search, Plus, Pencil, Trash2, AlertTriangle, Link2, Link2Off } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -13,8 +13,9 @@ import {
 } from '../lib/storage'
 import {
   useClientCertificates, useClients, useColumns, useCellValues, useContactsWithClients,
-  useInvalidateCrm,
+  useInvalidateCrm, qk,
 } from '../lib/queries'
+import { queryClient } from '../lib/queryClient'
 import type { ClientCertificate, ClientCertificatePatch } from '../lib/types'
 import {
   clientCertStatus, daysLeft, expiryLabel, sortByUrgency, countByStatus,
@@ -57,6 +58,97 @@ const certDraft = makeDraftStore<CertDraft>(
   d => !!(d.holder?.trim() || d.serial?.trim() || d.validTo || d.notes?.trim()),
 )
 
+/**
+ * Текстово поле ПРЯКО В РЕДА. Изглежда като текст, докато не го пипнеш.
+ *
+ * Записва се при НАПУСКАНЕ на полето (или Enter), не на всеки знак: иначе
+ * едно изречение би пратило трийсет заявки. Escape връща старото.
+ *
+ * `onFocusChange` казва на страницата, че се пише — докато е true,
+ * споделеното презареждане от Realtime изчаква. Без това промяна от колега
+ * щеше да презапише полето изпод ръцете на пишещия.
+ */
+function InlineText({
+  value, onSave, onFocusChange, placeholder, multiline, disabled, failed,
+}: {
+  value: string | null
+  onSave: (next: string | null) => void
+  onFocusChange: (focused: boolean) => void
+  placeholder?: string
+  multiline?: boolean
+  disabled?: boolean
+  failed?: boolean
+}) {
+  const [draft, setDraft] = useState(value ?? '')
+  const [focused, setFocused] = useState(false)
+
+  // Докато полето НЕ е на фокус, то следва данните (промяна от колега,
+  // презареждане). На фокус — не, иначе написаното би изчезнало.
+  useEffect(() => {
+    if (!focused) setDraft(value ?? '')
+  }, [value, focused])
+
+  // Ако редът изчезне, докато полето е на фокус (смяна на филтър, търсене),
+  // onBlur НЕ се изпълнява и броячът на страницата остава вдигнат — тогава
+  // презареждането се отлага завинаги. Затова се отписваме и при размонтиране.
+  const focusedRef = useRef(false)
+  focusedRef.current = focused
+  const notify = useRef(onFocusChange)
+  notify.current = onFocusChange
+  useEffect(() => () => { if (focusedRef.current) notify.current(false) }, [])
+
+  if (disabled) {
+    return value
+      ? <span className="whitespace-pre-wrap">{value}</span>
+      : <span className="text-muted-foreground/40">—</span>
+  }
+
+  const commit = () => {
+    setFocused(false)
+    onFocusChange(false)
+    const next = draft.trim() || null
+    if (next !== (value ?? null)) onSave(next)
+  }
+
+  const cls = `w-full bg-transparent rounded px-1 py-0.5 text-xs outline-none transition
+    hover:bg-muted/60 focus:bg-background focus:ring-1 focus:ring-navy
+    ${failed ? 'ring-1 ring-amber-500' : ''}`
+
+  const common = {
+    value: draft,
+    placeholder,
+    onFocus: () => { setFocused(true); onFocusChange(true) },
+    onBlur: commit,
+    className: cls,
+    title: failed ? 'Записът не мина — стойността стои само на твоя екран' : undefined,
+  }
+
+  if (multiline) {
+    return (
+      <textarea
+        {...common}
+        rows={Math.min(4, Math.max(1, draft.split('\n').length))}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => {
+          // Enter прави нов ред; записът е с Escape-less напускане или Ctrl+Enter.
+          if (e.key === 'Escape') { setDraft(value ?? ''); (e.target as HTMLTextAreaElement).blur() }
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) (e.target as HTMLTextAreaElement).blur()
+        }}
+      />
+    )
+  }
+  return (
+    <input
+      {...common}
+      onChange={e => setDraft(e.target.value)}
+      onKeyDown={e => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+        if (e.key === 'Escape') { setDraft(value ?? ''); (e.target as HTMLInputElement).blur() }
+      }}
+    />
+  )
+}
+
 export function ClientCertificatesPage() {
   const { user } = useAuth()
   const { isAdmin, inDept } = useMyStaff()
@@ -69,11 +161,23 @@ export function ClientCertificatesPage() {
   const { data: contacts = [] } = useContactsWithClients()
   const { invalidateClientCertificates } = useInvalidateCrm()
 
+  // Колко полета в таблицата са на фокус в момента. Докато е > 0, не
+  // презареждаме — свежите данни биха презаписали полето изпод ръцете.
+  const editingRef = useRef(0)
+  const setEditing = useCallback((focused: boolean) => {
+    editingRef.current = Math.max(0, editingRef.current + (focused ? 1 : -1))
+  }, [])
+
   useRealtime({
     channel: 'client-certificates',
     tables: ['crm_client_certificates'],
     onChange: () => invalidateClientCertificates(),
+    shouldDefer: () => editingRef.current > 0,
   })
+
+  // Полета, чийто запис се е провалил — стойността стои само на екрана и
+  // това ТРЯБВА да се вижда, иначе таблицата лъже тихо.
+  const [failed, setFailed] = useState<Set<string>>(new Set())
 
   const [search, setSearch] = usePersistentState('client-certs-search', '')
   const [statusFilter, setStatusFilter] = usePersistentState<'' | ClientCertStatus>('client-certs-status', '')
@@ -143,6 +247,36 @@ export function ClientCertificatesPage() {
       setSaving(false)
     }
   }
+
+  /**
+   * Запис на едно поле от реда. Оптимистичен: стойността влиза в кеша
+   * веднага, за да не „подскача" полето.
+   *
+   * ПРИ ГРЕШКА НЕ инвалидираме — това би върнало старата стойност и би
+   * изтрило написаното (цял клас бъгове в този проект). Вместо това полето
+   * остава и се маркира, че не е записано.
+   */
+  const saveField = useCallback(async (
+    cert: ClientCertificate,
+    field: 'request_no' | 'notes' | 'payment_notes',
+    next: string | null,
+  ) => {
+    const key = `${cert.id}:${field}`
+    queryClient.setQueryData<ClientCertificate[]>(qk.clientCertificates, rows =>
+      (rows ?? []).map(r => (r.id === cert.id ? { ...r, [field]: next } : r)))
+    try {
+      await updateClientCertificate(cert.id, { [field]: next }, {
+        userId: user?.id, userName: user?.full_name ?? '', label: cert.holder ?? '',
+      })
+      setFailed(prev => {
+        if (!prev.has(key)) return prev
+        const n = new Set(prev); n.delete(key); return n
+      })
+    } catch (e: any) {
+      setFailed(prev => new Set(prev).add(key))
+      toast.error(e.message ?? 'Записът не мина — стойността стои само на твоя екран')
+    }
+  }, [user?.id, user?.full_name])
 
   async function remove(cert: ClientCertificate) {
     try {
@@ -290,12 +424,39 @@ export function ClientCertificatesPage() {
                         <div className="text-[11px] text-muted-foreground mt-0.5">{expiryLabel(left)}</div>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-xs">{c.request_no ?? ''}</td>
-                    <td className="px-3 py-2 text-xs max-w-[280px]">
-                      <div className="whitespace-pre-wrap">{c.notes ?? ''}</div>
-                      {c.payment_notes && (
-                        <div className="text-muted-foreground mt-0.5">{c.payment_notes}</div>
-                      )}
+                    {/* Заявката и бележките се пишат ПРЯКО в реда — те се
+                        променят най-често, докато се гони подновяване, и
+                        диалог заради един ред е излишен. */}
+                    <td className="px-3 py-2 text-xs align-top min-w-[130px]">
+                      <InlineText
+                        value={c.request_no}
+                        disabled={!canEdit}
+                        failed={failed.has(`${c.id}:request_no`)}
+                        placeholder="—"
+                        onFocusChange={setEditing}
+                        onSave={next => void saveField(c, 'request_no', next)}
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-xs align-top min-w-[240px]">
+                      <InlineText
+                        value={c.notes}
+                        disabled={!canEdit}
+                        failed={failed.has(`${c.id}:notes`)}
+                        placeholder="бележка..."
+                        multiline
+                        onFocusChange={setEditing}
+                        onSave={next => void saveField(c, 'notes', next)}
+                      />
+                      <div className="text-muted-foreground">
+                        <InlineText
+                          value={c.payment_notes}
+                          disabled={!canEdit}
+                          failed={failed.has(`${c.id}:payment_notes`)}
+                          placeholder="за плащане..."
+                          onFocusChange={setEditing}
+                          onSave={next => void saveField(c, 'payment_notes', next)}
+                        />
+                      </div>
                     </td>
                     {canEdit && (
                       <td className="px-3 py-2">
