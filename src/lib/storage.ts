@@ -70,6 +70,21 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 const SAVE_TIMEOUT_MS = 15000
 const SAVE_HANG_MSG = 'Записът се бави твърде дълго. Сесията може да е блокирана — моля, презаредете страницата (F5).'
 
+/**
+ * Съобщава провал на запис към Sentry. ВСИЧКО е в try/catch НАРОЧНО: това е
+ * диагностика, а под нея стои `reject()`. Хвърли ли оттук, отхвърлянето няма
+ * да се изпълни, обещанието никога няма да се уреди и бутонът „Запази" ще
+ * остане заключен завинаги — тоест наблюдението щеше да влоши точно случая,
+ * който наблюдава.
+ */
+function reportSaveFailure(err: unknown, label: string | undefined, mode: 'hang' | 'timeout'): void {
+  try {
+    captureError(err, { where: 'trackSave', operation: label ?? 'неозначен', mode })
+  } catch {
+    /* мониторингът не бива да чупи записа */
+  }
+}
+
 export async function trackSave<T>(p: Promise<T>, label?: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -77,9 +92,7 @@ export async function trackSave<T>(p: Promise<T>, label?: string): Promise<T> {
       // връзка (както при четенето). attemptAutoReload има burst guard,
       // а формите с draft persistence (Банков достъп, Задачи, Новини)
       // възстановяват въведеното след reload-а, така че нищо не се губи.
-      captureError(new Error(`Записът виси (${SAVE_TIMEOUT_MS} ms)`), {
-        where: 'trackSave', operation: label ?? 'неозначен', mode: 'hang',
-      })
+      reportSaveFailure(new Error(`Записът виси (${SAVE_TIMEOUT_MS} ms)`), label, 'hang')
       attemptAutoReload('trackSave timeout (15s hang)')
       reject(new Error(SAVE_HANG_MSG))
     }, SAVE_TIMEOUT_MS)
@@ -93,9 +106,7 @@ export async function trackSave<T>(p: Promise<T>, label?: string): Promise<T> {
           // Непостоянен проблем, който потребителят не може да възпроизведе:
           // без този ред остава само toast и нищо не стига до Sentry, защото
           // страниците хващат грешката и я показват.
-          captureError(e, {
-            where: 'trackSave', operation: label ?? 'неозначен', mode: 'timeout',
-          })
+          reportSaveFailure(e, label, 'timeout')
           attemptAutoReload('trackSave fetch timeout')
         }
         reject(e)
