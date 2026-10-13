@@ -2957,7 +2957,7 @@ export async function addClientCertificate(
     if (error) throw error
     const row = data as ClientCertificate
     await logAudit(audit?.userId, audit?.userName ?? '', 'create_client_certificate',
-      'client_certificate', row.id, { new_value: row.holder })
+      'client_certificate', row.id, { new_value: row.holder ?? '' })
     return row
   })(), 'addClientCertificate')
 }

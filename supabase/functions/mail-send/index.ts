@@ -367,14 +367,40 @@ async function buildTaskDrafts(db: Db, settings: Settings, staff: StaffRow[], to
 // ПОЛУЧАТЕЛИ: admin + отдел „Управление" (решение на потребителя). Те
 // поръчват подновяването; счетоводителят вижда датата на екрана.
 //
-// Фирмата НЕ се вади от EAV-а нарочно: това иска цялата crm_cell_values
-// (~1 MB) заради един ред в писмото, а `holder` вече съдържа името така,
-// както го поддържа потребителят („Росица Диева (Флорета фешън)").
+// ИМЕТО НА ФИРМАТА се вади за ТОЧНО тези редове, които падат днес —
+// обикновено нула до три. Цялата crm_cell_values е ~1 MB и няма работа тук;
+// филтрирана по шепа client_id е евтина и върши работа. Редовете БЕЗ фирма
+// (изолиран случай или още несвързани) се показват с `holder`.
 
 interface ClientCertRow {
   id: string
-  holder: string
+  holder: string | null
+  client_id: string | null
   valid_to: string | null
+}
+
+/** Имената на фирмите за подадените id-та. Празно множество → нула заявки. */
+async function firmNames(db: Db, clientIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (clientIds.length === 0) return out
+
+  // Името на фирмата = стойността на ПЪРВАТА text колона (EAV моделът).
+  const { data: cols, error: colErr } = await db
+    .from("crm_columns").select("id,type,position")
+    .eq("type", "text").order("position", { ascending: true }).limit(1)
+  if (colErr) throw new Error(`колони: ${colErr.message}`)
+  const nameCol = (cols ?? [])[0]
+  if (!nameCol) return out
+
+  const { data: cells, error: cellErr } = await db
+    .from("crm_cell_values").select("client_id,value_text")
+    .eq("column_id", nameCol.id).in("client_id", clientIds)
+  if (cellErr) throw new Error(`клетки: ${cellErr.message}`)
+
+  for (const c of (cells ?? []) as Array<{ client_id: string; value_text: string | null }>) {
+    if (c.value_text) out.set(c.client_id, c.value_text)
+  }
+  return out
 }
 
 /** Получателите: отдел „Управление" (основен или допълнителен) + админите. */
@@ -394,7 +420,7 @@ async function buildClientCertDrafts(
 
   const { data: certData, error: certErr } = await db
     .from("crm_client_certificates")
-    .select("id,holder,valid_to")
+    .select("id,holder,client_id,valid_to")
     .not("valid_to", "is", null)
   if (certErr) throw new Error(`подписи на клиенти: ${certErr.message}`)
 
@@ -419,13 +445,22 @@ async function buildClientCertDrafts(
   const recipients = certRecipients(staff, adminNames)
   if (recipients.length === 0) return { drafts: [], note: "няма получатели (admin/Управление) с имейл" }
 
+  const names = await firmNames(db, [...new Set(due.map(c => c.client_id).filter(Boolean) as string[])])
+
+  // Фирмата е водеща, човекът — в скоби. Същият ред както на екрана.
+  const label = (c: ClientCertRow): string => {
+    const firm = c.client_id ? names.get(c.client_id) : null
+    if (firm) return c.holder?.trim() ? `${firm} (${c.holder.trim()})` : firm
+    return c.holder?.trim() || "без име"
+  }
+
   const lines = due.map(c => {
     const when = c.left === 0 ? "изтича ДНЕС" : c.left === 1 ? "изтича УТРЕ" : `след ${c.left} дни`
-    return `${c.holder} — валиден до ${fmtDate(c.valid_to!)}, ${when}`
+    return `${label(c)} — валиден до ${fmtDate(c.valid_to!)}, ${when}`
   })
 
   const subject = due.length === 1
-    ? `Изтичащ електронен подпис: ${due[0].holder}`
+    ? `Изтичащ електронен подпис: ${label(due[0])}`
     : `Изтичащи електронни подписи: ${due.length}`
   const intro = "Тези подписи на клиенти наближават края на валидността си:"
   const url = `${APP_URL}/#/client-certificates`

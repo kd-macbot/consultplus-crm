@@ -92,9 +92,35 @@ export function noticeDueToday(
 
 export interface CertLike {
   id: string
-  holder: string
+  holder: string | null
   valid_to: string | null
   client_id?: string | null
+  is_standalone?: boolean
+}
+
+/**
+ * Какво да пише на реда. Фирмата е водеща — тя е това, което колегата
+ * търси; човекът е второстепенен и може да липсва.
+ *
+ * Трите състояния на един ред (виж мигр. 066) се четат ТУК, за да няма
+ * страница, която ги подрежда по своему.
+ */
+export function certLabel(
+  cert: Pick<CertLike, 'holder' | 'client_id' | 'is_standalone'>,
+  firmName: string | null | undefined,
+): { primary: string; secondary: string | null } {
+  if (cert.client_id) {
+    return { primary: firmName || 'непозната фирма', secondary: cert.holder?.trim() || null }
+  }
+  if (cert.is_standalone) {
+    return { primary: cert.holder?.trim() || 'без име', secondary: 'изолиран случай' }
+  }
+  return { primary: cert.holder?.trim() || 'без име', secondary: null }
+}
+
+/** Ред, който още чака да бъде свързан с фирма (не е и изолиран случай). */
+export function isUnlinked(cert: Pick<CertLike, 'client_id' | 'is_standalone'>): boolean {
+  return !cert.client_id && !cert.is_standalone
 }
 
 /**
@@ -122,10 +148,12 @@ export function sortByUrgency<T extends CertLike>(certs: T[], todayIso: string):
     const ra = rank[clientCertStatus(a.valid_to, todayIso)]
     const rb = rank[clientCertStatus(b.valid_to, todayIso)]
     if (ra !== rb) return ra - rb
-    if (!a.valid_to) return b.valid_to ? 1 : a.holder.localeCompare(b.holder, 'bg')
+    const na = a.holder ?? ''
+    const nb = b.holder ?? ''
+    if (!a.valid_to) return b.valid_to ? 1 : na.localeCompare(nb, 'bg')
     if (!b.valid_to) return -1
     if (a.valid_to !== b.valid_to) return a.valid_to.localeCompare(b.valid_to)
-    return a.holder.localeCompare(b.holder, 'bg')
+    return na.localeCompare(nb, 'bg')
   })
 }
 
@@ -134,7 +162,7 @@ export function countByStatus<T extends CertLike>(certs: T[], todayIso: string) 
   const out = { valid: 0, expiring: 0, expired: 0, unknown: 0, unlinked: 0, total: certs.length }
   for (const c of certs) {
     out[clientCertStatus(c.valid_to, todayIso)]++
-    if (!c.client_id) out.unlinked++
+    if (isUnlinked(c)) out.unlinked++
   }
   return out
 }
