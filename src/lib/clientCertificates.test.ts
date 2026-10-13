@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   daysLeft, clientCertStatus, expiryLabel, noticeDueToday, certsForNotice,
-  sortByUrgency, countByStatus,
+  sortByUrgency, countByStatus, certLabel, isUnlinked,
 } from './clientCertificates'
 
 const TODAY = '2026-10-13'
@@ -126,6 +126,57 @@ describe('sortByUrgency', () => {
   })
 })
 
+// ТРИТЕ СЪСТОЯНИЯ на един ред (мигр. 066) — заради тях има отделно поле,
+// вместо само „client_id is null".
+describe('isUnlinked', () => {
+  it('подпис на фирма е свързан', () => {
+    expect(isUnlinked({ client_id: 'c1', is_standalone: false })).toBe(false)
+  })
+  it('изолиран случай НЕ чака свързване — той е решен', () => {
+    expect(isUnlinked({ client_id: null, is_standalone: true })).toBe(false)
+  })
+  it('нито едното значи „чака свързване"', () => {
+    expect(isUnlinked({ client_id: null, is_standalone: false })).toBe(true)
+  })
+  it('липсващо поле се чете като „не е изолиран" (заварените редове)', () => {
+    expect(isUnlinked({ client_id: null })).toBe(true)
+  })
+})
+
+describe('certLabel', () => {
+  it('при фирма водеща е ФИРМАТА, човекът е втори', () => {
+    expect(certLabel({ holder: 'Росица Диева', client_id: 'c1', is_standalone: false }, 'ФЛОРЕТА ФЕШЪН ЕООД'))
+      .toEqual({ primary: 'ФЛОРЕТА ФЕШЪН ЕООД', secondary: 'Росица Диева' })
+  })
+
+  it('фирма без собственик не показва празен втори ред', () => {
+    expect(certLabel({ holder: null, client_id: 'c1', is_standalone: false }, 'АКМЕ ООД'))
+      .toEqual({ primary: 'АКМЕ ООД', secondary: null })
+    expect(certLabel({ holder: '   ', client_id: 'c1', is_standalone: false }, 'АКМЕ ООД').secondary)
+      .toBeNull()
+  })
+
+  it('свързан с изтрита/непозната фирма не остава празен', () => {
+    expect(certLabel({ holder: 'Иван', client_id: 'c1', is_standalone: false }, null).primary)
+      .toBe('непозната фирма')
+  })
+
+  it('изолиран случай показва ЧОВЕКА и се обявява като такъв', () => {
+    expect(certLabel({ holder: 'Иван Петров', client_id: null, is_standalone: true }, null))
+      .toEqual({ primary: 'Иван Петров', secondary: 'изолиран случай' })
+  })
+
+  it('чакащ свързване показва стария текст, без етикет', () => {
+    expect(certLabel({ holder: 'Калин Диев (Пропърти Хъб)', client_id: null, is_standalone: false }, null))
+      .toEqual({ primary: 'Калин Диев (Пропърти Хъб)', secondary: null })
+  })
+
+  it('ред без нищо не чупи таблицата', () => {
+    expect(certLabel({ holder: null, client_id: null, is_standalone: false }, null).primary)
+      .toBe('без име')
+  })
+})
+
 describe('countByStatus', () => {
   it('брои по състояние и несвързаните', () => {
     const certs = [
@@ -137,6 +188,15 @@ describe('countByStatus', () => {
     expect(countByStatus(certs, TODAY)).toEqual({
       valid: 1, expiring: 1, expired: 1, unknown: 1, unlinked: 2, total: 4,
     })
+  })
+
+  it('изолираните случаи НЕ се броят за несвързани', () => {
+    // Иначе броячът „чакат свързване" никога не стига до нула.
+    const certs = [
+      { id: '1', holder: 'Иван', valid_to: '2027-01-01', client_id: null, is_standalone: true },
+      { id: '2', holder: 'стар текст', valid_to: '2027-01-01', client_id: null, is_standalone: false },
+    ]
+    expect(countByStatus(certs, TODAY).unlinked).toBe(1)
   })
 
   it('празен списък дава нули', () => {

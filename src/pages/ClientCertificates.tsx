@@ -12,11 +12,13 @@ import {
   addClientCertificate, updateClientCertificate, deleteClientCertificate,
 } from '../lib/storage'
 import {
-  useClientCertificates, useClients, useColumns, useCellValues, useInvalidateCrm,
+  useClientCertificates, useClients, useColumns, useCellValues, useContactsWithClients,
+  useInvalidateCrm,
 } from '../lib/queries'
 import type { ClientCertificate, ClientCertificatePatch } from '../lib/types'
 import {
   clientCertStatus, daysLeft, expiryLabel, sortByUrgency, countByStatus,
+  certLabel, isUnlinked,
   CERT_KIND_LABELS, CLIENT_CERT_STATUS_LABELS, CLIENT_CERT_STATUS_CLS,
   type ClientCertKind, type ClientCertStatus,
 } from '../lib/clientCertificates'
@@ -47,8 +49,8 @@ const todayIso = () => {
 }
 
 type CertDraft = {
-  holder: string; clientId: string | null; kind: string; serial: string
-  validTo: string; requestNo: string; notes: string; paymentNotes: string
+  holder: string; clientId: string | null; standalone: boolean; kind: string
+  serial: string; validTo: string; requestNo: string; notes: string; paymentNotes: string
 }
 const certDraft = makeDraftStore<CertDraft>(
   'clientCertAddDraft',
@@ -64,6 +66,7 @@ export function ClientCertificatesPage() {
   const { data: clients = [] } = useClients()
   const { data: columns = [] } = useColumns()
   const { data: cells = [] } = useCellValues()
+  const { data: contacts = [] } = useContactsWithClients()
   const { invalidateClientCertificates } = useInvalidateCrm()
 
   useRealtime({
@@ -98,16 +101,24 @@ export function ClientCertificatesPage() {
     return m
   }, [cells, nameColId])
 
+  // Собственикът по фирма — попълва се сам при избор на фирма, за да не се
+  // преписва на ръка. Контактите вече го поддържат.
+  const ownerByClient = useMemo(() => {
+    const m = new Map<string, string>()
+    contacts.forEach(c => { if (c.owner_name?.trim()) m.set(c.client_id, c.owner_name.trim()) })
+    return m
+  }, [contacts])
+
   const counts = useMemo(() => countByStatus(certs, today), [certs, today])
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
     const filtered = certs.filter(c => {
       if (statusFilter && clientCertStatus(c.valid_to, today) !== statusFilter) return false
-      if (onlyUnlinked && c.client_id) return false
+      if (onlyUnlinked && !isUnlinked(c)) return false
       if (!q) return true
       const firm = c.client_id ? (nameByClient.get(c.client_id) ?? '') : ''
-      return [c.holder, c.serial_number ?? '', c.notes ?? '', c.payment_notes ?? '', c.request_no ?? '', firm]
+      return [c.holder ?? '', c.serial_number ?? '', c.notes ?? '', c.payment_notes ?? '', c.request_no ?? '', firm]
         .some(v => v.toLowerCase().includes(q))
     })
     return sortByUrgency(filtered, today)
@@ -116,7 +127,10 @@ export function ClientCertificatesPage() {
   async function save(patch: ClientCertificatePatch, existing?: ClientCertificate) {
     setSaving(true)
     try {
-      const audit = { userId: user?.id, userName: user?.full_name ?? '', label: patch.holder ?? existing?.holder ?? '' }
+      const label = patch.client_id
+        ? (nameByClient.get(patch.client_id) ?? '')
+        : (patch.holder || existing?.holder || '')
+      const audit = { userId: user?.id, userName: user?.full_name ?? '', label }
       if (existing) await updateClientCertificate(existing.id, patch, audit)
       else await addClientCertificate(patch, audit)
       certDraft.clear()
@@ -133,7 +147,8 @@ export function ClientCertificatesPage() {
   async function remove(cert: ClientCertificate) {
     try {
       await deleteClientCertificate(cert.id, {
-        userId: user?.id, userName: user?.full_name ?? '', label: cert.holder,
+        userId: user?.id, userName: user?.full_name ?? '',
+        label: certLabel(cert, cert.client_id ? nameByClient.get(cert.client_id) : null).primary,
       })
       toast.success('Изтрито')
       await invalidateClientCertificates()
@@ -203,9 +218,11 @@ export function ClientCertificatesPage() {
       {counts.unlinked > 0 && (
         <div className="rounded-lg border border-sky-300 bg-sky-50/60 dark:border-sky-900 dark:bg-sky-950/20 p-3 text-[13px] text-sky-900 dark:text-sky-200">
           <p>
-            <strong>{counts.unlinked}</strong> {counts.unlinked === 1 ? 'подпис не е свързан' : 'подписа не са свързани'} с
-            фирма. Свързването е ръчно нарочно: в стария файл една клетка смесва име на човек и на фирма, а понякога
-            покрива няколко фирми — автоматично налучкване би показало чужд подпис в картата на клиента.
+            <strong>{counts.unlinked}</strong> {counts.unlinked === 1 ? 'подпис чака' : 'подписа чакат'} свързване с
+            фирма. Отвори реда, избери фирмата от списъка и името на собственика ще се попълни само от Контакти.
+            Ако подписът не е на наш клиент, отбележи го като <strong>изолиран случай</strong> и напиши на кого е.
+            Свързването е ръчно нарочно: в стария файл една клетка смесва име на човек и на фирма, а понякога
+            покрива няколко фирми — налучкване би показало чужд подпис в картата на клиента.
           </p>
         </div>
       )}
@@ -219,8 +236,8 @@ export function ClientCertificatesPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr className="text-left">
-                <th className="px-3 py-2 font-medium">Подпис</th>
-                <th className="px-3 py-2 font-medium">Фирма</th>
+                <th className="px-3 py-2 font-medium">Фирма / случай</th>
+                <th className="px-3 py-2 font-medium">Подпис на</th>
                 <th className="px-3 py-2 font-medium">Вид</th>
                 <th className="px-3 py-2 font-medium">Сериен номер</th>
                 <th className="px-3 py-2 font-medium">Валиден до</th>
@@ -234,17 +251,26 @@ export function ClientCertificatesPage() {
                 const st = clientCertStatus(c.valid_to, today)
                 const left = daysLeft(c.valid_to, today)
                 const firm = c.client_id ? nameByClient.get(c.client_id) : null
+                const label = certLabel(c, firm)
                 return (
                   <tr key={c.id} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-3 py-2 font-medium">{c.holder}</td>
                     <td className="px-3 py-2">
-                      {firm ? (
-                        <span className="inline-flex items-center gap-1 text-xs">
-                          <Link2 className="h-3 w-3 text-muted-foreground" />{firm}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground/50 text-xs">несвързан</span>
+                      <div className="font-medium">{label.primary}</div>
+                      {c.is_standalone && (
+                        <div className="text-[11px] text-muted-foreground">изолиран случай</div>
                       )}
+                      {isUnlinked(c) && (
+                        <div className="text-[11px] text-amber-700 dark:text-amber-400 inline-flex items-center gap-1">
+                          <Link2Off className="h-3 w-3" /> чака свързване
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {c.client_id
+                        ? (c.holder?.trim()
+                            ? <span className="inline-flex items-center gap-1"><Link2 className="h-3 w-3 text-muted-foreground" />{c.holder}</span>
+                            : <span className="text-muted-foreground/50">—</span>)
+                        : <span className="text-muted-foreground/50">—</span>}
                     </td>
                     <td className="px-3 py-2 text-xs">
                       {c.cert_kind ? CERT_KIND_LABELS[c.cert_kind] : <span className="text-muted-foreground/50">—</span>}
@@ -298,6 +324,7 @@ export function ClientCertificatesPage() {
           existing={modal.existing}
           clients={clients}
           nameByClient={nameByClient}
+          ownerByClient={ownerByClient}
           saving={saving}
           onClose={() => { certDraft.clear(); setModal(null) }}
           onSave={patch => void save(patch, modal.existing)}
@@ -308,7 +335,7 @@ export function ClientCertificatesPage() {
         open={!!confirmDelete}
         onCancel={() => setConfirmDelete(null)}
         title="Да изтрия ли подписа?"
-        description={`„${confirmDelete?.holder ?? ''}" ще бъде премахнат от списъка. Действието не може да се върне.`}
+        description={`„${confirmDelete ? certLabel(confirmDelete, confirmDelete.client_id ? nameByClient.get(confirmDelete.client_id) : null).primary : ''}" ще бъде премахнат от списъка. Действието не може да се върне.`}
         confirmLabel="Изтрий"
         destructive
         onConfirm={() => { if (confirmDelete) void remove(confirmDelete) }}
@@ -321,11 +348,12 @@ export function ClientCertificatesPage() {
 // Модал: нов / редакция
 // ============================================================
 function CertModal({
-  existing, clients, nameByClient, saving, onClose, onSave,
+  existing, clients, nameByClient, ownerByClient, saving, onClose, onSave,
 }: {
   existing?: ClientCertificate
   clients: { id: string }[]
   nameByClient: Map<string, string>
+  ownerByClient: Map<string, string>
   saving: boolean
   onClose: () => void
   onSave: (patch: ClientCertificatePatch) => void
@@ -333,6 +361,7 @@ function CertModal({
   const draft = existing ? null : certDraft.read()
   const [holder, setHolder] = useState(existing?.holder ?? draft?.holder ?? '')
   const [clientId, setClientId] = useState<string | null>(existing?.client_id ?? draft?.clientId ?? null)
+  const [standalone, setStandalone] = useState(existing?.is_standalone ?? draft?.standalone ?? false)
   const [clientSearch, setClientSearch] = useState('')
   const [kind, setKind] = useState<string>(existing?.cert_kind ?? draft?.kind ?? '')
   const [serial, setSerial] = useState(existing?.serial_number ?? draft?.serial ?? '')
@@ -343,8 +372,8 @@ function CertModal({
 
   useEffect(() => {
     if (existing) return
-    certDraft.write({ holder, clientId, kind, serial, validTo, requestNo, notes, paymentNotes })
-  }, [existing, holder, clientId, kind, serial, validTo, requestNo, notes, paymentNotes])
+    certDraft.write({ holder, clientId, standalone, kind, serial, validTo, requestNo, notes, paymentNotes })
+  }, [existing, holder, clientId, standalone, kind, serial, validTo, requestNo, notes, paymentNotes])
 
   useEffect(() => {
     if (draft) toast.info('Възстановена е незапазена чернова от предишен опит.')
@@ -370,7 +399,16 @@ function CertModal({
       .slice(0, 8)
   }, [clients, nameByClient, clientSearch])
 
-  const canSave = holder.trim() && !serialCheck.error && !saving
+  /** Избор на фирма → собственикът се попълва сам, ако полето е още празно. */
+  function pickClient(id: string) {
+    setClientId(id)
+    setStandalone(false)
+    setClientSearch('')
+    if (!holder.trim()) setHolder(ownerByClient.get(id) ?? '')
+  }
+
+  // Фирма ИЛИ изолиран случай с име — едното от двете.
+  const canSave = (clientId || (standalone && holder.trim())) && !serialCheck.error && !saving
 
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose() }}>
@@ -380,42 +418,72 @@ function CertModal({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* ФИРМАТА Е ПЪРВА И СЕ ИЗБИРА, не се пише — това е смисълът на
+              пренареждането. Собственикът идва сам от Контакти. */}
           <div className="space-y-1.5">
-            <Label htmlFor="cc-holder">Подпис (на кого е) *</Label>
-            <Input id="cc-holder" value={holder} onChange={e => setHolder(e.target.value)}
-              placeholder="напр. Росица Диева (Флорета фешън)" autoFocus />
-          </div>
+            <Label>Фирма *</Label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setStandalone(false)}
+                className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition ${
+                  !standalone ? 'border-navy ring-1 ring-navy font-medium' : 'border-border hover:bg-muted/50'
+                }`}
+              >
+                Наш клиент
+              </button>
+              <button
+                type="button"
+                onClick={() => { setStandalone(true); setClientId(null); setClientSearch('') }}
+                className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition ${
+                  standalone ? 'border-navy ring-1 ring-navy font-medium' : 'border-border hover:bg-muted/50'
+                }`}
+              >
+                Изолиран случай
+              </button>
+            </div>
 
-          <div className="space-y-1.5">
-            <Label>Фирма от Клиенти</Label>
-            {clientId ? (
+            {standalone ? (
+              <p className="text-xs text-muted-foreground">
+                Физическо лице или фирма, която не обслужваме. Напиши по-долу на кого е подписът.
+              </p>
+            ) : clientId ? (
               <div className="flex items-center gap-2">
                 <span className="flex-1 rounded-md border border-border px-3 py-2 text-sm">
                   {nameByClient.get(clientId) ?? 'непозната фирма'}
                 </span>
                 <Button type="button" variant="outline" size="sm" onClick={() => setClientId(null)}>
-                  Премахни
+                  Смени
                 </Button>
               </div>
             ) : (
               <>
                 <Input value={clientSearch} onChange={e => setClientSearch(e.target.value)}
-                  placeholder="търси фирма..." />
+                  placeholder="търси фирма..." autoFocus />
                 {matching.length > 0 && (
-                  <div className="rounded-md border border-border divide-y divide-border">
+                  <div className="rounded-md border border-border divide-y divide-border max-h-52 overflow-y-auto">
                     {matching.map(c => (
-                      <button key={c.id} type="button"
-                        onClick={() => { setClientId(c.id); setClientSearch('') }}
+                      <button key={c.id} type="button" onClick={() => pickClient(c.id)}
                         className="block w-full px-3 py-1.5 text-left text-sm hover:bg-muted/60">
                         {c.name}
                       </button>
                     ))}
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  По избор. Свържеш ли го, подписът се вижда и в картата на клиента.
-                </p>
               </>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="cc-holder">
+              {standalone ? 'На кого е подписът *' : 'Подпис на (собственик)'}
+            </Label>
+            <Input id="cc-holder" value={holder} onChange={e => setHolder(e.target.value)}
+              placeholder={standalone ? 'име на лицето или фирмата' : 'попълва се сам от Контакти'} />
+            {!standalone && (
+              <p className="text-xs text-muted-foreground">
+                По избор. При избор на фирма се взима от Контакти, ако е попълнен там.
+              </p>
             )}
           </div>
 
@@ -474,8 +542,9 @@ function CertModal({
           <Button
             disabled={!canSave}
             onClick={() => onSave({
-              holder: holder.trim(),
-              client_id: clientId,
+              holder: holder.trim() || null,
+              client_id: standalone ? null : clientId,
+              is_standalone: standalone,
               cert_kind: (kind || null) as ClientCertKind | null,
               serial_number: serialCheck.value || null,
               valid_to: validTo || null,
