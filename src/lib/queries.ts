@@ -13,7 +13,7 @@ import {
   getCashRegisters, getCashTurnover, getCashFirmMonthly,
   getContracts, getContractTemplates, getContractBody,
   getNotifications, getNotificationSettings, getNotifyStaff,
-  getCertificates,
+  getCertificates, getClientCertificates,
   getIndustryNews, getNewsSources, getNewsSettings,
   getHolidays,
 } from './storage'
@@ -43,6 +43,7 @@ export const qk = {
   notificationSettings: ['notificationSettings'] as const,
   notifyStaff: ['notifyStaff'] as const,
   certificates: ['certificates'] as const,
+  clientCertificates: ['client-certificates'] as const,
   industryNews: ['industryNews'] as const,
   newsSources: ['newsSources'] as const,
   newsSettings: ['newsSettings'] as const,
@@ -245,6 +246,11 @@ export function useNewsSettings() {
 export function useCertificates() {
   return useQuery({ queryKey: qk.certificates, queryFn: getCertificates })
 }
+
+// Подписите на КЛИЕНТИТЕ — друга таблица (мигр. 065), вижда я всеки.
+export function useClientCertificates() {
+  return useQuery({ queryKey: qk.clientCertificates, queryFn: getClientCertificates })
+}
 export function useContracts() {
   return useQuery({ queryKey: qk.contracts, queryFn: getContracts })
 }
@@ -364,6 +370,7 @@ export function useInvalidateCrm() {
     invalidateNewsSources: () => qc.invalidateQueries({ queryKey: qk.newsSources }),
     invalidateNewsSettings: () => qc.invalidateQueries({ queryKey: qk.newsSettings }),
     invalidateCertificates: () => qc.invalidateQueries({ queryKey: qk.certificates }),
+    invalidateClientCertificates: () => qc.invalidateQueries({ queryKey: qk.clientCertificates }),
     invalidateNotifications: () => qc.invalidateQueries({ queryKey: qk.notifications }),
     invalidateNotificationSettings: () => qc.invalidateQueries({ queryKey: qk.notificationSettings }),
     invalidateNotifyStaff: () => qc.invalidateQueries({ queryKey: qk.notifyStaff }),

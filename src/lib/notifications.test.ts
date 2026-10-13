@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  isValidEmail, parseChecklistDays, formatChecklistDays, summarizeResults,
+  isValidEmail, parseChecklistDays, parseNoticeDays, formatChecklistDays, summarizeResults,
   NOTIFICATION_KIND_LABELS, NOTIFICATION_STATUS_LABELS,
 } from './notifications'
 import type { NotificationResult } from './types'
@@ -63,8 +63,38 @@ describe('summarizeResults', () => {
 describe('етикети', () => {
   it('всеки вид и статус има български етикет', () => {
     expect(Object.keys(NOTIFICATION_KIND_LABELS).sort())
-      .toEqual(['checklist_dds', 'manual', 'task_due', 'test'])
+      .toEqual(['checklist_dds', 'client_cert_expiry', 'manual', 'task_due', 'test'])
     expect(Object.keys(NOTIFICATION_STATUS_LABELS).sort())
       .toEqual(['error', 'pending', 'sent'])
+  })
+})
+
+describe('parseNoticeDays', () => {
+  it('чете праговете и ги подрежда низходящо', () => {
+    expect(parseNoticeDays('7, 30, 20')).toEqual([30, 20, 7])
+  })
+
+  it('приема нула — „в деня на изтичане"', () => {
+    expect(parseNoticeDays('0, 7')).toEqual([7, 0])
+  })
+
+  it('приема прагове над 28, за разлика от датите на чек листа', () => {
+    // Точно заради това е отделна функция: parseChecklistDays реже над 28,
+    // а „60 дни преди" е напълно разумен праг.
+    expect(parseNoticeDays('60, 90')).toEqual([90, 60])
+    expect(parseChecklistDays('60, 90')).toEqual([])
+  })
+
+  it('маха повторенията и боклука', () => {
+    expect(parseNoticeDays('30, 30, абв, -5, 7, 400')).toEqual([30, 7])
+  })
+
+  it('празен вход дава празен списък', () => {
+    expect(parseNoticeDays('')).toEqual([])
+    expect(parseNoticeDays('   ')).toEqual([])
+  })
+
+  it('разделителите са интервал, запетая и точка и запетая', () => {
+    expect(parseNoticeDays('30;20 7')).toEqual([30, 20, 7])
   })
 })

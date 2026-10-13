@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 import type { Holiday } from './holidays'
 import { attemptAutoReload } from './recovery'
 import { captureError } from './monitoring'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem, NewsSource, NewsSettings, FeedCheck, NotificationEntry, NotificationSettings, NotificationResult, NotificationDryRun, NotifyStaff, Certificate, CertificatePatch } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem, NewsSource, NewsSettings, FeedCheck, NotificationEntry, NotificationSettings, NotificationResult, NotificationDryRun, NotifyStaff, Certificate, CertificatePatch, ClientCertificate, ClientCertificatePatch } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -2927,6 +2927,65 @@ export async function deleteCertificate(
   await logAudit(audit?.userId, audit?.userName ?? '', 'delete_certificate', 'certificate', id, {
     old_value: audit?.label ?? '',
   })
+}
+
+// ==================== ЕЛ. ПОДПИСИ НА КЛИЕНТИТЕ ====================
+// ⚠️ Друга таблица от crm_certificates по-горе: там са подписите на
+// КАНТОРАТА (с ПИН/ПУК), тук — на КЛИЕНТИТЕ. Виж мигр. 065.
+
+export async function getClientCertificates(): Promise<ClientCertificate[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_client_certificates')
+      .select('*')
+      .order('valid_to', { ascending: true, nullsFirst: false })
+    if (error) throw error
+    return (data ?? []) as ClientCertificate[]
+  })
+}
+
+export async function addClientCertificate(
+  patch: ClientCertificatePatch,
+  audit?: { userId?: string; userName?: string },
+): Promise<ClientCertificate> {
+  return await trackSave((async () => {
+    const { data, error } = await supabase
+      .from('crm_client_certificates')
+      .insert([{ ...patch, created_by: audit?.userId ?? null }])
+      .select()
+      .single()
+    if (error) throw error
+    const row = data as ClientCertificate
+    await logAudit(audit?.userId, audit?.userName ?? '', 'create_client_certificate',
+      'client_certificate', row.id, { new_value: row.holder })
+    return row
+  })(), 'addClientCertificate')
+}
+
+export async function updateClientCertificate(
+  id: string,
+  patch: ClientCertificatePatch,
+  audit?: { userId?: string; userName?: string; label?: string },
+): Promise<void> {
+  return await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_client_certificates')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+    await logAudit(audit?.userId, audit?.userName ?? '', 'update_client_certificate',
+      'client_certificate', id, { new_value: audit?.label ?? '' })
+  })(), 'updateClientCertificate')
+}
+
+export async function deleteClientCertificate(
+  id: string,
+  audit?: { userId?: string; userName?: string; label?: string },
+): Promise<void> {
+  const { error } = await supabase.from('crm_client_certificates').delete().eq('id', id)
+  if (error) throw error
+  await logAudit(audit?.userId, audit?.userName ?? '', 'delete_client_certificate',
+    'client_certificate', id, { old_value: audit?.label ?? '' })
 }
 
 // ==================== НОВИНИ ОТ БРАНША (RSS) ====================
