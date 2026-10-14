@@ -3,6 +3,7 @@ import {
   ClipboardList, Settings, BookUser, Target, ClipboardCheck, CalendarRange, Receipt,
   ListChecks, IdCard, Banknote, CalendarDays, FileSpreadsheet, Inbox, Landmark,
   KanbanSquare, Coins, MessageSquare, Calculator, FileSignature, BellRing, KeyRound, Newspaper, CalendarCheck, Sunrise,
+  ShieldCheck,
 } from 'lucide-react'
 
 // ============================================================
@@ -53,6 +54,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { to: '/cash-loans', label: 'Финансов мониторинг', icon: Coins, roles: ['admin', 'manager', 'employee'], hideForTrz: true },
       { to: '/contacts', label: 'Контакти', icon: BookUser, roles: ['admin', 'manager', 'employee'] },
       { to: '/profiles', label: 'Профили', icon: IdCard, roles: ['admin', 'manager', 'employee'] },
+      { to: '/client-certificates', label: 'Подписи на клиенти', icon: ShieldCheck, roles: ['admin', 'manager', 'employee'] },
       { to: '/payments', label: 'Плащания', icon: Banknote, roles: ['admin', 'manager'], badgeKeys: ['paymentsUnpaid'] },
       { to: '/messages', label: 'Съобщения', icon: MessageSquare, roles: ['admin', 'manager', 'employee'] },
     ],

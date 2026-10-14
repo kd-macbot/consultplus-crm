@@ -7,6 +7,7 @@ import type { NotificationKind, NotificationResult, NotificationStatus } from '.
 export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   task_due: 'Задачи',
   checklist_dds: 'Чек лист (ДДС)',
+  client_cert_expiry: 'Изтичащ подпис',
   manual: 'Ръчно',
   test: 'Пробно',
 }
@@ -46,6 +47,26 @@ export function parseChecklistDays(input: string): number[] {
 
 export function formatChecklistDays(days: number[] | null | undefined): string {
   return (days ?? []).join(', ')
+}
+
+/**
+ * Прагове „колко дни ПРЕДИ" (напомнянето за изтичащи подписи).
+ *
+ * Отделна функция от `parseChecklistDays` нарочно: там числата са ДАТИ ОТ
+ * МЕСЕЦА и затова са ограничени до 1–28, а тук са дни преди събитие —
+ * „60" е напълно смислено, а „0" значи „в самия ден". Споделена функция с
+ * един диапазон щеше тихо да изяде всеки праг над 28.
+ */
+export function parseNoticeDays(input: string): number[] {
+  const seen = new Set<number>()
+  for (const part of input.split(/[\s,;]+/)) {
+    if (!part) continue
+    const n = Number(part)
+    if (!Number.isInteger(n) || n < 0 || n > 365) continue
+    seen.add(n)
+  }
+  // Низходящо: напомнянията се четат „първо на 30, после на 20, после на 7".
+  return [...seen].sort((a, b) => b - a)
 }
 
 /**

@@ -926,7 +926,7 @@ export type ContractListItem = Omit<Contract, 'body_snapshot' | 'fields'>
 // ============================================================
 // Известия по имейл до служителите (migration 056)
 // ============================================================
-export type NotificationKind = 'task_due' | 'checklist_dds' | 'manual' | 'test'
+export type NotificationKind = 'task_due' | 'checklist_dds' | 'client_cert_expiry' | 'manual' | 'test'
 export type NotificationStatus = 'pending' | 'sent' | 'error'
 
 /** Ред от дневника — какво е тръгнало, до кого и минало ли е. */
@@ -955,6 +955,9 @@ export interface NotificationSettings {
   checklist_enabled: boolean
   /** Дати от месеца, на които се напомня за чек листа (срок 14-ти). */
   checklist_days: number[]
+  client_certs_enabled: boolean
+  /** Дни ПРЕДИ изтичане, на които пада напомняне за подпис на клиент. */
+  client_certs_days: number[]
   test_email: string | null
   updated_at: string
 }
@@ -997,6 +1000,43 @@ export interface NotifyStaff {
 // ============================================================
 // Електронни подписи (КЕП) — инвентар (migration 057)
 // ============================================================
+/**
+ * КЕП на КЛИЕНТ (мигр. 065). ⚠️ Различно от `Certificate` по-долу — той е
+ * подпис на КАНТОРАТА, с ПИН/ПУК, зачислен на колега.
+ */
+export interface ClientCertificate {
+  id: string
+  /**
+   * ЧОВЕКЪТ, на когото е подписът (обикновено собственикът на фирмата).
+   * Незадължителен: при избрана фирма редът вече е разпознаваем.
+   * Заварените редове от Excel-а още носят целия стар текст
+   * („Росица Диева (Флорета фешън)") — чисти се при свързването.
+   */
+  holder: string | null
+  /** Фирма от Клиенти. null + `is_standalone=false` = ЧАКА свързване. */
+  client_id: string | null
+  /**
+   * ИЗОЛИРАН СЛУЧАЙ — физическо лице или фирма, която не обслужваме.
+   * Отделно от „няма фирма", за да не изглеждат внесените редове като
+   * съзнателно изолирани (виж мигр. 066).
+   */
+  is_standalone: boolean
+  /** 'professional' (фирмен) | 'personal' | null (непопълнено). */
+  cert_kind: 'professional' | 'personal' | null
+  /** ТЕКСТ, не число — 19-цифрен е и всяко числово поле го поврежда. */
+  serial_number: string | null
+  valid_to: string | null
+  request_no: string | null
+  notes: string | null
+  payment_notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ClientCertificatePatch = Partial<Omit<ClientCertificate,
+  'id' | 'created_by' | 'created_at' | 'updated_at'>>
+
 export interface Certificate {
   id: string
   /** Номерът, изписан върху самото устройство („5", „8", „A"). */

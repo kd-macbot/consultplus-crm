@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 import type { Holiday } from './holidays'
 import { attemptAutoReload } from './recovery'
 import { captureError } from './monitoring'
-import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem, NewsSource, NewsSettings, FeedCheck, NotificationEntry, NotificationSettings, NotificationResult, NotificationDryRun, NotifyStaff, Certificate, CertificatePatch } from './types'
+import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem, NewsSource, NewsSettings, FeedCheck, NotificationEntry, NotificationSettings, NotificationResult, NotificationDryRun, NotifyStaff, Certificate, CertificatePatch, ClientCertificate, ClientCertificatePatch } from './types'
 
 function isTimeoutError(err: unknown): boolean {
   const msg = (err as Error)?.message ?? ''
@@ -31,7 +31,9 @@ export async function withRetry<T>(
   let lastErr: unknown
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return await withTimeout(fn(), timeoutMs)
+      const out = await withTimeout(fn(), timeoutMs)
+      markOk()
+      return out
     } catch (err) {
       lastErr = err
       if (isTimeoutError(err)) {
@@ -70,6 +72,42 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 const SAVE_TIMEOUT_MS = 15000
 const SAVE_HANG_MSG = 'Записът се бави твърде дълго. Сесията може да е блокирана — моля, презаредете страницата (F5).'
 
+// ============================================================
+// Контекст за диагностика на „записът виси"
+// ============================================================
+// Първото истинско събитие (13.10.2026, prod, /trz) показа 15 000 ms —
+// тоест 15-секундният предпазител, НЕ 10-секундният timeout на заявката.
+// Разликата е ключова: ако заявката беше тръгнала, щеше да се отмени на
+// 10-ата секунда. Значи нещо блокира ПРЕДИ фетча.
+//
+// Стекът в Sentry е минифициран (няма качени source maps), тоест кадрите
+// никога няма да кажат откъде идва. Затова причината трябва да дойде от
+// ДАННИ, не от стек: кой запис, колко отдавна не е минавала успешна
+// заявка, спал ли е табът, има ли мрежа.
+
+const pageLoadedAt = Date.now()
+/** Кога за последно сървърът отговори успешно — на четене ИЛИ на запис. */
+let lastOkAt = Date.now()
+/** Колко време табът е бил скрит непосредствено преди да се върне. */
+let lastHiddenMs = 0
+let hiddenSince: number | null = null
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      hiddenSince = Date.now()
+    } else if (hiddenSince) {
+      lastHiddenMs = Date.now() - hiddenSince
+      hiddenSince = null
+    }
+  })
+}
+
+/** Вика се при всеки успешен отговор — това е часовникът на връзката. */
+function markOk(): void {
+  lastOkAt = Date.now()
+}
+
 /**
  * Съобщава провал на запис към Sentry. ВСИЧКО е в try/catch НАРОЧНО: това е
  * диагностика, а под нея стои `reject()`. Хвърли ли оттук, отхвърлянето няма
@@ -79,7 +117,22 @@ const SAVE_HANG_MSG = 'Записът се бави твърде дълго. С�
  */
 function reportSaveFailure(err: unknown, label: string | undefined, mode: 'hang' | 'timeout'): void {
   try {
-    captureError(err, { where: 'trackSave', operation: label ?? 'неозначен', mode })
+    captureError(err, {
+      where: 'trackSave',
+      // КОЯ операция. Стекът е минифициран, тоест това е единственото,
+      // което казва откъде идва.
+      operation: label ?? 'неозначен',
+      // 'hang' = блокирало е преди заявката; 'timeout' = заявката е тръгнала
+      // и е била отменена. Двете сочат различни причини.
+      mode,
+      // ГЛАВНАТА улика: ако връзката е работила преди секунда, застояла
+      // връзка НЕ е обяснението и хипотезата пада.
+      sinceLastOkMs: Date.now() - lastOkAt,
+      pageAgeMs: Date.now() - pageLoadedAt,
+      lastHiddenMs,
+      hiddenNow: typeof document !== 'undefined' ? document.visibilityState === 'hidden' : null,
+      online: typeof navigator !== 'undefined' ? navigator.onLine : null,
+    })
   } catch {
     /* мониторингът не бива да чупи записа */
   }
@@ -97,7 +150,7 @@ export async function trackSave<T>(p: Promise<T>, label?: string): Promise<T> {
       reject(new Error(SAVE_HANG_MSG))
     }, SAVE_TIMEOUT_MS)
     p.then(
-      v => { clearTimeout(timer); resolve(v) },
+      v => { clearTimeout(timer); markOk(); resolve(v) },
       e => {
         clearTimeout(timer)
         // Fetch-ът се отмени по timeout (10s) преди SAVE_TIMEOUT → пак е
@@ -620,7 +673,7 @@ export async function setCellValue(
         .insert([{ client_id: clientId, column_id: columnId, ...updates }])
       if (error) throw error
     }
-  })())
+  })(), 'setCellValue')
 
   if (audit) {
     await logAudit(audit.userId, audit.userName ?? '', 'update_cell', 'cell', clientId, {
@@ -962,7 +1015,7 @@ export async function upsertClientProfile(
         { onConflict: 'client_id' },
       )
     if (error) throw error
-  })())
+  })(), 'upsertClientProfile')
 }
 
 // ============================================================
@@ -997,7 +1050,7 @@ export async function upsertPaymentConfig(
         { onConflict: 'client_id' },
       )
     if (error) throw error
-  })())
+  })(), 'upsertPaymentConfig')
 }
 
 export async function deletePaymentConfig(clientId: string): Promise<void> {
@@ -1011,7 +1064,7 @@ export async function deletePaymentConfig(clientId: string): Promise<void> {
     // Освен това чистим всички свързани status редове за този клиент,
     // защото те нямат FK към конфигурацията — само към client.
     await supabase.from('crm_payment_status').delete().eq('client_id', clientId)
-  })())
+  })(), 'deletePaymentConfig')
 }
 
 export async function getPaymentStatuses(year: number): Promise<PaymentStatus[]> {
@@ -1051,7 +1104,7 @@ export async function setPaymentStatus(
         { onConflict: 'client_id,payment_type,year,month' },
       )
     if (error) throw error
-  })())
+  })(), 'setPaymentStatus')
 }
 
 /**
@@ -1081,7 +1134,7 @@ export async function setPaymentStatusBulk(
       .from('crm_payment_status')
       .upsert(payload, { onConflict: 'client_id,payment_type,year,month' })
     if (error) throw error
-  })())
+  })(), 'setPaymentStatusBulk')
 }
 
 // ============================================================
@@ -1132,7 +1185,7 @@ export async function addAbsence(
       .single()
     if (error) throw error
     return data as Absence
-  })())
+  })(), 'addAbsence')
 }
 
 export async function approveAbsence(id: string, approverId: string): Promise<void> {
@@ -1148,7 +1201,7 @@ export async function approveAbsence(id: string, approverId: string): Promise<vo
       })
       .eq('id', id)
     if (error) throw error
-  })())
+  })(), 'approveAbsence')
 }
 
 export async function rejectAbsence(id: string, approverId: string, reason?: string | null): Promise<void> {
@@ -1164,7 +1217,7 @@ export async function rejectAbsence(id: string, approverId: string, reason?: str
       })
       .eq('id', id)
     if (error) throw error
-  })())
+  })(), 'rejectAbsence')
 }
 
 export async function updateAbsence(
@@ -1177,14 +1230,14 @@ export async function updateAbsence(
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', id)
     if (error) throw error
-  })())
+  })(), 'updateAbsence')
 }
 
 export async function deleteAbsence(id: string): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase.from('crm_absences').delete().eq('id', id)
     if (error) throw error
-  })())
+  })(), 'deleteAbsence')
 }
 
 export async function getVacationQuotas(year: number): Promise<VacationQuota[]> {
@@ -1218,7 +1271,7 @@ export async function upsertVacationQuota(
         { onConflict: 'staff_id,year' },
       )
     if (error) throw error
-  })())
+  })(), 'upsertVacationQuota')
 }
 
 // ============================================================
@@ -1270,7 +1323,7 @@ export async function setForm76Override(
         { onConflict: 'staff_id,year,month,day' },
       )
     if (error) throw error
-  })())
+  })(), 'setForm76Override')
 }
 
 // ============================================================
@@ -1317,7 +1370,7 @@ export async function addEvent(
       .single()
     if (error) throw error
     return data as CompanyEvent
-  })())
+  })(), 'addEvent')
 }
 
 export async function updateEvent(
@@ -1330,14 +1383,14 @@ export async function updateEvent(
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', id)
     if (error) throw error
-  })())
+  })(), 'updateEvent')
 }
 
 export async function deleteEvent(id: string): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase.from('crm_events').delete().eq('id', id)
     if (error) throw error
-  })())
+  })(), 'deleteEvent')
 }
 
 // ============================================================
@@ -1409,7 +1462,7 @@ export async function deleteNews(id: string): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase.from('crm_news').delete().eq('id', id)
     if (error) throw error
-  })())
+  })(), 'deleteNews')
 }
 
 // ============================================================
@@ -1444,7 +1497,7 @@ export async function upsertBankAccess(
         { onConflict: 'client_id' },
       )
     if (error) throw error
-  })())
+  })(), 'upsertBankAccess')
 }
 
 /**
@@ -1468,14 +1521,14 @@ export async function updateBankCredentials(
       .update({ ...patch, updated_at: new Date().toISOString(), updated_by: updatedBy ?? null })
       .in('client_id', clientIds)
     if (error) throw error
-  })())
+  })(), 'updateBankCredentials')
 }
 
 export async function deleteBankAccess(clientId: string): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase.from('crm_bank_access').delete().eq('client_id', clientId)
     if (error) throw error
-  })())
+  })(), 'deleteBankAccess')
 }
 
 // ============================================================
@@ -1562,7 +1615,7 @@ export async function deleteTask(id: string): Promise<void> {
   await trackSave((async () => {
     const { error } = await supabase.from('crm_tasks').delete().eq('id', id)
     if (error) throw error
-  })())
+  })(), 'deleteTask')
 }
 
 // ============================================================
@@ -1620,7 +1673,7 @@ export async function setMonthReviewers(
         { onConflict: 'year,month' },
       )
     if (error) throw error
-  })())
+  })(), 'setMonthReviewers')
 }
 
 export interface EikLookupFields {
@@ -2007,7 +2060,7 @@ export async function upsertMonthlyWorkByKey(
         { onConflict: 'client_id,year,month' },
       )
     if (error) throw error
-  })())
+  })(), 'upsertMonthlyWorkByKey')
 }
 
 // ==================== ТРЗ МЕСЕЧЕН ЛИСТ ====================
@@ -2081,7 +2134,7 @@ export async function upsertTrzWorkByKey(
         { onConflict: 'client_id,year,month' },
       )
     if (error) throw error
-  })())
+  })(), 'upsertTrzWorkByKey')
 }
 
 /**
@@ -2148,7 +2201,7 @@ export async function pullPrevMonthTrzNotes(
       .upsert(updates, { onConflict: 'client_id,year,month' })
     if (e3) throw e3
     return updates.length
-  })())
+  })(), 'pullPrevMonthTrzNotes')
 }
 
 // ==================== ЛИЧЕН ЧЕК ЛИСТ (ДДС) ====================
@@ -2207,7 +2260,7 @@ export async function upsertChecklistByKey(
         { onConflict: 'client_id,year,month' },
       )
     if (error) throw error
-  })())
+  })(), 'upsertChecklistByKey')
 }
 
 // ==================== ART. 55 ENTRIES ====================
@@ -2646,7 +2699,7 @@ export async function restoreDefaultContractTemplates(): Promise<number> {
     const { error } = await supabase
       .from('crm_contract_templates').upsert(rows, { onConflict: 'name' })
     if (error) throw error
-  })())
+  })(), 'restoreDefaultContractTemplates')
   return rows.length
 }
 
@@ -2659,7 +2712,7 @@ export async function saveContractTemplate(
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', id)
     if (error) throw error
-  })())
+  })(), 'saveContractTemplate')
 }
 
 export async function addContractTemplate(
@@ -2737,7 +2790,7 @@ export async function addContract(c: {
       .select().single()
     if (error) throw error
     return data as Contract
-  })())
+  })(), 'addContract')
 }
 
 export async function deleteContract(id: string): Promise<void> {
@@ -2808,7 +2861,7 @@ export async function updateNotificationSettings(
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', true)
     if (error) throw error
-  })())
+  })(), 'updateNotificationSettings')
 }
 
 /**
@@ -2832,7 +2885,7 @@ export async function setStaffNotifyEmail(id: string, value: boolean): Promise<v
   return await trackSave((async () => {
     const { error } = await supabase.from('crm_staff').update({ notify_email: value }).eq('id', id)
     if (error) throw error
-  })())
+  })(), 'setStaffNotifyEmail')
 }
 
 /** Ръчно писмо до колеги (admin). */
@@ -2893,7 +2946,7 @@ export async function addCertificate(
       new_value: row.device_no ? `подпис №${row.device_no}` : 'нов подпис',
     })
     return row
-  })())
+  })(), 'addCertificate')
 }
 
 export async function updateCertificate(
@@ -2915,7 +2968,7 @@ export async function updateCertificate(
         new_value: audit.newAssignee || 'свободен',
       })
     }
-  })())
+  })(), 'updateCertificate')
 }
 
 export async function deleteCertificate(
@@ -2927,6 +2980,65 @@ export async function deleteCertificate(
   await logAudit(audit?.userId, audit?.userName ?? '', 'delete_certificate', 'certificate', id, {
     old_value: audit?.label ?? '',
   })
+}
+
+// ==================== ЕЛ. ПОДПИСИ НА КЛИЕНТИТЕ ====================
+// ⚠️ Друга таблица от crm_certificates по-горе: там са подписите на
+// КАНТОРАТА (с ПИН/ПУК), тук — на КЛИЕНТИТЕ. Виж мигр. 065.
+
+export async function getClientCertificates(): Promise<ClientCertificate[]> {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('crm_client_certificates')
+      .select('*')
+      .order('valid_to', { ascending: true, nullsFirst: false })
+    if (error) throw error
+    return (data ?? []) as ClientCertificate[]
+  })
+}
+
+export async function addClientCertificate(
+  patch: ClientCertificatePatch,
+  audit?: { userId?: string; userName?: string },
+): Promise<ClientCertificate> {
+  return await trackSave((async () => {
+    const { data, error } = await supabase
+      .from('crm_client_certificates')
+      .insert([{ ...patch, created_by: audit?.userId ?? null }])
+      .select()
+      .single()
+    if (error) throw error
+    const row = data as ClientCertificate
+    await logAudit(audit?.userId, audit?.userName ?? '', 'create_client_certificate',
+      'client_certificate', row.id, { new_value: row.holder ?? '' })
+    return row
+  })(), 'addClientCertificate')
+}
+
+export async function updateClientCertificate(
+  id: string,
+  patch: ClientCertificatePatch,
+  audit?: { userId?: string; userName?: string; label?: string },
+): Promise<void> {
+  return await trackSave((async () => {
+    const { error } = await supabase
+      .from('crm_client_certificates')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+    await logAudit(audit?.userId, audit?.userName ?? '', 'update_client_certificate',
+      'client_certificate', id, { new_value: audit?.label ?? '' })
+  })(), 'updateClientCertificate')
+}
+
+export async function deleteClientCertificate(
+  id: string,
+  audit?: { userId?: string; userName?: string; label?: string },
+): Promise<void> {
+  const { error } = await supabase.from('crm_client_certificates').delete().eq('id', id)
+  if (error) throw error
+  await logAudit(audit?.userId, audit?.userName ?? '', 'delete_client_certificate',
+    'client_certificate', id, { old_value: audit?.label ?? '' })
 }
 
 // ==================== НОВИНИ ОТ БРАНША (RSS) ====================
@@ -2992,7 +3104,7 @@ export async function addNewsSource(
     const { data, error } = await supabase.from('crm_news_sources').insert([patch]).select().single()
     if (error) throw error
     return data as NewsSource
-  })())
+  })(), 'addNewsSource')
 }
 
 export async function updateNewsSource(
@@ -3005,7 +3117,7 @@ export async function updateNewsSource(
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', id)
     if (error) throw error
-  })())
+  })(), 'updateNewsSource')
 }
 
 export async function deleteNewsSource(id: string): Promise<void> {
@@ -3031,7 +3143,7 @@ export async function updateNewsSettings(
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', true)
     if (error) throw error
-  })())
+  })(), 'updateNewsSettings')
 }
 
 /** „Провери" — има ли феед на този адрес и какво дава. */
@@ -3069,7 +3181,7 @@ export async function upsertHoliday(h: Holiday, audit?: { userId?: string; userN
       .from('crm_holidays')
       .upsert([{ date: h.date, name: h.name, is_working: h.is_working }], { onConflict: 'date' })
     if (error) throw error
-  })())
+  })(), 'upsertHoliday')
   if (audit) {
     await logAudit(audit.userId, audit.userName ?? '', 'upsert_holiday', 'holiday', h.date, {
       new_value: `${h.date} — ${h.name}${h.is_working ? ' (работен)' : ''}`,
@@ -3094,7 +3206,7 @@ export async function insertHolidaysIfMissing(
       .upsert(rows.map(r => ({ date: r.date, name: r.name, is_working: r.is_working })),
         { onConflict: 'date', ignoreDuplicates: true })
     if (error) throw error
-  })())
+  })(), 'insertHolidaysIfMissing')
   if (audit) {
     await logAudit(audit.userId, audit.userName ?? '', 'generate_holidays', 'holiday', undefined, {
       new_value: audit.label ?? `${rows.length} дни`,
@@ -3106,7 +3218,7 @@ export async function deleteHoliday(date: string, audit?: { userId?: string; use
   await trackSave((async () => {
     const { error } = await supabase.from('crm_holidays').delete().eq('date', date)
     if (error) throw error
-  })())
+  })(), 'deleteHoliday')
   if (audit) {
     await logAudit(audit.userId, audit.userName ?? '', 'delete_holiday', 'holiday', date, {
       old_value: `${date} — ${audit.name ?? ''}`,

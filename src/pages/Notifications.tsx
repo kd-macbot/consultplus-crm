@@ -14,7 +14,7 @@ import { useNotifications, useNotificationSettings, useNotifyStaff, useInvalidat
 import type { NotificationDraft, NotificationSettings, NotificationStatus } from '../lib/types'
 import {
   NOTIFICATION_KIND_LABELS, NOTIFICATION_STATUS_CLS, NOTIFICATION_STATUS_LABELS,
-  isValidEmail, parseChecklistDays, formatChecklistDays, summarizeResults,
+  isValidEmail, parseChecklistDays, parseNoticeDays, formatChecklistDays, summarizeResults,
 } from '../lib/notifications'
 import { formatDateTime } from '../lib/utils'
 import { usePersistentState } from '../lib/usePersistentState'
@@ -52,16 +52,19 @@ export function NotificationsPage() {
   // ---------- Настройки (локална чернова, записва се с бутон) ----------
   const [draft, setDraft] = useState<NotificationSettings | null>(null)
   const [daysText, setDaysText] = useState('')
+  const [certDaysText, setCertDaysText] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (settingsQ.data && !draft) {
       setDraft(settingsQ.data)
       setDaysText(formatChecklistDays(settingsQ.data.checklist_days))
+      setCertDaysText(formatChecklistDays(settingsQ.data.client_certs_days))
     }
   }, [settingsQ.data, draft])
 
   const parsedDays = useMemo(() => parseChecklistDays(daysText), [daysText])
+  const parsedCertDays = useMemo(() => parseNoticeDays(certDaysText), [certDaysText])
 
   // Черновата се записва чак с бутона (за да не тръгне нещо от едно
   // случайно кликване). Затова разликата спрямо записаното трябва да е
@@ -76,7 +79,9 @@ export function NotificationsPage() {
       || draft.checklist_enabled !== saved.checklist_enabled
       || (draft.test_email?.trim() || null) !== (saved.test_email?.trim() || null)
       || parsedDays.join(',') !== (saved.checklist_days ?? []).join(',')
-  }, [draft, saved, parsedDays])
+      || draft.client_certs_enabled !== saved.client_certs_enabled
+      || parsedCertDays.join(',') !== (saved.client_certs_days ?? []).join(',')
+  }, [draft, saved, parsedDays, parsedCertDays])
 
   async function saveSettings() {
     if (!draft) return
@@ -86,6 +91,9 @@ export function NotificationsPage() {
     if (draft.checklist_enabled && parsedDays.length === 0) {
       toast.error('Посочи поне една дата за напомнянето за чек листа (1–28)'); return
     }
+    if (draft.client_certs_enabled && parsedCertDays.length === 0) {
+      toast.error('Посочи поне един праг за подписите (дни преди изтичане, 0–365)'); return
+    }
     setSaving(true)
     try {
       await updateNotificationSettings({
@@ -94,6 +102,8 @@ export function NotificationsPage() {
         tasks_days_before: draft.tasks_days_before,
         checklist_enabled: draft.checklist_enabled,
         checklist_days: parsedDays,
+        client_certs_enabled: draft.client_certs_enabled,
+        client_certs_days: parsedCertDays,
         test_email: draft.test_email?.trim() || null,
       })
       toast.success('Настройките са записани')
@@ -320,6 +330,37 @@ export function NotificationsPage() {
                 />
                 <span className="text-xs text-muted-foreground">
                   {parsedDays.length > 0 ? `→ ${parsedDays.join(', ')}` : 'няма валидна дата (1–28)'}
+                </span>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-border bg-card p-4 space-y-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={draft.client_certs_enabled}
+                  onChange={e => setDraft({ ...draft, client_certs_enabled: e.target.checked })}
+                  className="mt-1 h-4 w-4"
+                />
+                <span>
+                  <span className="font-semibold text-foreground">Изтичащи подписи на клиенти</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">
+                    До администраторите и отдел „Управление" — подписите, които удрят праг ДНЕС.
+                    Писмото идва точно на зададените дни, не всеки ден между тях: иначе напомнянето
+                    става шум и никой не го чете.
+                  </span>
+                </span>
+              </label>
+              <div className="flex items-center gap-2 pl-7">
+                <Label htmlFor="nf-certdays" className="text-xs">Дни преди изтичане</Label>
+                <Input
+                  id="nf-certdays" value={certDaysText}
+                  onChange={e => setCertDaysText(e.target.value)}
+                  placeholder="30, 20, 7"
+                  className="w-32 h-8"
+                />
+                <span className="text-xs text-muted-foreground">
+                  {parsedCertDays.length > 0 ? `→ ${parsedCertDays.join(', ')}` : 'няма валиден праг (0–365)'}
                 </span>
               </div>
             </section>
