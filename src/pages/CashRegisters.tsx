@@ -79,7 +79,7 @@ function NoteCell({ value, disabled, onSave }: { value: string; disabled?: boole
 // Само за четене клетка (смятащите се редове), с цвят.
 function CalcCell({ v, strong }: { v: number; strong?: boolean }) {
   return (
-    <td className={`px-1 py-1 text-right text-xs tabular-nums whitespace-nowrap ${strong ? 'font-bold' : 'font-semibold'} ${
+    <td className={`px-1 py-1 text-right tabular-nums whitespace-nowrap ${strong ? 'text-[13px] font-bold' : 'text-xs font-semibold'} ${
       v > 0 ? 'text-emerald-700 dark:text-emerald-400' : v < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
     }`}>{fmt(v)}</td>
   )
@@ -470,7 +470,10 @@ function FirmDetail({ clientId, name, year, registers, turnoverByReg, firmByClie
           {/* Смятащи се редове */}
           <CalcRow label="Общо 20%" calc={calc} sel={c => c.total20} />
           <CalcRow label="Общо 9%" calc={calc} sel={c => c.total9} />
-          <CalcRow label="Чист оборот" calc={calc} sel={c => c.chist} />
+          {/* „Чист оборот" и „СПО общо" са числата, които колегите четат
+              най-често — затова са подчертани, а не просто поредни редове
+              в колоната (искано от екипа). */}
+          <CalcRow label="Чист оборот" calc={calc} sel={c => c.chist} strong />
           <CalcRow label="СПО 20%" calc={calc} sel={c => c.spo20} />
           <CalcRow label="СПО 9%" calc={calc} sel={c => c.spo9} />
           <CalcRow label="СПО общо" calc={calc} sel={c => c.spoTotal} strong />
@@ -696,10 +699,23 @@ function FirmRow({ label, clientId, field, firmByClient, canEdit, onSave }: {
   )
 }
 
+/**
+ * Ред със смятани стойности. `strong` = число, което се чете често
+ * („Чист оборот", „СПО общо") и трябва да се намира с око, без да се брои
+ * кой по ред е. Отличава се с ТРИ неща наведнъж, защото само удебеляване в
+ * таблица от еднакви дребни числа не се забелязва: по-плътен фон, ЧЕРТА
+ * ОТГОРЕ (отделя го от редовете, от които се смята) и по-едър шрифт.
+ *
+ * Замразената първа клетка носи СОБСТВЕН фон — иначе при хоризонтален
+ * скрол числата биха прозирали под нея (същото правило като в Клиенти).
+ */
 function CalcRow({ label, calc, sel, strong }: { label: string; calc: ReturnType<any>[]; sel: (c: any) => number; strong?: boolean }) {
+  const bg = strong ? 'bg-navy/10 dark:bg-primary/20' : ''
   return (
-    <tr className={`border-b border-border ${strong ? 'bg-navy/5 dark:bg-primary/10' : ''}`}>
-      <td className={`px-2 py-1.5 text-xs sticky left-0 z-10 ${strong ? 'font-bold bg-navy/5 dark:bg-primary/10' : 'font-semibold bg-card'} text-foreground`}>{label}</td>
+    <tr className={`border-b border-border ${strong ? 'border-t-2 border-t-navy/40 dark:border-t-primary/50' : ''} ${bg}`}>
+      <td className={`px-2 py-1.5 sticky left-0 z-10 text-foreground ${
+        strong ? `text-[13px] font-bold ${bg} bg-card` : 'text-xs font-semibold bg-card'
+      }`}>{label}</td>
       {calc.map((c, i) => <CalcCell key={i} v={sel(c)} strong={strong} />)}
     </tr>
   )
