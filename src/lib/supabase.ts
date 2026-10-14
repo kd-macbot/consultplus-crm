@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { requestStarted, requestFinished } from './connectionClock'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -35,7 +36,15 @@ const timeoutFetch: typeof fetch = (input, init) => {
     else caller.addEventListener('abort', () => controller.abort(caller.reason), { once: true })
   }
 
-  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer))
+  // Часовникът на връзката се води ТУК, защото това е единственото място,
+  // през което минават ВСИЧКИ заявки към Supabase — включително четенето на
+  // профила при вход, което не минава през withRetry. Измерено по-нагоре в
+  // стека, числото казваше нещо по-тясно, отколкото твърдеше.
+  requestStarted()
+  return fetch(input, { ...init, signal: controller.signal })
+    .then(res => { requestFinished(true); return res })
+    .catch(err => { requestFinished(false); throw err })
+    .finally(() => clearTimeout(timer))
 }
 
 // ============================================================
