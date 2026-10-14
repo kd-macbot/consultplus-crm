@@ -79,7 +79,7 @@ function NoteCell({ value, disabled, onSave }: { value: string; disabled?: boole
 // Само за четене клетка (смятащите се редове), с цвят.
 function CalcCell({ v, strong }: { v: number; strong?: boolean }) {
   return (
-    <td className={`px-1 py-1 text-right tabular-nums whitespace-nowrap ${strong ? 'text-[13px] font-bold' : 'text-xs font-semibold'} ${
+    <td className={`px-1 py-1 text-right tabular-nums whitespace-nowrap ${strong ? 'text-[13px] font-bold bg-total-row' : 'text-xs font-semibold'} ${
       v > 0 ? 'text-emerald-700 dark:text-emerald-400' : v < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
     }`}>{fmt(v)}</td>
   )
@@ -710,11 +710,16 @@ function FirmRow({ label, clientId, field, firmByClient, canEdit, onSave }: {
  * скрол числата биха прозирали под нея (същото правило като в Клиенти).
  */
 function CalcRow({ label, calc, sel, strong }: { label: string; calc: ReturnType<any>[]; sel: (c: any) => number; strong?: boolean }) {
-  const bg = strong ? 'bg-navy/10 dark:bg-primary/20' : ''
+  // ЕДИН непрозрачен цвят, сложен на ВСЯКА клетка — не на реда.
+  // Първият опит сложи фона на `<tr>` И на замразената клетка: прозрачният
+  // navy/10 се наслагваше само там, тоест етикетът излизаше сив, а числата
+  // оставаха почти бели. Непрозрачен цвят на клетките дава еднакъв тон и
+  // пази замразената колона плътна при хоризонтален скрол.
+  const bg = strong ? 'bg-total-row' : ''
   return (
-    <tr className={`border-b border-border ${strong ? 'border-t-2 border-t-navy/40 dark:border-t-primary/50' : ''} ${bg}`}>
+    <tr className={`border-b border-border ${strong ? 'border-t-2 border-t-navy/40 dark:border-t-primary/50' : ''}`}>
       <td className={`px-2 py-1.5 sticky left-0 z-10 text-foreground ${
-        strong ? `text-[13px] font-bold ${bg} bg-card` : 'text-xs font-semibold bg-card'
+        strong ? `text-[13px] font-bold ${bg}` : 'text-xs font-semibold bg-card'
       }`}>{label}</td>
       {calc.map((c, i) => <CalcCell key={i} v={sel(c)} strong={strong} />)}
     </tr>

@@ -25,6 +25,12 @@
   --color-secondary-foreground: #253551;
   --color-muted: #f1f3f6;
   --color-muted-foreground: #6b7280;
+  /* Ред СБОР в таблица („Чист оборот", „СПО общо"). НЕПРОЗРАЧЕН нарочно:
+     първата колона е замразена при хоризонтален скрол и полупрозрачен фон
+     би пропуснал числата под нея. Затова е собствен цвят, а не navy с
+     прозрачност. Тъмно е колкото да се хване с периферно зрение върху бял
+     фон — muted (#f1f3f6) е почти бяло и не вършеше работа. */
+  --color-total-row: #d7dce5;
   --color-accent: #eef1f6;
   --color-accent-foreground: #253551;
   --color-destructive: #ef4444;
@@ -54,6 +60,9 @@
   --color-secondary-foreground: #cbd5e1;
   --color-muted: #1e2d42;
   --color-muted-foreground: #94a3b8;
+  /* Виж бележката в светлата тема. Тук е по-светло от фона на картата
+     (#1a2436), не по-тъмно — на тъмен фон окото търси по-светлото. */
+  --color-total-row: #2c3c58;
   --color-accent: #1e3a5f;
   --color-accent-foreground: #bfdbfe;
   --color-destructive: #f87171;
