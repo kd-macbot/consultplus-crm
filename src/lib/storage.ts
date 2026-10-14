@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import type { Holiday } from './holidays'
 import { attemptAutoReload } from './recovery'
 import { captureError } from './monitoring'
+import { connectionSnapshot } from './connectionClock'
 import type { Client, Column, CellValue, DropdownOption, ColumnType, AuditEntry, Tag, ClientTag, Expense, Contact, ContactWithClient, Profile, Role, Opportunity, MonthlyWork, Art55Entry, Art55QuarterStatus, CashLoanEntry, CashLoanKind, FinancialClosing, FinancialSettings, PeriodKind, CashRegister, CashRegisterTurnover, CashFirmMonthly, TrzWork, ChecklistRow, ClientProfile, PaymentConfig, PaymentStatus, Absence, VacationQuota, Form76Override, CompanyEvent, NewsItem, BankAccess, Task, MonthReviewers, ClientMessage, MessageTemplate, MessageStatus, ContractTemplate, Contract, ContractListItem, NewsSource, NewsSettings, FeedCheck, NotificationEntry, NotificationSettings, NotificationResult, NotificationDryRun, NotifyStaff, Certificate, CertificatePatch, ClientCertificate, ClientCertificatePatch } from './types'
 
 function isTimeoutError(err: unknown): boolean {
@@ -31,9 +32,7 @@ export async function withRetry<T>(
   let lastErr: unknown
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const out = await withTimeout(fn(), timeoutMs)
-      markOk()
-      return out
+      return await withTimeout(fn(), timeoutMs)
     } catch (err) {
       lastErr = err
       if (isTimeoutError(err)) {
@@ -72,42 +71,6 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 const SAVE_TIMEOUT_MS = 15000
 const SAVE_HANG_MSG = 'Записът се бави твърде дълго. Сесията може да е блокирана — моля, презаредете страницата (F5).'
 
-// ============================================================
-// Контекст за диагностика на „записът виси"
-// ============================================================
-// Първото истинско събитие (13.10.2026, prod, /trz) показа 15 000 ms —
-// тоест 15-секундният предпазител, НЕ 10-секундният timeout на заявката.
-// Разликата е ключова: ако заявката беше тръгнала, щеше да се отмени на
-// 10-ата секунда. Значи нещо блокира ПРЕДИ фетча.
-//
-// Стекът в Sentry е минифициран (няма качени source maps), тоест кадрите
-// никога няма да кажат откъде идва. Затова причината трябва да дойде от
-// ДАННИ, не от стек: кой запис, колко отдавна не е минавала успешна
-// заявка, спал ли е табът, има ли мрежа.
-
-const pageLoadedAt = Date.now()
-/** Кога за последно сървърът отговори успешно — на четене ИЛИ на запис. */
-let lastOkAt = Date.now()
-/** Колко време табът е бил скрит непосредствено преди да се върне. */
-let lastHiddenMs = 0
-let hiddenSince: number | null = null
-
-if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      hiddenSince = Date.now()
-    } else if (hiddenSince) {
-      lastHiddenMs = Date.now() - hiddenSince
-      hiddenSince = null
-    }
-  })
-}
-
-/** Вика се при всеки успешен отговор — това е часовникът на връзката. */
-function markOk(): void {
-  lastOkAt = Date.now()
-}
-
 /**
  * Съобщава провал на запис към Sentry. ВСИЧКО е в try/catch НАРОЧНО: това е
  * диагностика, а под нея стои `reject()`. Хвърли ли оттук, отхвърлянето няма
@@ -125,13 +88,9 @@ function reportSaveFailure(err: unknown, label: string | undefined, mode: 'hang'
       // 'hang' = блокирало е преди заявката; 'timeout' = заявката е тръгнала
       // и е била отменена. Двете сочат различни причини.
       mode,
-      // ГЛАВНАТА улика: ако връзката е работила преди секунда, застояла
-      // връзка НЕ е обяснението и хипотезата пада.
-      sinceLastOkMs: Date.now() - lastOkAt,
-      pageAgeMs: Date.now() - pageLoadedAt,
-      lastHiddenMs,
-      hiddenNow: typeof document !== 'undefined' ? document.visibilityState === 'hidden' : null,
-      online: typeof navigator !== 'undefined' ? navigator.onLine : null,
+      // Състоянието на връзката — води се във fetch слоя (connectionClock),
+      // за да брои ВСЯКА заявка, не само тези през withRetry/trackSave.
+      ...connectionSnapshot(),
     })
   } catch {
     /* мониторингът не бива да чупи записа */
@@ -150,7 +109,7 @@ export async function trackSave<T>(p: Promise<T>, label?: string): Promise<T> {
       reject(new Error(SAVE_HANG_MSG))
     }, SAVE_TIMEOUT_MS)
     p.then(
-      v => { clearTimeout(timer); markOk(); resolve(v) },
+      v => { clearTimeout(timer); resolve(v) },
       e => {
         clearTimeout(timer)
         // Fetch-ът се отмени по timeout (10s) преди SAVE_TIMEOUT → пак е
