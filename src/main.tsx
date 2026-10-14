@@ -8,7 +8,7 @@ import './styles/globals.css'
 // Преди рендера — за да хване и грешка при самото стартиране.
 initMonitoring()
 
-console.log('[CRM] Starting app...', import.meta.env.VITE_BUILD_ID ?? 'dev')
+console.log('[CRM] Starting app...', __BUILD_ID__)
 
 try {
   const root = document.getElementById('root')

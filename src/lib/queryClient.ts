@@ -35,9 +35,12 @@ const persister = createSyncStoragePersister({
   key: 'consultplus-rq-cache',
 })
 
-// Buster — при нов билд (нов VITE_BUILD_ID) старият кеш в браузърите на хората
-// се инвалидира автоматично. Така промяна във формата на данните не чупи нищо.
-const CACHE_BUSTER = (import.meta.env.VITE_BUILD_ID as string | undefined) ?? 'dev'
+// Buster — при нов билд (нов коммит) старият кеш в браузърите на хората се
+// инвалидира автоматично. Така промяна във формата на данните не чупи нищо.
+// Стойността идва от `vite.config.ts` (`resolveBuildId`), НЕ от панела на
+// хостинга: там се взима буквално и остава константа, тоест busterът тихо
+// спира да работи. Виж коментара във vite.config.ts.
+const CACHE_BUSTER = __BUILD_ID__
 
 export const persistOptions: Omit<PersistQueryClientOptions, 'queryClient'> = {
   persister,
