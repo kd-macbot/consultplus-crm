@@ -114,7 +114,7 @@ export function initMonitoring() {
     .then(S => {
       S.start({
         dsn: DSN,
-        release: import.meta.env.VITE_BUILD_ID ?? 'dev',
+        release: __BUILD_ID__,
         environment: import.meta.env.VITE_DEV_ENV ? 'dev' : 'production',
         redact,
         stripQuery,
