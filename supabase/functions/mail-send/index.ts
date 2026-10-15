@@ -520,7 +520,14 @@ async function buildChecklistDrafts(db: Db, settings: Settings, staff: StaffRow[
     return ""
   }
 
-  const { data: clientsData, error: clErr } = await db.from("crm_clients").select("id")
+  // САМО обслужваните фирми. Клиентите се трият МЕКО (`crm_clients.deleted`),
+  // тоест редът и клетките му остават в базата завинаги. Приложението
+  // филтрира навсякъде (`getClients`, `getClientNames`), а тук филтърът
+  // ЛИПСВАШЕ — писмото изброяваше фирми, които колегата изобщо не вижда в
+  // системата, и то с „0 от 12 стъпки", защото чек лист за тях никой не
+  // попълва. Открито 15.10.2026 от получено писмо.
+  const { data: clientsData, error: clErr } = await db
+    .from("crm_clients").select("id").eq("deleted", false)
   if (clErr) throw new Error(`клиенти: ${clErr.message}`)
 
   const { data: checklistData, error: chErr } = await db
