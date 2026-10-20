@@ -16,6 +16,7 @@
 import {
   init,
   captureException,
+  flush,
   dedupeIntegration,
   functionToStringIntegration,
   globalHandlersIntegration,
@@ -70,4 +71,13 @@ export function start(opts: StartOptions) {
 
 export function capture(err: unknown, context?: Record<string, unknown>) {
   captureException(err, context ? { extra: context } : undefined)
+}
+
+/**
+ * Изчаква докладите да излетят. Нужно е САМО преди нарочно презареждане:
+ * `captureException` слага събитието на опашка, а транспортът го праща
+ * асинхронно — `location.reload()` веднага след това го отрязва.
+ */
+export function flushEvents(timeoutMs: number): Promise<boolean> {
+  return flush(timeoutMs)
 }
