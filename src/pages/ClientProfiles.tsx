@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Search, AlertTriangle, Briefcase, FileText, Star } from 'lucide-react'
+import { Search, AlertTriangle, Briefcase, FileText, Star, X } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import {
   useClients, useColumns, useCellValues, useDropdownOptions, useClientProfiles, useInvalidateCrm,
@@ -8,6 +8,11 @@ import {
 import { upsertClientProfile, setCellValue } from '../lib/storage'
 import type { ClientProfile } from '../lib/types'
 import { usePersistentState } from '../lib/usePersistentState'
+import { namesMatch } from '../lib/utils'
+import { buildCellIndex, buildDropdownIndex, resolveCellText } from '../lib/tableIndices'
+import {
+  peopleOptions, matchesPerson, matchesRating, activeFilterCount, EMPTY_FILTER,
+} from '../lib/profileFilters'
 
 type ProfileField = 'business_activity' | 'business_notes' | 'warnings'
 
@@ -79,6 +84,46 @@ function RatingCell({
   )
 }
 
+/**
+ * Едно падащо меню за филтър. Приема или готови имена (хората — стойността
+ * Е самото име), или двойки (оценката — стойността е id на опцията).
+ *
+ * `emptyOption` се подава САМО когато в данните наистина има незададени —
+ * избор „Без счетоводител" в таблица, където всички имат, е излишен ред,
+ * който връща нула резултата и изглежда като грешка.
+ */
+function FilterSelect({
+  label, value, onChange, options, emptyOption,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  options: string[] | { value: string; label: string }[]
+  emptyOption: string | null
+}) {
+  const items = options.map(o => typeof o === 'string' ? { value: o, label: o } : o)
+  const active = value !== ''
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      aria-label={label}
+      className={
+        'h-[30px] px-2 text-xs border rounded focus:border-primary focus:outline-none ' +
+        (active
+          ? 'border-primary bg-primary/5 text-foreground font-medium'
+          : 'border-border bg-background text-muted-foreground')
+      }
+    >
+      <option value="">{label}: всички</option>
+      {emptyOption && <option value={EMPTY_FILTER}>{emptyOption}</option>}
+      {items.map(o => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  )
+}
+
 export function ClientProfilesPage() {
   const { user } = useAuth()
   const clientsQ = useClients()
@@ -106,6 +151,15 @@ export function ClientProfilesPage() {
     })
     return m
   }, [cells, nameColId])
+
+  // Счетоводител и Отговорник — за филтрите. ⚠️ И двете са dropdown колони,
+  // СВЪРЗАНИ СЪС СЛУЖИТЕЛ, тоест стойността стои във `value_text`, а не във
+  // `value_dropdown`. Затова се чете с `resolveCellText`; `resolveDropdownText`
+  // би върнал празно и филтърът щеше да е празен, без да се оплаче.
+  const cellIdx = useMemo(() => buildCellIndex(cells), [cells])
+  const dropdownIdx = useMemo(() => buildDropdownIndex(dropdowns), [dropdowns])
+  const accountantCol = useMemo(() => columns.find(c => c.name === 'Счетоводител'), [columns])
+  const respCol = useMemo(() => columns.find(c => c.name === 'Отговорник'), [columns])
 
   // ============================================================
   // „Оценка на клиент" — четем и пишем директно в crm_cell_values,
@@ -139,24 +193,77 @@ export function ClientProfilesPage() {
   }, [profilesQ.data])
 
   const [search, setSearch] = usePersistentState('profiles-search', '')
+  const [fAccountant, setFAccountant] = usePersistentState('profiles-f-accountant', '')
+  const [fResp, setFResp] = usePersistentState('profiles-f-resp', '')
+  const [fRating, setFRating] = usePersistentState('profiles-f-rating', '')
   const [savingFor, setSavingFor] = useState<Set<string>>(new Set())
 
   // LEFT JOIN: всички клиенти, дори тези без профил. Подреждаме по име.
+  // `allRows` е БЕЗ филтри — от него се пълнят менютата и се брои „от колко".
+  const allRows = useMemo(() => clients.map(c => ({
+    clientId: c.id,
+    name: nameByClient.get(c.id) ?? '—',
+    profile: profileByClient.get(c.id),
+    ratingOptionId: ratingByClient.get(c.id) ?? '',
+    accountant: resolveCellText(c.id, accountantCol, cellIdx, dropdownIdx),
+    responsible: resolveCellText(c.id, respCol, cellIdx, dropdownIdx),
+  })).sort((a, b) => a.name.localeCompare(b.name, 'bg')),
+  [clients, nameByClient, profileByClient, ratingByClient, accountantCol, respCol, cellIdx, dropdownIdx])
+
+  // Менютата се пълнят от ДАННИТЕ, не от списъка със служители: предлага се
+  // само човек, който наистина има фирми тук. Имената се сливат по
+  // нормализиран вид — иначе един и същи колега излиза два пъти.
+  const accountantOptions = useMemo(
+    () => peopleOptions(allRows.map(r => r.accountant)), [allRows])
+  const respOptions = useMemo(
+    () => peopleOptions(allRows.map(r => r.responsible)), [allRows])
+  const hasUnrated = useMemo(() => allRows.some(r => !r.ratingOptionId), [allRows])
+
   const rows = useMemo(() => {
-    const all = clients.map(c => ({
-      clientId: c.id,
-      name: nameByClient.get(c.id) ?? '—',
-      profile: profileByClient.get(c.id),
-      ratingOptionId: ratingByClient.get(c.id) ?? '',
-    }))
     const q = search.trim().toLowerCase()
-    const filtered = q
-      ? all.filter(r => r.name.toLowerCase().includes(q))
-      : all
-    return filtered.sort((a, b) => a.name.localeCompare(b.name, 'bg'))
-  }, [clients, nameByClient, profileByClient, ratingByClient, search])
+    return allRows.filter(r =>
+      (!q || r.name.toLowerCase().includes(q)) &&
+      matchesPerson(r.accountant, fAccountant) &&
+      matchesPerson(r.responsible, fResp) &&
+      matchesRating(r.ratingOptionId, fRating),
+    )
+  }, [allRows, search, fAccountant, fResp, fRating])
 
   const ready = !!clientsQ.data && !!columnsQ.data && !!cellsQ.data && !!dropdownsQ.data && !!profilesQ.data
+
+  // ЗАПАЗЕНИЯТ ФИЛТЪР МОЖЕ ДА ОСТАРЕЕ. Стойността му е ИМЕ (или id на оценка),
+  // а имената в Клиенти се менят и колеги напускат. Тогава `<select>` няма
+  // съвпадаща опция и показва „всички", но състоянието още държи старото име —
+  // тоест таблицата излиза празна, а лентата изглежда чиста. Затова филтър
+  // без опция се зачиства сам.
+  useEffect(() => {
+    // САМО след като данните са дошли. При първо зареждане менютата са
+    // празни и проверката би изтрила запазения филтър, преди да има какво
+    // да сравни — тоест запазването щеше да е безполезно.
+    if (!ready) return
+    // Долепя се до СЪЩЕСТВУВАЩАТА опция, не само се чисти: ако името е
+    // записано с друг регистър или интервали, `namesMatch` го признава, но
+    // `<select>` няма опция с точно тази стойност и пак би показал „всички"
+    // при активен филтър. Липсва ли съвпадение изобщо → зачиства се.
+    if (fAccountant && fAccountant !== EMPTY_FILTER) {
+      const hit = accountantOptions.names.find(n => namesMatch(n, fAccountant))
+      if (hit !== fAccountant) setFAccountant(hit ?? '')
+    }
+    if (fResp && fResp !== EMPTY_FILTER) {
+      const hit = respOptions.names.find(n => namesMatch(n, fResp))
+      if (hit !== fResp) setFResp(hit ?? '')
+    }
+    if (fRating && fRating !== EMPTY_FILTER &&
+        !ratingOptions.some(o => o.id === fRating)) setFRating('')
+  }, [ready, accountantOptions.names, respOptions.names, ratingOptions,
+      fAccountant, fResp, fRating, setFAccountant, setFResp, setFRating])
+
+  const activeFilters = activeFilterCount({
+    search, accountant: fAccountant, responsible: fResp, rating: fRating,
+  })
+  const clearFilters = useCallback(() => {
+    setSearch(''); setFAccountant(''); setFResp(''); setFRating('')
+  }, [setSearch, setFAccountant, setFResp, setFRating])
 
   // ============================================================
   // Запис на едно поле — optimistic update в RQ кеша + invalidate.
@@ -247,7 +354,11 @@ export function ClientProfilesPage() {
             </p>
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span>Общо: <span className="font-semibold text-foreground">{stats.total}</span></span>
+            <span>
+              {activeFilters > 0 ? 'Показани: ' : 'Общо: '}
+              <span className="font-semibold text-foreground">{stats.total}</span>
+              {activeFilters > 0 && <span className="text-muted-foreground"> от {allRows.length}</span>}
+            </span>
             <span>Попълнени: <span className="font-semibold text-foreground">{stats.filled}</span></span>
             <span className="flex items-center gap-1">
               <AlertTriangle className="h-3 w-3 text-red-500" />
@@ -256,15 +367,58 @@ export function ClientProfilesPage() {
           </div>
         </div>
 
-        <div className="mt-2 relative">
-          <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Търси фирма по име..."
-            className="w-full md:w-80 pl-8 pr-3 py-1.5 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
-          />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Търси фирма по име..."
+              className="w-full md:w-72 pl-8 pr-3 py-1.5 text-xs border border-border rounded bg-background focus:border-primary focus:outline-none"
+            />
+          </div>
+
+          {/* Филтрите излизат само ако колоната изобщо съществува — иначе
+              щеше да стои празно меню, което изглежда като счупено. */}
+          {accountantCol && (
+            <FilterSelect
+              label="Счетоводител"
+              value={fAccountant}
+              onChange={setFAccountant}
+              options={accountantOptions.names}
+              emptyOption={accountantOptions.hasEmpty ? 'Без счетоводител' : null}
+            />
+          )}
+          {respCol && (
+            <FilterSelect
+              label="Отговорник"
+              value={fResp}
+              onChange={setFResp}
+              options={respOptions.names}
+              emptyOption={respOptions.hasEmpty ? 'Без отговорник' : null}
+            />
+          )}
+          {ratingCol && (
+            <FilterSelect
+              label="Оценка"
+              value={fRating}
+              onChange={setFRating}
+              options={ratingOptions.map(o => ({ value: o.id, label: o.value }))}
+              emptyOption={hasUnrated ? 'Без оценка' : null}
+            />
+          )}
+
+          {activeFilters > 0 && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1 px-2 py-1.5 text-xs border border-border rounded hover:bg-muted transition-colors"
+              title="Изчисти търсенето и филтрите"
+            >
+              <X className="h-3.5 w-3.5" />
+              Изчисти ({activeFilters})
+            </button>
+          )}
         </div>
       </div>
 
@@ -308,7 +462,7 @@ export function ClientProfilesPage() {
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={colCount} className="text-center py-12 text-muted-foreground">
-                  {search ? 'Няма намерени фирми.' : 'Няма клиенти.'}
+                  {activeFilters > 0 ? 'Няма фирми по тези филтри.' : 'Няма клиенти.'}
                 </td>
               </tr>
             ) : rows.map(({ clientId, name, profile, ratingOptionId }) => (
