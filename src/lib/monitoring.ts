@@ -101,6 +101,21 @@ export function captureError(err: unknown, context?: Record<string, unknown>) {
   else capture(err)
 }
 
+/**
+ * Изчаква пратените доклади, преди страницата да бъде презаредена нарочно.
+ *
+ * ВИНАГИ се сдобива с край: ако няма DSN или SDK-то още не се е заредило,
+ * връща се веднага; иначе чака flush-а, но не повече от зададеното. Без
+ * тавана едно забито мрежово повикване би спряло презареждането завинаги —
+ * тоест диагностиката щеше да счупи възстановяването, което пази.
+ */
+export function flushMonitoring(timeoutMs = 600): Promise<void> {
+  if (!DSN || !sentry) return Promise.resolve()
+  const done = sentry.flushEvents(timeoutMs).then(() => undefined).catch(() => undefined)
+  const cap = new Promise<void>(resolve => setTimeout(resolve, timeoutMs))
+  return Promise.race([done, cap])
+}
+
 export function initMonitoring() {
   if (!DSN) return   // локално и без конфигурация — не праща нищо
 
