@@ -58,6 +58,13 @@ CRM за българска счетоводна фирма (Консулт Пл
 - `storage.ts` — ВСИЧКИ заявки към БД. Четене: `withRetry` (timeout+retry+
   attemptAutoReload). Запис: `trackSave` (15s timeout → auto-reload при hang)
 - `recovery.ts` — `attemptAutoReload` със smart backoff (max 4 reload-а/5мин)
+  ВРЪЩА дали презареждането е тръгнало — екранът за грешка не бива да обещава
+  презареждане, което guard-ът е спрял. (NB: коментарите дълго казваха „30s /
+  3 reload-а", а константите са 5s / 4 — текстът беше изостанал, поправен.)
+- `chunkError.ts` — `isChunkLoadError` (тестван): провален динамичен импорт
+  след нов деплой. Проверката е НАРОЧНО ТЯСНА (иска думите за МОДУЛ): само
+  „Failed to fetch" е обикновена мрежова грешка и презареждане там би въртяло
+  таба при лоша мрежа.
 - `connectionClock.ts` — часовникът на връзката (тестван): `requestStarted` /
   `requestFinished(ok)` се викат от `timeoutFetch` в `supabase.ts`, тоест мерят
   във FETCH слоя, през който минава ВСЯКА заявка. `connectionSnapshot()` дава
@@ -373,9 +380,9 @@ PR **и към main, и към dev**, плюс при push към двата. Д
 main, тоест PR-ите към dev минаваха без нито една проверка — а именно на dev
 се тества.
 
-421 теста в 24 файла (`npm test`, vitest) — чиста логика: `bankAccess`, `buildId`,
-`cashRegisters`, `certificates`, `clientCard`, `clientCertificates`, `commandPalette`,
-`connectionClock`, `contract`, `formDraft`, `holidays`, `invoiceExport`, `monitoring`,
+429 теста в 25 файла (`npm test`, vitest) — чиста логика: `bankAccess`, `buildId`,
+`cashRegisters`, `certificates`, `chunkError`, `clientCard`, `clientCertificates`,
+`commandPalette`, `connectionClock`, `contract`, `formDraft`, `holidays`, `invoiceExport`, `monitoring`,
 `myDay`, `notifications`, `password`, `realtimeHealth`, `rss`, `session`,
 `subscriptionBuckets`, `tableIndices`, `tablePinning`, `trz`, `utils`. НЯМА тестове на компоненти
 (няма jsdom/testing-library) и НЯМА тестове на `storage.ts` — той иска мокване
@@ -746,7 +753,8 @@ GitHub — без нея бекъпите са безполезни).
    удобство при почти нулев риск. Извикването би било edge функция със secret
    (както swift-task/mobica-send), НИКОГА от браузъра, и със задължително
    пробно пускане преди реалното.
-14. **Провален lazy chunk след деплой** — в Sentry стои
+14. ~~**Провален lazy chunk след деплой**~~ — НАПРАВЕНО (20.10.2026), виж урока
+   по-долу. Поводът: в Sentry стоеше
    `Failed to fetch dynamically imported module: .../WorkSheet-B_cxqKVn.js`
    (14.10.2026, 20:11 UTC, няколко часа след мердж към main). Всичките 26
    страници се зареждат с `lazy()`, а Cloudflare Pages сервира само текущия
@@ -756,7 +764,7 @@ GitHub — без нея бекъпите са безполезни).
    се сети сам. НЯМА обработка на тази грешка (`grep` за ChunkLoadError не
    намира нищо). Поправката е малка и има готов инструмент: разпознаване на
    грешката + `attemptAutoReload` (recovery.ts, max 4 reload-а/5 мин пазят от
-   цикъл). Ще се случва ПО-ЧЕСТО отсега — всеки мердж към main сменя билда.
+   цикъл). Случваше се ПО-ЧЕСТО отсега нататък — всеки мердж към main сменя билда.
 15. Стари клони (~67) — НЕ могат да се трият (org ruleset „Restrict deletions"
    блокира; git push --delete → 403, UI → „could not be deleted"). Решено да
    се оставят — безобидни са, козметично. НЕ разхлабвай правилото.
@@ -918,6 +926,30 @@ GitHub — без нея бекъпите са безполезни).
 - НОВА таблица = ВИНАГИ `enable row level security` + политики. Само политики
   без enable RLS = таблицата е публично отворена (Supabase алармира
   rls_disabled_in_public). profiles беше точно така от migration-006 до 047.
+- **Деплой по време на отворен таб чупи навигацията.** Всичките 26 страници са
+  `lazy()`, а Cloudflare Pages сервира само ТЕКУЩИЯ деплой — тоест колега с
+  отворен отпреди таб натиска към друга страница и браузърът иска парче с име
+  от старата версия. Отвън: екранът „Възникна грешка" с английски текст
+  (`Failed to fetch dynamically imported module: …`), а верният изход —
+  презареждане — трябва да се сети сам. Видяно в Sentry 14.10.2026, 20:11.
+  Сега `ErrorBoundary` разпознава случая (`isChunkLoadError`) и презарежда сам
+  през `attemptAutoReload`; текстът е „Излязла е нова версия", не грешка,
+  защото нищо не е счупено. HashRouter-ът пази мястото — след презареждането
+  колегата е на същата страница.
+  ТРИ неща, които не бива да се „опростят":
+  – проверката иска думите за МОДУЛ. Широко „Failed to fetch" би презареждало
+    при всяка мрежова глезотия и би въртяло таба точно при лоша връзка;
+  – докладът до Sentry се ИЗЧАКВА (`flushMonitoring`, таван 600 мс) преди
+    презареждането. `captureException` само слага събитието на опашка и
+    `location.reload()` веднага след него го отрязва — поправката щеше да скрие
+    собствената си статистика. Изчакването е с таван, за да не може забита
+    мрежа да спре възстановяването;
+  – `flush` влиза в `sentryClient.ts` като ПОИМЕНЕН импорт. Измерено: 26 866 →
+    26 909 B gzip, тоест +43 байта. Цялостен namespace импорт щеше да върне
+    150-те kB.
+  Екранът ползва `bg-light`/`text-dark` (старата палитра), тоест е винаги
+  светъл — мига бяло под секунда преди презареждането. Заварено, не пипано.
+  (fix 20.10.2026)
 - **Клиентите се трият МЕКО** (`crm_clients.deleted`) — редът и всичките му
   клетки остават в базата завинаги. Приложението филтрира (`getClients`,
   `getClientNames`), но `mail-send` четеше `crm_clients` БЕЗ филтър и сутрешното
