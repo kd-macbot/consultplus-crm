@@ -170,6 +170,13 @@ export interface Opportunity {
   converted_to_client_id: string | null
   converted_at: string | null
 
+  // Мигр. 067 — редът е предложен от препратено писмо и чака човек.
+  // `intake_*` е СЛЕДАТА: кой е препратил и с каква тема, за да може
+  // странен ред да се обясни, без да се рови в логовете на функцията.
+  needs_review: boolean
+  intake_from: string | null
+  intake_subject: string | null
+
   created_at: string
   created_by: string | null
   updated_at: string
