@@ -110,17 +110,46 @@ interface Draft {
   notes: string | null
 }
 
-function validateExtraction(raw: unknown): { ok: true; value: Draft } | { ok: false; reason: string } {
+/** Темата без префиксите на препращането и без ключовата дума. */
+function cleanSubject(subject: string | null | undefined): string {
+  let v = (subject ?? "").replace(/\s+/g, " ").trim()
+  const prefix = /^(fwd?|fw|re|отг|препратено|препр)\s*:\s*/i
+  while (prefix.test(v)) v = v.replace(prefix, "")
+  v = v.replace(new RegExp(KEYWORD + "и?", "gi"), "")
+  return v.replace(/^[\s—–\-:·|,.]+|[\s—–\-:·|,.]+$/g, "").trim()
+}
+
+/**
+ * Името по ред на предпочитание: фирма → лице → темата → подателят.
+ *
+ * ОТСТЪПЛЕНИЕ, НЕ ОТКАЗ: първата версия отказваше писмо без име на фирма,
+ * а най-честото запитване е от физическо лице, което тепърва регистрира —
+ * там фирма НЯМА и съзнателно препратеното писмо изчезваше безследно.
+ */
+function resolveName(
+  fromModel: string | null,
+  contactPerson: string | null,
+  subject: string | null | undefined,
+  from: string | null | undefined,
+): string {
+  const subj = cleanSubject(subject)
+  const sender = parseFromHeader(from)
+  return (fromModel || contactPerson || subj || sender || "(без име)").slice(0, MAX_LEN.name)
+}
+
+function validateExtraction(
+  raw: unknown,
+  ctx: { subject?: string | null; from?: string | null } = {},
+): { ok: true; value: Draft } | { ok: false; reason: string } {
   if (!raw || typeof raw !== "object") return { ok: false, reason: "отговорът не е обект" }
   const o = raw as Record<string, unknown>
-  const name = text(o.name, "name")
-  if (!name) return { ok: false, reason: "липсва име на фирмата" }
+  const contact_person = text(o.contact_person, "contact_person")
   return {
     ok: true,
     value: {
-      name,
+      name: resolveName(text(o.name, "name"), contact_person, ctx.subject, ctx.from),
       eik: normalizeEik(o.eik),
-      contact_person: text(o.contact_person, "contact_person"),
+      contact_person,
       contact_phone: normalizePhone(o.contact_phone),
       contact_email: normalizeEmail(o.contact_email),
       notes: text(o.notes, "notes"),
@@ -143,8 +172,12 @@ const SYSTEM = `Ти си помощник на българска счетов�
 - НЕ измисляй. Липсва ли нещо в писмото, върни null за това поле. Празно
   поле е по-добро от правдоподобно сгрешено — човек ще го допълни.
 - ЕИК е точно 9 или 13 цифри. Не си сигурен — null.
-- В "notes" опиши С ДВЕ-ТРИ ИЗРЕЧЕНИЯ какво иска човекът, със свои думи,
-  на български. Това е единственото поле, в което обобщаваш.
+- "notes" е КРАТКО — едно, най-много две изречения: кой е и какво иска.
+  НЕ преразказвай членове от закони, кодове, ставки, суми и дати. Те
+  остават в самото писмо, което човекът ще отвори. Преразказано число е
+  задължение: сгрешен член или ставка подвежда колегата, който го чете
+  като проверен. Пиши „иска регистрация по ЗДДС и годишна декларация",
+  не целия казус.
 - "name" е името на ФИРМАТА. Ако писмото е от физическо лице без фирма,
   сложи името на човека.`
 
@@ -156,13 +189,17 @@ const SCHEMA = {
     contact_person: { type: ["string", "null"], description: "Име на лицето за контакт" },
     contact_phone: { type: ["string", "null"], description: "Телефон както е изписан" },
     contact_email: { type: ["string", "null"], description: "Имейл за контакт" },
-    notes: { type: ["string", "null"], description: "Две-три изречения какво иска клиентът" },
+    notes: { type: ["string", "null"], description: "Едно-две изречения: кой е и какво иска. БЕЗ членове, кодове, ставки и числа" },
   },
   required: ["name", "eik", "contact_person", "contact_phone", "contact_email", "notes"],
   additionalProperties: false,
 }
 
-async function extract(subject: string, body: string): Promise<{ ok: true; value: Draft } | { ok: false; reason: string }> {
+async function extract(
+  subject: string,
+  body: string,
+  from: string,
+): Promise<{ ok: true; value: Draft } | { ok: false; reason: string }> {
   const key = Deno.env.get("ANTHROPIC_API_KEY")
   if (!key) return { ok: false, reason: "липсва ANTHROPIC_API_KEY" }
 
@@ -214,7 +251,7 @@ async function extract(subject: string, body: string): Promise<{ ok: true; value
   } catch {
     return { ok: false, reason: "отговорът не е валиден JSON" }
   }
-  return validateExtraction(parsed)
+  return validateExtraction(parsed, { subject, from })
 }
 
 // ============================================================
@@ -264,7 +301,7 @@ Deno.serve(async (req) => {
   }
   if (!body.trim()) return json({ skipped: "празно тяло" }, 202)
 
-  const result = await extract(subject, body)
+  const result = await extract(subject, body, from)
   if (!result.ok) return json({ error: result.reason }, 422)
 
   if (payload.dry_run) return json({ dry_run: true, draft: result.value })

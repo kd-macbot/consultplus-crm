@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseFromHeader, isAllowedSender, hasKeyword, normalizeEik, normalizeEmail,
-  normalizePhone, validateExtraction, screenEmail,
+  normalizePhone, validateExtraction, screenEmail, cleanSubject, resolveName,
 } from './mailIntake'
 
 const STAFF = ['ivan@consultplus.bg', 'Radka.Nikolova@consultplus.bg', 'kalin@gmail.com', null, '']
@@ -113,12 +113,36 @@ describe('validateExtraction', () => {
     if (r.ok) expect(r.value.name).toBe('АВОМИС ЕООД')
   })
 
-  // Единственото задължително поле: ред без име не върши работа в списъка.
-  it('отказва без име', () => {
-    expect(validateExtraction({ name: '', eik: '203912345' }).ok).toBe(false)
-    expect(validateExtraction({ eik: '203912345' }).ok).toBe(false)
+  // ПРОМЕНЕНО ПОВЕДЕНИЕ (10.2026): липсващо име вече НЕ е отказ. Най-честото
+  // запитване е от физическо лице без фирма и писмото се губеше безследно.
+  it('отказва само когато отговорът изобщо не е обект', () => {
     expect(validateExtraction(null).ok).toBe(false)
     expect(validateExtraction('АВОМИС').ok).toBe(false)
+    expect(validateExtraction(42).ok).toBe(false)
+  })
+
+  it('без име взема лицето за контакт', () => {
+    const r = validateExtraction({ name: '', contact_person: 'Анелия Делийчева' })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.value.name).toBe('Анелия Делийчева')
+  })
+
+  it('без име и без лице взема темата', () => {
+    const r = validateExtraction({}, { subject: 'Fwd: възможност — АВОМИС ЕООД' })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.value.name).toBe('АВОМИС ЕООД')
+  })
+
+  it('в краен случай взема подателя', () => {
+    const r = validateExtraction({}, { subject: 'Fwd: възможност', from: 'ivan@consultplus.bg' })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.value.name).toBe('ivan@consultplus.bg')
+  })
+
+  it('не остава съвсем без име', () => {
+    const r = validateExtraction({})
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.value.name).toBe('(без име)')
   })
 
   // Същината: невалидно поле става ПРАЗНО, не „каквото каза моделът".
@@ -172,5 +196,46 @@ describe('screenEmail', () => {
     const v = screenEmail('ivan@consultplus.bg', 'Fwd: фактура', STAFF)
     expect(v.accept).toBe(false)
     if (!v.accept) expect(v.reason).toContain('темата')
+  })
+})
+
+describe('cleanSubject', () => {
+  it('маха префиксите на препращането и ключовата дума', () => {
+    expect(cleanSubject('Fwd: възможност — АВОМИС ЕООД')).toBe('АВОМИС ЕООД')
+    expect(cleanSubject('Препратено: Възможност: ново запитване')).toBe('ново запитване')
+  })
+
+  // Префиксите се трупат — „RE: FW: Fwd:" е обичайна гледка.
+  it('маха НАТРУПАНИТЕ префикси', () => {
+    expect(cleanSubject('RE: FW: Fwd: възможност - ОМЕКС ООД')).toBe('ОМЕКС ООД')
+  })
+
+  it('връща празно, когато няма нищо освен служебното', () => {
+    expect(cleanSubject('Fwd: възможност')).toBe('')
+    expect(cleanSubject('възможности')).toBe('')
+    expect(cleanSubject('')).toBe('')
+    expect(cleanSubject(null)).toBe('')
+  })
+
+  it('не пипа тема без служебни части', () => {
+    expect(cleanSubject('АВОМИС ЕООД')).toBe('АВОМИС ЕООД')
+  })
+})
+
+describe('resolveName', () => {
+  it('предпочита фирмата пред всичко', () => {
+    expect(resolveName('АВОМИС ЕООД', 'Иван', 'Fwd: възможност — друго', 'a@b.bg'))
+      .toBe('АВОМИС ЕООД')
+  })
+
+  it('слиза по веригата', () => {
+    expect(resolveName(null, 'Иван Иванов', 'Fwd: възможност — х', 'a@b.bg')).toBe('Иван Иванов')
+    expect(resolveName(null, null, 'Fwd: възможност — ОМЕКС', 'a@b.bg')).toBe('ОМЕКС')
+    expect(resolveName(null, null, 'Fwd: възможност', 'Иван <a@b.bg>')).toBe('a@b.bg')
+    expect(resolveName(null, null, null, null)).toBe('(без име)')
+  })
+
+  it('реже свръхдълго име', () => {
+    expect(resolveName('х'.repeat(500), null, null, null)).toHaveLength(200)
   })
 })
