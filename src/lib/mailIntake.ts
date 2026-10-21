@@ -101,6 +101,47 @@ function text(value: unknown, field: string): string | null {
   return v ? v.slice(0, MAX_LEN[field]) : null
 }
 
+/**
+ * Темата без служебното: префиксите на препращането и ключовата дума.
+ *
+ * Ползва се като ОТСТЪПЛЕНИЕ за името — колегите често пишат фирмата точно
+ * там („Fwd: възможност — АВОМИС ЕООД"). Префиксите се махат в цикъл,
+ * защото се трупат: „RE: FW: Fwd: …" е обичайна гледка.
+ */
+export function cleanSubject(subject: string | null | undefined): string {
+  let v = (subject ?? '').replace(/\s+/g, ' ').trim()
+  const prefix = /^(fwd?|fw|re|отг|препратено|препр)\s*:\s*/i
+  while (prefix.test(v)) v = v.replace(prefix, '')
+  v = v.replace(new RegExp(KEYWORD + 'и?', 'gi'), '')
+  // Остатъкът от разделителите, с които е била закачена думата.
+  return v.replace(/^[\s—–\-:·|,.]+|[\s—–\-:·|,.]+$/g, '').trim()
+}
+
+/**
+ * Името на реда, по ред на предпочитание:
+ *   фирма → лице за контакт → темата без служебното → адресът на подателя.
+ *
+ * ЗАЩО ОТСТЪПЛЕНИЕ, А НЕ ОТКАЗ: първата версия отказваше писмо без име на
+ * фирма. Но най-честото запитване е от физическо лице, което тепърва
+ * регистрира фирма — там име на фирма НЯМА и писмото, което колега нарочно
+ * е препратил, изчезваше безследно. Тиха загуба на съзнателно действие.
+ * По-добре ред с несъвършено име (и белег „за преглед"), отколкото липсващ.
+ *
+ * Детерминирано е НАРОЧНО: в проба моделът сам сложи „Неизвестен подател",
+ * но дали едно запитване се губи, не бива да зависи от това как е разчел
+ * инструкция.
+ */
+export function resolveName(
+  fromModel: string | null,
+  contactPerson: string | null,
+  subject: string | null | undefined,
+  from: string | null | undefined,
+): string {
+  const subj = cleanSubject(subject)
+  const sender = parseFromHeader(from)
+  return (fromModel || contactPerson || subj || sender || '(без име)').slice(0, MAX_LEN.name)
+}
+
 export interface OpportunityDraft {
   name: string
   eik: string | null
@@ -118,23 +159,25 @@ export type ExtractionResult =
  * Какво от отговора на модела се приема.
  *
  * ВСЯКО поле минава през своята проверка и невалидното става ПРАЗНО, не
- * „каквото е казал моделът". Единственото задължително е името — ред без
- * име е безполезен в списъка и е по-честно да откажем, отколкото да сложим
- * „(без име)" и да го оставим да стои.
+ * „каквото е казал моделът". Отказ има САМО когато отговорът изобщо не е
+ * обект — тогава няма какво да се вземе. Липсващо име НЕ е отказ: виж
+ * `resolveName`.
  */
-export function validateExtraction(raw: unknown): ExtractionResult {
+export function validateExtraction(
+  raw: unknown,
+  ctx: { subject?: string | null; from?: string | null } = {},
+): ExtractionResult {
   if (!raw || typeof raw !== 'object') return { ok: false, reason: 'отговорът не е обект' }
   const o = raw as Record<string, unknown>
 
-  const name = text(o.name, 'name')
-  if (!name) return { ok: false, reason: 'липсва име на фирмата' }
+  const contact_person = text(o.contact_person, 'contact_person')
 
   return {
     ok: true,
     value: {
-      name,
+      name: resolveName(text(o.name, 'name'), contact_person, ctx.subject, ctx.from),
       eik: normalizeEik(o.eik),
-      contact_person: text(o.contact_person, 'contact_person'),
+      contact_person,
       contact_phone: normalizePhone(o.contact_phone),
       contact_email: normalizeEmail(o.contact_email),
       notes: text(o.notes, 'notes'),
