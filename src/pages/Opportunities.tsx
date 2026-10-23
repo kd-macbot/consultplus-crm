@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Search, RefreshCw, Loader2, Trash2, ArrowRight, AlertTriangle, X } from 'lucide-react'
+import { Plus, Search, RefreshCw, Loader2, Trash2, ArrowRight, AlertTriangle, X, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -66,6 +66,7 @@ export function OpportunitiesPage() {
   const opps = useMemo(() => oppsQ.data ?? [], [oppsQ.data])
   const staffList = useMemo(() => staffQ.data ?? [], [staffQ.data])
   const loading = !oppsQ.data || !staffQ.data
+  const needsReviewCount = useMemo(() => opps.filter(o => o.needs_review).length, [opps])
   const [stageFilter, setStageFilter] = useState<string>('')
   const [search, setSearch] = useState('')
 
@@ -214,6 +215,24 @@ export function OpportunitiesPage() {
     setSaving(false)
   }
 
+
+  /**
+   * Сваля белега „за преглед" от ред, дошъл по имейл.
+   *
+   * Запис + `refresh()`, както прави и смяната на етап на този екран.
+   * Нарочно НЕ се прави оптимистично: един клик, който или успява, или
+   * се оплаква, не иска собствен pending слой — а два различни модела на
+   * запис в една страница са по-скъпи от едно презареждане.
+   */
+  async function markReviewed(o: Opportunity) {
+    try {
+      await updateOpportunity(o.id, { needs_review: false })
+      refresh()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Грешка при запис')
+    }
+  }
+
   async function handleStageChange(o: Opportunity, newStage: string) {
     if (newStage === 'Загубен') {
       setLostTarget(o)
@@ -321,6 +340,15 @@ export function OpportunitiesPage() {
             Изчисти филтри
           </Button>
         )}
+        {/* Редовете са подредени по дата низходящо, тоест дошлите по имейл
+            стоят най-отгоре. Броячът е, за да се види, че изобщо има
+            какво да се гледа, без да се скролва. */}
+        {needsReviewCount > 0 && (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+            <Mail className="h-3 w-3" />
+            {needsReviewCount} за преглед
+          </span>
+        )}
         <span className="text-xs text-muted-foreground ml-auto">{filtered.length} от {opps.length}</span>
       </div>
 
@@ -357,6 +385,27 @@ export function OpportunitiesPage() {
                         <div className="font-medium text-foreground">{o.name}</div>
                         {o.source && <div className="text-[10px] text-muted-foreground">{o.source}</div>}
                       </button>
+                      {/* Ред, предложен от препратено писмо. Белегът стои,
+                          докато човек не го свери — полетата идват от модел
+                          и никой не бива да ги чете като проверени. */}
+                      {o.needs_review && (
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+                            <Mail className="h-2.5 w-2.5" />
+                            от имейл · за преглед
+                          </span>
+                          {canEdit && (
+                            <button
+                              onClick={() => markReviewed(o)}
+                              className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                              title={[o.intake_from && `Препратено от ${o.intake_from}`, o.intake_subject]
+                                .filter(Boolean).join(' · ')}
+                            >
+                              прегледах го
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{o.eik ?? '—'}</td>
                     <td className="px-3 py-2">
