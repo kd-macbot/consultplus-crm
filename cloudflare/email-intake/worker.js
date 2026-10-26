@@ -37,16 +37,15 @@ async function readBody(stream, limit) {
 }
 
 /**
- * Минал ли е DMARC.
+ * Суровата заглавка за автентичност, каквато е.
  *
- * Cloudflare вече не препраща писма, които се провалят и на SPF, и на
- * DKIM — но това не доказва, че „From" е този, който твърди. Съвпадението
- * го проверява DMARC и само неговият резултат се подава нататък.
- * Не се разчита на „по подразбиране минава": липсва ли заглавката, не е pass.
+ * Worker-ът НЕ преценява. Първата версия решаваше сама „минал ли е DMARC" —
+ * моя непоследователност спрямо собствения ѝ замисъл. Решението живее в
+ * едж функцията (`senderProven`, тествано), за да е на едно място и да се
+ * мени без да се пипа Cloudflare.
  */
-function dmarcResult(headers) {
-  const auth = headers.get('authentication-results') ?? ''
-  return /dmarc=pass/i.test(auth) ? 'pass' : 'fail'
+function authResults(headers) {
+  return headers.get('authentication-results') ?? ''
 }
 
 export default {
@@ -64,7 +63,7 @@ export default {
       body: JSON.stringify({
         from: message.from,
         subject: message.headers.get('subject') ?? '',
-        dmarc: dmarcResult(message.headers),
+        auth: authResults(message.headers),
         text: raw,
       }),
     })
