@@ -46,7 +46,16 @@ async function readBody(stream, limit) {
  */
 function dmarcResult(headers) {
   const auth = headers.get('authentication-results') ?? ''
-  return /dmarc=pass/i.test(auth) ? 'pass' : 'fail'
+  if (/dmarc=pass/i.test(auth)) return 'pass'
+
+  // САМО при непреминал DMARC се логва суровата заглавка. Тя е единственото
+  // място, от което се вижда ДАЛИ Cloudflare изобщо докладва dmarc=, и с
+  // какво. Без нея „не мина" е еднакво за „домейнът няма политика",
+  // „проверката не е правена" и „наистина се проваля" — три различни
+  // причини с три различни поправки.
+  // При успех не се логва: заглавката е дълга и няма какво да каже.
+  console.log('authentication-results:', auth || '(липсва заглавката)')
+  return 'fail'
 }
 
 export default {
