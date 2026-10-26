@@ -68,7 +68,10 @@ function authDebug(headers) {
   for (const [name] of headers) {
     names.push(name)
     if (/auth|spf|dkim|dmarc/.test(name)) {
-      values[name] = (headers.get(name) ?? '').slice(0, 300)
+      // 600, не 300: първият опит отряза точно `smtp.mailfrom=` —
+      // стойността, по която се съди за подравняването. Таван все пак
+      // има, защото антиспам заглавките на Microsoft са огромни.
+      values[name] = (headers.get(name) ?? '').slice(0, 600)
     }
   }
   return { names, values }
