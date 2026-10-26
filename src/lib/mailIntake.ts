@@ -61,6 +61,62 @@ export function isAllowedSender(
   return staffEmails.some(e => (e ?? '').trim().toLowerCase() === addr)
 }
 
+/** Домейнът от адрес или от готова стойност в заглавка. */
+function domainOf(value: string | null | undefined): string {
+  const v = (value ?? '').trim().toLowerCase()
+  const at = v.lastIndexOf('@')
+  return (at >= 0 ? v.slice(at + 1) : v).replace(/[>;,.\s]+$/, '')
+}
+
+/**
+ * Съвпадат ли двата домейна по правилото на DMARC за „свободно подравняване":
+ * еднакви, или единият е поддомейн на другия.
+ */
+function domainsAlign(a: string, b: string): boolean {
+  if (!a || !b) return false
+  if (a === b) return true
+  return a.endsWith('.' + b) || b.endsWith('.' + a)
+}
+
+/**
+ * Доказан ли е подателят — от заглавката `Authentication-Results`.
+ *
+ * ЗАЩО НЕ ПРОСТО `dmarc=pass`: `consultplus.bg` НЯМА публикуван DMARC запис
+ * (проверено 26.10.2026; пощата е на Microsoft 365). Тоест изискване за
+ * готова DMARC присъда отказва ВСЯКО писмо — не защото е подозрително, а
+ * защото домейнът не предлага такава присъда.
+ *
+ * Затова се смята съществената част на DMARC: SPF или DKIM да е минал И
+ * домейнът, за който е минал, да СЪВПАДА с този в „From". Съвпадението е
+ * същината — SPF може да мине за чужд домейн, докато в „From" пише нашият,
+ * и точно това подравняването хваща.
+ *
+ * Готов `dmarc=pass` се приема направо: ако някога се публикува запис, тази
+ * функция става по-строга сама, без да се пипа.
+ */
+export function senderProven(
+  authHeader: string | null | undefined,
+  fromHeader: string | null | undefined,
+): boolean {
+  const auth = (authHeader ?? '').toLowerCase()
+  if (!auth) return false
+  if (/dmarc=pass/.test(auth)) return true
+
+  const fromDomain = domainOf(parseFromHeader(fromHeader))
+  if (!fromDomain) return false
+
+  // `[^;]*` държи търсенето ВЪТРЕ в един метод: заглавката изброява spf,
+  // dkim и dmarc, разделени с „;", и без ограничението „spf=pass" от единия
+  // би се сдвоило с „header.d" от другия.
+  const spf = auth.match(/spf=pass[^;]*smtp\.mailfrom=([^\s;]+)/)
+  if (spf && domainsAlign(domainOf(spf[1]), fromDomain)) return true
+
+  const dkim = auth.match(/dkim=pass[^;]*header\.d=([^\s;]+)/)
+  if (dkim && domainsAlign(domainOf(dkim[1]), fromDomain)) return true
+
+  return false
+}
+
 /** Темата носи ли ключовата дума. Малки/главни нямат значение. */
 export function hasKeyword(subject: string | null | undefined): boolean {
   return (subject ?? '').toLowerCase().includes(KEYWORD)

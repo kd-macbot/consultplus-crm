@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseFromHeader, isAllowedSender, hasKeyword, normalizeEik, normalizeEmail,
   normalizePhone, validateExtraction, screenEmail, cleanSubject, resolveName,
+  senderProven,
 } from './mailIntake'
 
 const STAFF = ['ivan@consultplus.bg', 'Radka.Nikolova@consultplus.bg', 'kalin@gmail.com', null, '']
@@ -237,5 +238,64 @@ describe('resolveName', () => {
 
   it('реже свръхдълго име', () => {
     expect(resolveName('х'.repeat(500), null, null, null)).toHaveLength(200)
+  })
+})
+
+describe('senderProven', () => {
+  const FROM = 'Калин Диев <k.diev@consultplus.bg>'
+
+  it('приема готова DMARC присъда', () => {
+    expect(senderProven('mx.cloudflare.net; dmarc=pass; spf=pass', FROM)).toBe(true)
+  })
+
+  // Случаят на кантората: consultplus.bg НЯМА DMARC запис, но SPF минава.
+  it('приема SPF, минал за СЪЩИЯ домейн', () => {
+    const h = 'mx.cloudflare.net; spf=pass smtp.mailfrom=consultplus.bg; dmarc=none'
+    expect(senderProven(h, FROM)).toBe(true)
+  })
+
+  it('приема DKIM, минал за същия домейн', () => {
+    const h = 'mx.cloudflare.net; spf=fail; dkim=pass header.d=consultplus.bg; dmarc=none'
+    expect(senderProven(h, FROM)).toBe(true)
+  })
+
+  // СЪЩИНАТА: SPF може да мине за ЧУЖД домейн, докато в „From" пише нашият.
+  // Точно това подправяне трябва да се спре.
+  it('ОТКАЗВА SPF, минал за чужд домейн', () => {
+    const h = 'mx.cloudflare.net; spf=pass smtp.mailfrom=evil.example.com; dmarc=none'
+    expect(senderProven(h, FROM)).toBe(false)
+  })
+
+  it('ОТКАЗВА DKIM, подписан от чужд домейн', () => {
+    const h = 'mx.cloudflare.net; dkim=pass header.d=evil.example.com'
+    expect(senderProven(h, FROM)).toBe(false)
+  })
+
+  it('приема поддомейн (свободно подравняване)', () => {
+    const h = 'mx.cloudflare.net; spf=pass smtp.mailfrom=mail.consultplus.bg'
+    expect(senderProven(h, FROM)).toBe(true)
+  })
+
+  // „spf=pass" от единия метод не бива да се сдвоява с „header.d" от другия.
+  it('не смесва двата метода през разделителя', () => {
+    const h = 'mx.cloudflare.net; spf=pass smtp.mailfrom=evil.com; dkim=fail header.d=consultplus.bg'
+    expect(senderProven(h, FROM)).toBe(false)
+  })
+
+  it('отказва при провалени проверки', () => {
+    expect(senderProven('mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail', FROM)).toBe(false)
+    expect(senderProven('mx.cloudflare.net; spf=none; dmarc=none', FROM)).toBe(false)
+  })
+
+  it('отказва при липсваща заглавка или подател', () => {
+    expect(senderProven('', FROM)).toBe(false)
+    expect(senderProven(null, FROM)).toBe(false)
+    expect(senderProven('spf=pass smtp.mailfrom=consultplus.bg', '')).toBe(false)
+    expect(senderProven('spf=pass smtp.mailfrom=consultplus.bg', 'не е адрес')).toBe(false)
+  })
+
+  it('не се води по регистър', () => {
+    const h = 'MX.CLOUDFLARE.NET; SPF=PASS smtp.mailfrom=CONSULTPLUS.BG'
+    expect(senderProven(h, 'K.DIEV@CONSULTPLUS.BG')).toBe(true)
   })
 })

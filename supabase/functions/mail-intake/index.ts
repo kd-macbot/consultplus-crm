@@ -75,6 +75,55 @@ function isAllowedSender(from: string | null | undefined, staffEmails: string[])
 const hasKeyword = (s: string | null | undefined) =>
   (s ?? "").toLowerCase().includes(KEYWORD)
 
+/** Домейнът от адрес или от готова стойност в заглавка. */
+function domainOf(value: string | null | undefined): string {
+  const v = (value ?? "").trim().toLowerCase()
+  const at = v.lastIndexOf("@")
+  return (at >= 0 ? v.slice(at + 1) : v).replace(/[>;,.\s]+$/, "")
+}
+
+/** Свободно подравняване по DMARC: еднакви или поддомейн. */
+function domainsAlign(a: string, b: string): boolean {
+  if (!a || !b) return false
+  if (a === b) return true
+  return a.endsWith("." + b) || b.endsWith("." + a)
+}
+
+/**
+ * Доказан ли е подателят — от заглавката `Authentication-Results`.
+ *
+ * ЗАЩО НЕ ПРОСТО `dmarc=pass`: `consultplus.bg` НЯМА публикуван DMARC запис
+ * (проверено 26.10.2026; пощата е на Microsoft 365). Изискване за готова
+ * DMARC присъда отказва ВСЯКО писмо — не защото е подозрително, а защото
+ * домейнът не предлага такава присъда. Първата версия правеше точно това и
+ * първото реално писмо спря тук.
+ *
+ * Смята се съществената част на DMARC: SPF или DKIM да е минал И домейнът,
+ * за който е минал, да СЪВПАДА с този в „From". Съвпадението е същината —
+ * SPF минава и за чужд домейн, докато в „From" стои нашият.
+ */
+function senderProven(
+  authHeader: string | null | undefined,
+  fromHeader: string | null | undefined,
+): boolean {
+  const auth = (authHeader ?? "").toLowerCase()
+  if (!auth) return false
+  if (/dmarc=pass/.test(auth)) return true
+
+  const fromDomain = domainOf(parseFromHeader(fromHeader))
+  if (!fromDomain) return false
+
+  // `[^;]*` държи търсенето ВЪТРЕ в един метод — иначе „spf=pass" от единия
+  // би се сдвоило с „header.d" от другия.
+  const spf = auth.match(/spf=pass[^;]*smtp\.mailfrom=([^\s;]+)/)
+  if (spf && domainsAlign(domainOf(spf[1]), fromDomain)) return true
+
+  const dkim = auth.match(/dkim=pass[^;]*header\.d=([^\s;]+)/)
+  if (dkim && domainsAlign(domainOf(dkim[1]), fromDomain)) return true
+
+  return false
+}
+
 function normalizeEik(value: unknown): string | null {
   if (typeof value !== "string") return null
   const digits = value.replace(/\D/g, "")
@@ -266,7 +315,7 @@ Deno.serve(async (req) => {
   if (!secret) return json({ error: "функцията не е настроена (липсва INTAKE_SECRET)" }, 500)
   if (req.headers.get("x-intake-secret") !== secret) return json({ error: "няма достъп" }, 401)
 
-  let payload: { from?: string; subject?: string; text?: string; dmarc?: string; dry_run?: boolean }
+  let payload: { from?: string; subject?: string; text?: string; auth?: string; dry_run?: boolean }
   try {
     payload = await req.json()
   } catch {
@@ -277,11 +326,11 @@ Deno.serve(async (req) => {
   const subject = (payload.subject ?? "").slice(0, 500)
   const body = (payload.text ?? "").slice(0, MAX_BODY)
 
-  // DMARC: Cloudflare вече отрязва писмата, които не минават SPF или DKIM,
-  // но те могат да минат за ЧУЖД домейн, докато в „From" пише нашият.
-  // Съвпадението го проверява само DMARC — затова се иска изрично.
-  if ((payload.dmarc ?? "").toLowerCase() !== "pass") {
-    return json({ skipped: "DMARC не е минал — подателят не е доказан" }, 202)
+  // РЕШЕНИЕТО Е ТУК, не в Worker-а. Той подава суровата заглавка и нищо
+  // не преценява — така проверката стои на едно място, тествана, и се
+  // мени без да се пипа Cloudflare.
+  if (!senderProven(payload.auth, from)) {
+    return json({ skipped: "подателят не е доказан (SPF/DKIM не съвпадат с From)" }, 202)
   }
 
   const url = Deno.env.get("SUPABASE_URL")!
