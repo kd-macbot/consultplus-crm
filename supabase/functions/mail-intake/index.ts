@@ -159,6 +159,97 @@ interface Draft {
   notes: string | null
 }
 
+/**
+ * Кирилска тема пътува КОДИРАНА (RFC 2047): `=?utf-8?B?0LLRitC30Lw=?=`.
+ * Cloudflare подава заглавката сурова, тоест без разчитане се търси
+ * „възможност" в base64 и не се намира НИКОГА.
+ *
+ * ⚠️ ИНТЕРВАЛИТЕ МЕЖДУ ДВЕ СЪСЕДНИ КОДИРАНИ ДУМИ СЕ МАХАТ ПРЕДИ
+ * ДЕКОДИРАНЕТО, не след. Дълга тема се реже на парчета и те се долепят с
+ * интервал, който НЕ е част от текста — а срязването пада където дойде,
+ * често насред дума. Разчетеш ли първо, „възмож" + „ност" става
+ * „възмож ност" и ключовата дума изчезва точно в случая, за който е всичко
+ * това. Интервалът между кодирана и обикновена дума се ПАЗИ (той е истински).
+ */
+const ENCODED_WORD = /=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g
+
+/** Само ASCII ли е — по знак, не с регулярен израз (контролните знаци в него са грешка за lint-а). */
+function isAscii(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) > 127) return false
+  }
+  return true
+}
+
+/** base64 → байтове. Връща null при счупен вход (по-добре сурово, отколкото боклук). */
+function base64Bytes(text: string): Uint8Array | null {
+  try {
+    const binary = atob(text.replace(/\s+/g, ""))
+    const out = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i)
+    return out
+  } catch {
+    return null
+  }
+}
+
+/** quoted-printable на RFC 2047 → байтове. Тук `_` е ИНТЕРВАЛ, не долна черта. */
+function quotedBytes(text: string): Uint8Array | null {
+  const out: number[] = []
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === "_") {
+      out.push(0x20)
+    } else if (ch === "=") {
+      const hex = text.slice(i + 1, i + 3)
+      if (!/^[0-9a-fA-F]{2}$/.test(hex)) return null
+      out.push(parseInt(hex, 16))
+      i += 2
+    } else {
+      out.push(ch.charCodeAt(0) & 0xff)
+    }
+  }
+  return new Uint8Array(out)
+}
+
+/**
+ * Байтове → текст. Кодировката идва от самата дума; при непозната се пробва
+ * utf-8, защото сгрешено име е по-честият случай от наистина чужда таблица.
+ */
+function bytesToText(bytes: Uint8Array, charset: string): string | null {
+  try {
+    return new TextDecoder(charset).decode(bytes)
+  } catch {
+    try {
+      return new TextDecoder("utf-8").decode(bytes)
+    } catch {
+      return null
+    }
+  }
+}
+
+/**
+ * Разчита кодираните думи в заглавка. Каквото не се разчете, остава КАКТО Е —
+ * по-добре видима кодирана тема, отколкото изгубено писмо или боклук.
+ */
+function decodeMimeWords(raw: string | null | undefined): string {
+  const input = raw ?? ""
+  if (!input.includes("=?")) return input
+
+  const joined = input.replace(/\?=\s+=\?/g, "?==?")
+  return joined.replace(ENCODED_WORD, (whole, charset: string, enc: string, text: string) => {
+    // Кодираната част по стандарт е САМО ASCII. Има ли друго, това не е
+    // кодирана дума, а заглавка, в която случайно стои „=?". При base64
+    // `atob` го хваща сам, но quoted-printable би върнал боклук байт по байт.
+    if (!isAscii(text)) return whole
+    const bytes = /^[Bb]$/.test(enc) ? base64Bytes(text) : quotedBytes(text)
+    if (!bytes) return whole
+    // `utf-8*bg` — RFC 2231 слага език след звездичка; таблицата е преди нея.
+    const name = charset.toLowerCase().split("*")[0]
+    return bytesToText(bytes, name) ?? whole
+  })
+}
+
 /** Темата без префиксите на препращането и без ключовата дума. */
 function cleanSubject(subject: string | null | undefined): string {
   let v = (subject ?? "").replace(/\s+/g, " ").trim()
@@ -323,7 +414,9 @@ Deno.serve(async (req) => {
   }
 
   const from = (payload.from ?? "").slice(0, 320)
-  const subject = (payload.subject ?? "").slice(0, 500)
+  // Кирилска тема пътува КОДИРАНА (RFC 2047) — разчита се ВЕДНАГА, преди
+  // всяка проверка и преди записа, за да е разчетена навсякъде нататък.
+  const subject = decodeMimeWords(payload.subject ?? "").slice(0, 500)
   const body = (payload.text ?? "").slice(0, MAX_BODY)
 
   // РЕШЕНИЕТО Е ТУК, не в Worker-а. Той подава суровата заглавка и нищо

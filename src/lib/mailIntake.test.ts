@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseFromHeader, isAllowedSender, hasKeyword, normalizeEik, normalizeEmail,
   normalizePhone, validateExtraction, screenEmail, cleanSubject, resolveName,
-  senderProven,
+  senderProven, decodeMimeWords,
 } from './mailIntake'
 
 const STAFF = ['ivan@consultplus.bg', 'Radka.Nikolova@consultplus.bg', 'kalin@gmail.com', null, '']
@@ -297,5 +297,80 @@ describe('senderProven', () => {
   it('не се води по регистър', () => {
     const h = 'MX.CLOUDFLARE.NET; SPF=PASS smtp.mailfrom=CONSULTPLUS.BG'
     expect(senderProven(h, 'K.DIEV@CONSULTPLUS.BG')).toBe(true)
+  })
+})
+
+describe('decodeMimeWords', () => {
+  it('оставя обикновената тема както е', () => {
+    expect(decodeMimeWords('Fwd: new client')).toBe('Fwd: new client')
+    expect(decodeMimeWords('Възможност: нов клиент')).toBe('Възможност: нов клиент')
+  })
+
+  it('връща празно за липсваща стойност', () => {
+    expect(decodeMimeWords(null)).toBe('')
+    expect(decodeMimeWords(undefined)).toBe('')
+  })
+
+  it('разчита кирилица в base64 (както я праща Outlook)', () => {
+    const raw = '=?utf-8?B?0LLRitC30LzQvtC20L3QvtGB0YI6INC90L7QsiDQutC70LjQtdC90YI=?='
+    expect(decodeMimeWords(raw)).toBe('възможност: нов клиент')
+  })
+
+  it('разчита quoted-printable, където „_" е интервал', () => {
+    const raw = '=?utf-8?Q?=D0=BD=D0=BE=D0=B2=D0=B0_=D0=B2=D1=8A=D0=B7=D0=BC'
+      + '=D0=BE=D0=B6=D0=BD=D0=BE=D1=81=D1=82?='
+    expect(decodeMimeWords(raw)).toBe('нова възможност')
+  })
+
+  it('ЛЕПИ СЪСЕДНИТЕ КОДИРАНИ ДУМИ: срязването пада насред думата', () => {
+    // Дълга тема се реже на парчета и се долепя с интервал, който НЕ е част
+    // от текста. Разчете ли се първо, „възмож" + „ност" дава „възмож ност"
+    // и ключовата дума изчезва точно когато трябва да се намери.
+    const raw = '=?utf-8?B?RndkOiDQvdC+0LLQsCDQstGK0LfQvNC+0LY=?= =?utf-8?B?0L3QvtGB0YIg0L7RgiDRgdCw0LnRgtCw?='
+    const decoded = decodeMimeWords(raw)
+    expect(decoded).toBe('Fwd: нова възможност от сайта')
+    expect(hasKeyword(decoded)).toBe(true)
+  })
+
+  it('пази истинския интервал до незакодирана дума', () => {
+    expect(decodeMimeWords('Fwd: =?utf-8?B?0LLRitC30LzQvtC20L3QvtGB0YI=?='))
+      .toBe('Fwd: възможност')
+  })
+
+  it('разчита и windows-1251', () => {
+    expect(decodeMimeWords('=?windows-1251?B?4vrn7O7m7e7x8g==?=')).toBe('възможност')
+  })
+
+  it('приема език след кодировката (RFC 2231)', () => {
+    expect(decodeMimeWords('=?utf-8*bg?B?0LLRitC30LzQvtC20L3QvtGB0YI=?=')).toBe('възможност')
+  })
+
+  it('не пипа заглавка, в която „=?" стои случайно', () => {
+    // Кодираната част по стандарт е само ASCII. Сурова кирилица вътре значи,
+    // че това изобщо не е кодирана дума — по-добре както е, отколкото боклук.
+    expect(decodeMimeWords('=?utf-8?Q?нова_тема?=')).toBe('=?utf-8?Q?нова_тема?=')
+  })
+
+  it('оставя счупеното както е, вместо да върне боклук', () => {
+    expect(decodeMimeWords('=?utf-8?B?не-е-base64!!?=')).toBe('=?utf-8?B?не-е-base64!!?=')
+    expect(decodeMimeWords('=?utf-8?Q?=ZZ?=')).toBe('=?utf-8?Q?=ZZ?=')
+  })
+
+  it('ключовата дума се намира СЛЕД разчитането, не преди', () => {
+    const raw = '=?utf-8?B?0LLRitC30LzQvtC20L3QvtGB0YI6INC90L7QsiDQutC70LjQtdC90YI=?='
+    expect(hasKeyword(raw)).toBe(false)
+    expect(hasKeyword(decodeMimeWords(raw))).toBe(true)
+  })
+})
+
+describe('screenEmail с кодирана тема', () => {
+  it('пуска писмо, чиято тема е кодирана по RFC 2047', () => {
+    const subject = '=?utf-8?B?0LLRitC30LzQvtC20L3QvtGB0YI6INC90L7QsiDQutC70LjQtdC90YI=?='
+    expect(screenEmail('ivan@consultplus.bg', subject, STAFF)).toEqual({ accept: true })
+  })
+
+  it('пак отказва, когато думата я няма и след разчитането', () => {
+    const subject = '=?utf-8?B?0L3QvtCy0LAg0LfQsNC00LDRh9Cw?=' // „нова задача"
+    expect(screenEmail('ivan@consultplus.bg', subject, STAFF).accept).toBe(false)
   })
 })
